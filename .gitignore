@@ -4,6 +4,11 @@ build/
 coverage/
 *.tsbuildinfo
 
+# Playwright (apps/web/e2e) — прогонные артефакты, не результат работы
+test-results/
+playwright-report/
+blob-report/
+
 # env
 .env
 .env.local

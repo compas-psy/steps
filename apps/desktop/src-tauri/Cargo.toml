@@ -1,0 +1,31 @@
+[package]
+name = "shagi-desktop"
+version = "0.1.0"
+description = "ШАГИ — тонкая десктопная оболочка (SPEC/00 §3): ни одного экрана, только точка входа и платформенный манифест"
+authors = ["СИМПАС"]
+edition = "2021"
+rust-version = "1.94"
+publish = false
+
+[lib]
+# Имя отличается от имени пакета: `shagi_desktop` заняло бы имя бинаря.
+name = "shagi_desktop_lib"
+crate-type = ["lib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+# Три плагина — ровно то, что использует `src/platform.ts`
+# (globalShortcut/deepLink/share). Никаких других native-команд: у оболочки
+# нет собственной бизнес-логики, которую стоило бы писать в Rust (SPEC §3).
+tauri-plugin-global-shortcut = "2"
+tauri-plugin-deep-link = "2"
+tauri-plugin-clipboard-manager = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[features]
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]

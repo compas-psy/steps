@@ -14,7 +14,12 @@
     "test": "vitest run",
     "lint": "oxlint ."
   },
+  "dependencies": {
+    "@shagi/platform": "workspace:*",
+    "react": "^19.2.8"
+  },
   "devDependencies": {
+    "@types/react": "^19.2.18",
     "typescript": "5.9.3",
     "vitest": "^4.1.11"
   }

@@ -1,0 +1,57 @@
+# Разрешения Android — единственный источник истины (образец —
+# compas-psy/zapiski, apps/mobile/android-permissions.txt; разбор —
+# .ultraplan/research/04-android-release.md).
+#
+# Формат: имя разрешения, при необходимости `maxSdkVersion=N`, затем `#` и
+# объяснение — зачем оно и что сломается без него. Строка без объяснения не
+# проходит проверку (`test/android-permissions.test.ts`): разрешение без
+# причины — это разрешение, которое никто не пересмотрит.
+#
+# ── INTERNET — сознательно ОТСУТСТВУЕТ ──────────────────────────────────────
+#
+# В R1a нет ни аккаунта, ни синка, ни облака вообще (SPEC/00 §9 — «Offline
+# boundary»: account/sync/cloud — единственное, что требует сети, и всё это
+# не задача R1a). Приложение без сетевого разрешения — не обещание «пока
+# без сети», а проверяемое утверждение о приватности локального режима:
+# оно физически не может ничего отправить. `INTERNET` добавляется вместе с
+# аккаунтом в R1b, отдельным осознанным изменением этого файла — не «на
+# всякий случай» заранее (решение ?28, .ultraplan/open-questions.md).
+
+android.permission.POST_NOTIFICATIONS
+  # Android 13+ требует его для ЛЮБОГО показа уведомления, включая локальные
+  # напоминания задач (SPEC/00 §0 — «local notifications» в целях R1). Без
+  # строки уведомление молча не показывается на 13+, а разрешение не
+  # появляется в системном диалоге вовсе.
+
+android.permission.SCHEDULE_EXACT_ALARM
+  # Точное время напоминания, которое человек указал явно (SPEC/00 §11.1 —
+  # «Android: explicit timed reminders use native scheduling»). С Android 12
+  # система различает точные и неточные будильники; без этого разрешения
+  # `AlarmManager.setExactAndAllowWhileIdle` бросает исключение, а не
+  # тихо деградирует до неточного — деградацию обязан явно показать UI
+  # (SPEC §11.1: «never silently present an inexact alarm as exact»), а не
+  # получить её как побочный эффект нехватки разрешения.
+
+android.permission.USE_EXACT_ALARM
+  # Второе разрешение для того же точного будильника (Android 13+, category
+  # `SCHEDULE_EXACT_ALARM`): в отличие от `SCHEDULE_EXACT_ALARM` его нельзя
+  # получить через настройки вручную — оно даётся только приложениям с
+  # заявленной ролью планировщика напоминаний и подлежит политике стора на
+  # момент публикации (SPEC/00 §11.1 — «check current store policy»). Обе
+  # строки нужны одновременно: без одной из них точный будильник недоступен
+  # на части версий Android.
+
+android.permission.RECEIVE_BOOT_COMPLETED
+  # Пересоздание расписания уведомлений после перезагрузки устройства
+  # (`02_DATA_MODEL_SYNC.md` §14 — «Every startup/background wake compares
+  # desired schedule fingerprints with OS scheduled notification IDs»):
+  # `AlarmManager` не переживает reboot, все точные будильники слетают
+  # молча. Без этого разрешения boot receiver не запускается вовсе, и
+  # напоминания перестают срабатывать после каждой перезагрузки без единого
+  # сообщения об ошибке.
+
+android.permission.VIBRATE
+  # Хэптика (`src/platform.ts` → `createHaptics`, Web Vibration API в
+  # системном WebView). Без строки `navigator.vibrate()` тихо возвращает
+  # `false` и ничего не происходит — SecurityException не бросается, но и
+  # обратной связи у человека тоже нет.

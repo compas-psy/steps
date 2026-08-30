@@ -1,0 +1,35 @@
+{
+  "name": "@shagi/web",
+  "version": "0.1.0",
+  "private": true,
+  "description": "ШАГИ: веб-оболочка (PWA). Экранов здесь нет (SPEC/00 §3) — только монтирование @shagi/app и реализация платформенных портов",
+  "license": "UNLICENSED",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "lint": "oxlint ."
+  },
+  "dependencies": {
+    "@js-temporal/polyfill": "^0.5.1",
+    "@shagi/app": "workspace:*",
+    "@shagi/platform": "workspace:*",
+    "@shagi/ui": "workspace:*",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.56.0",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.5",
+    "@vitejs/plugin-react": "^6.1.1",
+    "happy-dom": "^20.12.0",
+    "typescript": "5.9.3",
+    "vite": "^8.2.2",
+    "vitest": "^4.1.11"
+  }
+}

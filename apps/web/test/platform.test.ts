@@ -1,0 +1,79 @@
+// @vitest-environment happy-dom
+/**
+ * Реестр возможностей веб-платформы: главное, что здесь проверяется, —
+ * честность (SPEC §11.1, `packages/platform/src/index.ts`): недоступная
+ * возможность обязана быть `Unavailable`, а не заглушкой, притворяющейся
+ * успехом, и `notificationScheduler` обязан ВСЕГДА признавать
+ * `'no-guarantee'` — веб не может обещать доставку при закрытом браузере.
+ */
+import { Temporal } from '@js-temporal/polyfill';
+import { isAvailable } from '@shagi/platform';
+import { describe, expect, it } from 'vitest';
+
+import { createWebPlatform } from '../src/platform.js';
+
+describe('createWebPlatform', () => {
+  it('notificationScheduler всегда честно отдаёт no-guarantee', async () => {
+    const platform = createWebPlatform();
+    expect(isAvailable(platform.notificationScheduler)).toBe(true);
+    if (!isAvailable(platform.notificationScheduler)) throw new Error('unreachable');
+    const capability = await platform.notificationScheduler.getSchedulingCapability();
+    expect(capability).toBe('no-guarantee');
+  });
+
+  it('networkStatus реально читает navigator.onLine', () => {
+    const platform = createWebPlatform();
+    expect(isAvailable(platform.networkStatus)).toBe(true);
+    if (!isAvailable(platform.networkStatus)) throw new Error('unreachable');
+    expect(platform.networkStatus.isOnline()).toBe(navigator.onLine);
+  });
+
+  it('deepLink подписывается и отписывается без ошибок', () => {
+    const platform = createWebPlatform();
+    expect(isAvailable(platform.deepLink)).toBe(true);
+    if (!isAvailable(platform.deepLink)) throw new Error('unreachable');
+    const unsubscribe = platform.deepLink.onLink(() => undefined);
+    expect(typeof unsubscribe).toBe('function');
+    unsubscribe();
+  });
+
+  it('капабилити, которых у веба на этом этапе честно нет, помечены Unavailable с причиной', () => {
+    const platform = createWebPlatform();
+    const expectedUnavailable = [
+      'localDb',
+      'fileStore',
+      'secureCredentials',
+      'globalShortcut',
+      'haptics',
+      'widget',
+      'billing',
+      'pushHint',
+      'calendarProvider',
+      'audioCapture',
+    ] as const;
+
+    for (const key of expectedUnavailable) {
+      const capability = platform[key];
+      expect(isAvailable(capability), `${key} должен быть Unavailable`).toBe(false);
+      if (isAvailable(capability)) continue;
+      expect(capability.reason, `${key}: нет объяснения недоступности`).toBeTruthy();
+    }
+  });
+
+  it('schedule() принимает Temporal.PlainDate/PlainTime, не Date', async () => {
+    const platform = createWebPlatform();
+    if (!isAvailable(platform.notificationScheduler)) throw new Error('unreachable');
+    // Дата в прошлом — schedule должен тихо не планировать таймер (просрочено),
+    // а не бросать исключение: проверяем только, что сигнатура верна.
+    await expect(
+      platform.notificationScheduler.schedule(
+        'test-1',
+        'заголовок',
+        Temporal.PlainDate.from('2020-01-01'),
+        Temporal.PlainTime.from('09:00'),
+        'Europe/Moscow',
+      ),
+    ).resolves.toBeUndefined();
+    await platform.notificationScheduler.cancel('test-1');
+  });
+});

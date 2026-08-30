@@ -8,3 +8,6 @@
  * (`@shagi/platform`) и больше ничего не делают.
  */
 export const PACKAGE_NAME = '@shagi/app' as const;
+
+export type { AppHost } from './App.js';
+export { App } from './App.js';

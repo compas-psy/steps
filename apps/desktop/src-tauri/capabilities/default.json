@@ -1,0 +1,14 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Права главного окна. Список короткий: ровно три плагина, которыми `src/platform.ts` реализует GlobalShortcutPort/DeepLinkPort/SharePort (SPEC §4) — своих Tauri-команд у оболочки нет (SPEC §3), поэтому и прав сверх официальных default-наборов плагинов не требуется.",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "core:event:default",
+
+    "global-shortcut:default",
+    "deep-link:default",
+    "clipboard-manager:allow-write-text"
+  ]
+}
