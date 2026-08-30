@@ -2,7 +2,16 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "rootDir": ".",
-    "types": ["vite/client"]
+    "types": ["vite/client"],
+    // `test/android-release-gate.test.ts` импортирует
+    // `scripts/android-release-gate.mjs` — весь релизный шлюз намеренно
+    // лежит в одном простом ESM-модуле с JSDoc-типами (не .ts: он же
+    // запускается напрямую `node`, без сборки, из workflow), а не
+    // в TypeScript. Без `allowJs` строгий tsc отказывается его резолвить
+    // (`TS7016: Could not find a declaration file`) — checkJs здесь не
+    // включаем: сам .mjs типы не проверяет, их даёт JSDoc на экспортах,
+    // а строгость применяется к test.ts, который его импортирует.
+    "allowJs": true
   },
-  "include": ["src", "test", "vite.config.ts", "vitest.config.ts"]
+  "include": ["src", "test", "scripts", "vite.config.ts", "vitest.config.ts"]
 }

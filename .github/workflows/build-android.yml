@@ -1,0 +1,793 @@
+name: Сборка Android
+
+# Сборка ШАГОВ под Android (Tauri 2 Mobile). Схема заимствована у соседнего
+# продукта `compas-psy/zapiski` — целиком, fail-closed; разбор и решение
+# принять именно эту схему — `.ultraplan/research/04-android-release.md` и
+# `.ultraplan/open-questions.md` (→24, →25, →26).
+#
+# Android SDK и NDK есть только здесь: на машине разработчика `tauri android
+# build` не выполняется в принципе (в контейнере разработки их тоже нет —
+# см. комментарий в apps/mobile/test/tauri-config.test.ts), поэтому этот
+# workflow — единственное место, где APK вообще появляется. Всё, что можно
+# проверить без устройства (типы, сборка фронтенда, тесты Rust- и
+# JS-частей оболочки, валидность tauri.conf.json, готовность ключа),
+# проверяется ДО получасовой компиляции — чтобы падение случилось на
+# понятном шаге, а не в конце прогона.
+#
+# ПОДПИСЬ — САМОЕ ВАЖНОЕ МЕСТО ФАЙЛА.
+#   Android ставит обновление поверх установленного приложения, только если
+#   подпись совпадает. Сменили keystore или алиас — пользователь обязан
+#   удалить приложение и поставить заново, потеряв локальные данные (они у
+#   ШАГОВ живут только на устройстве — SPEC/00 §9); в Google Play/RuStore
+#   смена ключа невозможна вовсе.
+#
+# ДВА КАНАЛА, И ОНИ НЕ СМЕШИВАЮТСЯ.
+#
+#   production — тег `shagi-v*`, пуш в ветку по умолчанию (main) и ручной
+#   запуск с явно выбранным каналом. Правило жёсткое: APK либо собран как
+#   release, подписан постоянным ключом из ANDROID_* и прошёл проверку
+#   готового файла, либо его нет вовсе. Нет хотя бы одного из четырёх
+#   секретов — падаем ДО получаса компиляции. Неполный комплект — падаем
+#   всегда, на любом канале: половина настройки это ошибка, а не повод
+#   собрать что-нибудь (apps/mobile/scripts/android-release-gate.mjs →
+#   signingPolicy).
+#
+#   development — всё остальное: pull request, чужая ветка, ручной запуск
+#   без выбора. Здесь допустим DEBUG-APK, и он честно называется `-debug`.
+#   Живёт ровно в одном месте — во вкладке Actions, семь дней.
+#
+# ПОЧЕМУ ЗДЕСЬ НЕТ ШАГОВ, КОТОРЫЕ ЕСТЬ У ЗАПИСОК.
+#   У ШАГОВ в R1 нет сервера вообще — ни бэкенда, ни статики, ни SSH-хоста
+#   (SPEC/00 §9: аккаунт/синк/облако — не задача R1a). Поэтому из схемы
+#   Записок сюда сознательно НЕ перенесены: выкладка APK по SSH, фид
+#   автообновления `latest.json`, постоянная ссылка `/updates/latest/…`.
+#   Единственная дорога наружу — артефакт этого прогона (для любого канала)
+#   и GitHub Release по тегу (только для production, только для проверенной
+#   release-сборки). Это не забывчивость: как только у ШАГОВ появится
+#   сервер, эти шаги возвращаются на свои места, а не дописываются с нуля.
+#   По той же причине здесь нет сверки с `assetlinks.json` (App Links —
+#   тоже часть R1b вместе с аккаунтом): apps/mobile/EXPECTED_SIGNER.txt
+#   всё равно есть, но по другой причине — см. его собственный комментарий
+#   и шаг «Подготовить keystore» ниже.
+#
+#   Единственная дорога наружу теперь такая:
+#     ANDROID_* → политика секретов → keystore восстановлен и алиас найден →
+#     EXPECTED_SIGNER.txt совпал с keystore → release-сборка → zipalign →
+#     apksigner sign (v1+v2+v3) → apksigner verify → отказ при
+#     CN=Android Debug → отпечаток APK совпал с ключом →
+#     разрешения собранного APK совпали со списком → verified_release=true →
+#     артефакт прогона, и только на теге — GitHub Release.
+#
+#   Ключ подписи в репозитории не хранится (.gitignore, стережёт
+#   scripts/check-signing-secrets.mjs — security.yml), а в лог печатается
+#   только ПУБЛИЧНЫЙ отпечаток сертификата.
+
+on:
+  # Фильтра `paths` здесь нет намеренно: GitHub применил бы его и к тегам, а
+  # тег `shagi-v*` на коммите без изменений в apps/mobile тихо не запустил
+  # бы релиз. Отбор по изменённым файлам делает job `changes` ниже — он
+  # умеет различать тег и пуш в ветку, а `on:` не умеет.
+  push:
+    branches: [main]
+    tags: ['shagi-v*']
+  pull_request:
+    branches: [main]
+    paths:
+      - 'apps/mobile/**'
+      - 'packages/**'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - 'package.json'
+      - '.github/workflows/build-android.yml'
+  workflow_dispatch:
+    inputs:
+      # Производственный канал руками — только явным выбором.
+      #
+      # Умолчание безопасное: ручной запуск считается разработческим, пока
+      # не попросили обратного. Обратный порядок означал бы, что случайный
+      # запуск не с той ветки способен создать production-релиз.
+      channel:
+        description: 'Канал сборки: development (по умолчанию) или production'
+        required: false
+        default: development
+        type: choice
+        options:
+          - development
+          - production
+
+permissions:
+  contents: read
+
+env:
+  # Версия NDK, на которой сборка описана и проверена. Если в образе раннера
+  # её нет — берётся то, что есть, с предупреждением в логе (шаг «NDK»).
+  SHAGI_NDK_VERSION: '27.1.12297006'
+
+jobs:
+  # ─────────────────────────────────────────────────────────────────────────
+  # Что изменилось: тег и ручной запуск собираются всегда, пуш в ветку — если
+  # тронуто то, из чего собирается приложение. См. шапку файла про `paths`.
+  # ─────────────────────────────────────────────────────────────────────────
+  changes:
+    name: Что изменилось
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      build: ${{ steps.check.outputs.build }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - id: check
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_REF_TYPE}" = "tag" ] || [ "${GITHUB_EVENT_NAME}" != "push" ]; then
+            echo 'Тег или ручной запуск/PR — собираем без разговоров.'
+            echo 'build=true' >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
+          base="${BEFORE:-}"
+          # Новая ветка приходит с нулями вместо предыдущего коммита: сравнить
+          # не с чем, поэтому берём родителя. Если и его нет — собираем.
+          if [ -z "${base}" ] || [ "${base}" = "0000000000000000000000000000000000000000" ] || ! git cat-file -e "${base}^{commit}" 2>/dev/null; then
+            base="$(git rev-parse "${GITHUB_SHA}^" 2>/dev/null || true)"
+          fi
+          if [ -z "${base}" ]; then
+            echo '::warning::не с чем сравнить — собираем на всякий случай'
+            echo 'build=true' >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
+          files="$(git diff --name-only "${base}" "${GITHUB_SHA}")"
+          echo "Изменено файлов: $(printf '%s' "${files}" | grep -c . || true)"
+          if printf '%s\n' "${files}" | grep -Eq '^(apps/mobile/|packages/|pnpm-lock\.yaml|pnpm-workspace\.yaml|package\.json|\.github/workflows/build-android\.yml)'; then
+            echo 'Тронуто то, из чего собирается приложение.'
+            echo 'build=true' >> "${GITHUB_OUTPUT}"
+          else
+            echo 'Приложение не тронуто — сборка не нужна.'
+            echo 'build=false' >> "${GITHUB_OUTPUT}"
+          fi
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # BUILD
+  # ─────────────────────────────────────────────────────────────────────────
+  build:
+    needs: changes
+    if: needs.changes.outputs.build == 'true'
+    name: APK
+    runs-on: ubuntu-latest
+    # 60 минут не хватает на холодный кэш: два Rust-таргета под Android плюс
+    # хостовая сборка tauri (webkit) — это десятки минут на пустом cargo-кэше.
+    timeout-minutes: 90
+    concurrency:
+      group: shagi-android-${{ github.ref }}
+      # Пуш в ветку отменяет предыдущий прогон, а вот начатую сборку тега —
+      # нет: её артефакт нужен job'у release.
+      cancel-in-progress: ${{ github.ref_type != 'tag' }}
+
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      signed: ${{ steps.keystore.outputs.signed }}
+      channel: ${{ steps.channel.outputs.channel }}
+      promoted: ${{ steps.channel.outputs.promoted }}
+      # Единственный флаг, от которого зависит публикация GitHub Release.
+      # `signed` означает лишь «keystore восстановился»; этот флаг — «готовый
+      # APK проверен и подписан именно этим ключом».
+      verified_release: ${{ steps.verify.outputs.verified_release }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ── Канал сборки ──────────────────────────────────────────────────────
+      #
+      # Считается ОДИН раз и в одном месте — до тяжёлых шагов. Дальше все
+      # решения («падать ли без ключа», «нужен ли EXPECTED_SIGNER.txt»,
+      # «публиковать ли релиз») читают этот флаг, а не пересчитывают своё
+      # представление о production по-своему.
+      - name: Канал сборки
+        id: channel
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          INPUT_CHANNEL: ${{ inputs.channel }}
+        run: node apps/mobile/scripts/android-release-gate.mjs channel
+
+      # ── Инструменты ───────────────────────────────────────────────────────
+
+      # Хостовая часть проверки (`cargo test`) собирает крейт `tauri` под
+      # linux, а он тянет webkit2gtk-4.1 через pkg-config. В образе раннера
+      # этих dev-пакетов нет, и без них шаг падает на этапе `build.rs` — с
+      # сообщением про pkg-config, по которому не догадаешься, что дело в apt.
+      #
+      # Три меры от известной болезни раннеров GitHub (фоновые `apt-daily` и
+      # `unattended-upgrades` держат блокировку dpkg, а `apt-get` без
+      # ограничения по времени её ждёт — со стороны это неотличимо от
+      # «сборка зависла»):
+      #   1. `timeout-minutes` — шаг не может съесть бюджет всей сборки;
+      #   2. `DPkg::Lock::Timeout` — ждём блокировку минуту, потом падаем с
+      #      внятной причиной вместо молчаливого ожидания;
+      #   3. три попытки — зеркала пакетов иногда отвечают не с первого раза.
+      - name: Системные библиотеки
+        timeout-minutes: 12
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          set -euo pipefail
+          sudo systemctl stop apt-daily.service apt-daily-upgrade.service unattended-upgrades.service 2>/dev/null || true
+          sudo systemctl kill --kill-who=all apt-daily.service 2>/dev/null || true
+
+          apt_try() {
+            for attempt in 1 2 3; do
+              if sudo apt-get -o DPkg::Lock::Timeout=60 "$@"; then return 0; fi
+              echo "::warning::apt-get $1: попытка ${attempt} не удалась, повтор"
+              sleep $((attempt * 15))
+            done
+            return 1
+          }
+
+          apt_try update
+          apt_try install --no-install-recommends -y \
+            libwebkit2gtk-4.1-dev \
+            libjavascriptcoregtk-4.1-dev \
+            libsoup-3.0-dev \
+            libgtk-3-dev \
+            librsvg2-dev \
+            pkg-config
+
+      - name: Установить pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Установить Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+
+      # JDK ровно 21, не «последний».
+      #   * AGP/Gradle, которые ставит шаблон Tauri, требуют минимум 17;
+      #   * сгенерированный app/build.gradle.kts компилирует Kotlin и Java под
+      #     target 1.8, а javac перестал принимать `-target 8` начиная с
+      #     JDK 22. То есть 17…21 — рабочий диапазон, 21 берём как верхнюю
+      #     границу.
+      - name: JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Android SDK
+        uses: android-actions/setup-android@v3
+
+      # NDK: сначала смотрим, что уже распаковано в образе раннера (это
+      # экономит ~2 ГБ загрузки), и только потом идём в sdkmanager. Если
+      # зафиксированной версии нет нигде (Google их периодически убирает),
+      # берём самую свежую и пишем в лог, какую именно, — чтобы сборку можно
+      # было воспроизвести.
+      - name: NDK
+        run: |
+          set -euo pipefail
+          sdk="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+          [ -n "${sdk}" ] || { echo 'ни ANDROID_HOME, ни ANDROID_SDK_ROOT не заданы' >&2; exit 1; }
+
+          preferred="${SHAGI_NDK_VERSION}"
+          home=''
+
+          # Порядок важен: сначала пин, и только потом что подвернётся. Иначе
+          # сборка молча поедет на той версии, которую сегодня положили в
+          # образ, и «у меня собиралось» перестанет что-либо значить.
+          if [ -d "${sdk}/ndk/${preferred}" ]; then
+            home="${sdk}/ndk/${preferred}"
+          elif sdkmanager --install "ndk;${preferred}" >/dev/null </dev/null; then
+            home="${sdk}/ndk/${preferred}"
+          else
+            echo "::warning::NDK ${preferred} недоступен ни в образе, ни в sdkmanager — берём самый свежий из доступных"
+            newest=''
+            if [ -d "${sdk}/ndk" ]; then
+              newest="$(ls -1 "${sdk}/ndk" | sort -V | tail -1)"
+            fi
+            if [ -n "${newest}" ]; then
+              home="${sdk}/ndk/${newest}"
+            else
+              package="$(sdkmanager --list 2>/dev/null | awk -F'|' '/^[[:space:]]*ndk;/ {gsub(/[[:space:]]/,"",$1); print $1}' | sort -u -V | tail -1)"
+              [ -n "${package}" ] || { echo 'sdkmanager не предлагает ни одного NDK' >&2; exit 1; }
+              sdkmanager --install "${package}" >/dev/null </dev/null
+              home="${sdk}/ndk/${package#ndk;}"
+            fi
+            echo "::warning::сборка идёт на NDK ${home##*/}, а не на зафиксированном ${preferred}"
+          fi
+
+          # source.properties читает сам tauri-cli: без него он падает с
+          # «Failed to lookup version of installed NDK».
+          [ -f "${home}/source.properties" ] || { echo "NDK не распакован в ${home}" >&2; exit 1; }
+          echo "Взят NDK ${home}"
+
+          {
+            echo "ANDROID_HOME=${sdk}"
+            echo "ANDROID_SDK_ROOT=${sdk}"
+            # Tauri читает NDK_HOME, gradle-плагины — ANDROID_NDK_HOME/ROOT.
+            echo "NDK_HOME=${home}"
+            echo "ANDROID_NDK_HOME=${home}"
+            echo "ANDROID_NDK_ROOT=${home}"
+          } >> "$GITHUB_ENV"
+
+      - name: Rust с таргетами Android
+        run: |
+          set -euo pipefail
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+          # Ровно те таргеты, которые собираются ниже. x86-таргеты нужны
+          # только эмулятору: они удваивают время сборки и вес APK, а
+          # бюджет — 30 МБ (SPEC §6).
+          rustup target add aarch64-linux-android armv7-linux-androideabi
+          rustup show
+
+      - name: Кэш cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            apps/mobile/src-tauri/target
+          key: android-cargo-${{ runner.os }}-${{ hashFiles('apps/mobile/src-tauri/Cargo.lock', 'apps/mobile/src-tauri/Cargo.toml') }}
+          restore-keys: android-cargo-${{ runner.os }}-
+
+      - name: Кэш pnpm store
+        uses: actions/cache@v4
+        with:
+          path: ~/.pnpm-store
+          key: pnpm-${{ runner.os }}-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: pnpm-${{ runner.os }}-
+
+      - name: Установка зависимостей
+        run: |
+          set -euo pipefail
+          pnpm config set store-dir ~/.pnpm-store
+          pnpm install --frozen-lockfile
+
+      # ── Проверки, которые не требуют устройства ─────────────────────────
+      #
+      # Тег `shagi-v*` не проходит через ci.yml (тот триггерится только по
+      # main и pull_request) — значит именно этот workflow, а не ci.yml,
+      # единственный, кто проверит типы/линт/тесты оболочки перед релизом.
+      - name: Проверка типов оболочки
+        run: pnpm --filter @shagi/mobile typecheck
+
+      - name: Линт оболочки
+        run: pnpm --filter @shagi/mobile lint
+
+      - name: Модульные тесты оболочки (включая шлюз подписи)
+        run: pnpm --filter @shagi/mobile test
+
+      # Фронтенд собирается здесь, а не только внутри `tauri android build`:
+      # ошибка в вебе должна падать до того, как раннер потратит полчаса на
+      # Rust. `beforeBuildCommand` потом соберёт его ещё раз — это дёшево.
+      - name: Сборка фронтенда
+        run: pnpm --filter @shagi/mobile build:vite
+
+      - name: Тесты Rust-части оболочки
+        working-directory: apps/mobile/src-tauri
+        run: cargo test
+
+      - name: Версия из tauri.conf.json
+        id: version
+        run: |
+          set -euo pipefail
+          version="$(node -p "require('./apps/mobile/src-tauri/tauri.conf.json').version")"
+          tag="${GITHUB_REF_NAME}"
+          if [ "${GITHUB_REF_TYPE}" = 'tag' ] && [ "shagi-v${version}" != "${tag}" ]; then
+            echo "Тег ${tag} не совпадает с версией ${version} в tauri.conf.json." >&2
+            echo "Правило СИМПАС: тег релиза — shagi-v${version}." >&2
+            echo 'Версия в манифесте — источник истины, разъезжаться с тегом ей нельзя.' >&2
+            exit 1
+          fi
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "Версия сборки: ${version}"
+
+      # ── Ключ подписи ─────────────────────────────────────────────────────
+      #
+      # Правило одно и жёсткое: производственная сборка либо подписана
+      # постоянным ключом из ANDROID_*, либо её нет. Половина комплекта —
+      # отказ на любом канале. У ШАГОВ есть и третье состояние, которого не
+      # было у Записок на этом этапе: ключа может не быть вовсе, потому что
+      # владелец продукта ещё не запускал scripts/make-android-keystore.sh —
+      # это ожидаемо на старте продукта, EXPECTED_SIGNER.txt тогда пуст, и
+      # production падает с понятным сообщением, а не молча берёт debug.
+      - name: Подготовить keystore
+        id: keystore
+        env:
+          CHANNEL: ${{ steps.channel.outputs.channel }}
+          # Скрипту сообщается ЕСТЬ или НЕТ, а не значение: секретов он не видит.
+          HAS_ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+          HAS_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD != '' }}
+          HAS_ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS != '' }}
+          HAS_ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD != '' }}
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          # Политика решается в проверяемом месте: `android-release-gate.mjs`
+          # падает сам при неполном комплекте и при production без ключа.
+          node apps/mobile/scripts/android-release-gate.mjs policy
+
+          if [ -z "${ANDROID_KEYSTORE_BASE64}" ]; then
+            echo "::warning::Секретов подписи нет — собираем DEBUG-APK для разработки"
+            echo "::warning::Debug-APK НИКОГДА не публикуется как GitHub Release"
+
+            # ПОСТОЯННЫЙ отладочный ключ вместо случайного, сгенерированного
+            # Android-плагином на этой же (каждый раз новой) виртуалке —
+            # иначе первый APK встаёт, а каждый следующий отказывается с
+            # «Приложение не установлено» без объяснения причины (разбор —
+            # apps/mobile/keys/README.md).
+            mkdir -p ~/.android
+            base64 -d apps/mobile/keys/debug.keystore.base64 > ~/.android/debug.keystore
+            keytool -list -keystore ~/.android/debug.keystore -storepass android \
+              -alias androiddebugkey | tail -2
+            exit 0
+          fi
+
+          umask 077
+          mkdir -p "${RUNNER_TEMP}/signing"
+          keystore="${RUNNER_TEMP}/signing/shagi.jks"
+          printf '%s' "${ANDROID_KEYSTORE_BASE64}" | base64 -d > "${keystore}"
+          # Файл есть и не пуст: base64 с опечаткой даёт нулевой размер, и без
+          # этой строчки отказ всплыл бы получасом позже, на подписи.
+          test -s "${keystore}"
+          # Проверяем ключ до сборки: полчаса компиляции ради «пароль не
+          # подошёл» в самом конце — плохая сделка. Проверяются обе двери:
+          # пароль хранилища и пароль самого ключа.
+          keytool -list -keystore "${keystore}" \
+            -storepass "${ANDROID_KEYSTORE_PASSWORD}" -alias "${ANDROID_KEY_ALIAS}" >/dev/null
+          # `-certreq` требует ПРИВАТНЫЙ ключ и ничего не меняет в хранилище:
+          # проверка пароля ключа, которая не портит то, что проверяет.
+          keytool -certreq -keystore "${keystore}" \
+            -storepass "${ANDROID_KEYSTORE_PASSWORD}" -alias "${ANDROID_KEY_ALIAS}" \
+            -keypass "${ANDROID_KEY_PASSWORD}" >/dev/null 2>&1 \
+            || { echo '::error::ANDROID_KEY_PASSWORD не подходит к алиасу ANDROID_KEY_ALIAS'; exit 1; }
+
+          # Отпечаток ожидаемой подписи — из САМОГО keystore, до сборки.
+          #
+          # Это точка отсчёта: после подписи с ним сверяется отпечаток
+          # готового APK (шаг «Проверить подпись APK»). Публичный отпечаток
+          # сертификата секретом не является и в лог печатается сознательно.
+          expected="$(LANG=C keytool -list -v -keystore "${keystore}" \
+            -storepass "${ANDROID_KEYSTORE_PASSWORD}" -alias "${ANDROID_KEY_ALIAS}" \
+            | awk -F'SHA256: ' '/SHA256:/ { gsub(":", "", $2); print tolower($2); exit }')"
+          test -n "${expected}"
+          echo "EXPECTED_SIGNER_SHA256=${expected}" >> "$GITHUB_ENV"
+          echo "expected_signer_sha256=${expected}" >> "$GITHUB_OUTPUT"
+          echo 'signed=true' >> "$GITHUB_OUTPUT"
+
+          # Сверка с репозиторием: apps/mobile/EXPECTED_SIGNER.txt обязан либо
+          # совпасть с этим отпечатком, либо (если файл ещё не заполнен —
+          # ключ только что создан) сборка падает с понятным сообщением, а не
+          # молча продолжает. И то и другое — задача одной проверяемой
+          # функции, не shell-условия (apps/mobile/test/android-release-gate.test.ts).
+          node apps/mobile/scripts/android-release-gate.mjs expected-signer \
+            --channel "${CHANNEL}" \
+            --keystore-fingerprint "${expected}" \
+            --file apps/mobile/EXPECTED_SIGNER.txt
+
+          echo 'Ключ подписи на месте, алиас найден, пароль ключа подходит.'
+          echo "Expected signer SHA-256: ${expected}"
+
+      # ── Android-проект ───────────────────────────────────────────────────
+      # gen/android генерируется здесь и в git не попадает (.gitignore).
+      # У ШАГОВ пока нет собственного оверлея ресурсов/манифеста поверх
+      # шаблона Tauri (в отличие от Записок) — шаблон используется как есть;
+      # правила R8 ниже — единственная правка сгенерированного проекта, и
+      # она сделана отдельным файлом, а не патчем чужого build.gradle.kts.
+      - name: Сгенерировать проект Android
+        run: pnpm --filter @shagi/mobile exec tauri android init --ci --skip-targets-install
+
+      # compileSdk задаёт шаблон Tauri, а не мы — поэтому читаем его из
+      # сгенерированного gradle, а не зашиваем. Если пакета нет — не падаем:
+      # AGP умеет докачивать SDK сам, лицензии приняты действием setup-android.
+      - name: Доустановить компоненты SDK
+        run: |
+          set -euo pipefail
+          gradle='apps/mobile/src-tauri/gen/android/app/build.gradle.kts'
+          compile="$(sed -n 's/.*compileSdk[[:space:]]*=[[:space:]]*\([0-9][0-9]*\).*/\1/p' "${gradle}" | tail -1)"
+          [ -n "${compile}" ] || { echo "не удалось прочитать compileSdk из ${gradle}" >&2; exit 1; }
+          echo "compileSdk из шаблона Tauri: ${compile}"
+
+          for package in "platform-tools" "platforms;android-${compile}" "build-tools;${compile}.0.0"; do
+            if sdkmanager --install "${package}" >/dev/null </dev/null; then
+              echo "поставлен ${package}"
+            else
+              echo "::warning::не удалось поставить ${package} — AGP попробует скачать его сам во время сборки"
+            fi
+          done
+
+      # ── R8 и нативный мост ───────────────────────────────────────────────
+      #
+      # Release собирается с `isMinifyEnabled = true` (так в шаблоне Tauri),
+      # а мост Tauri↔Kotlin (и любой будущий мост наших плагинов — R1a
+      # планирует нативный boot receiver и планировщик точных напоминаний,
+      # SPEC/00 §11.1) идёт по строковому имени класса через JNI. R8 такие
+      # вызовы не видит: переименует класс и выкинет «неиспользуемые» методы
+      # — release-APK соберётся, установится и упадёт при первом обращении к
+      # платформе. Правило кладём файлом — release-buildType в
+      # app/build.gradle.kts подхватывает `fileTree(".") { include("**/*.pro") }`
+      # — а не патчем сгенерированного build.gradle.kts. Файл кладётся ПОСЛЕ
+      # генерации проекта: каталог app/ до `tauri android init` не существует.
+      - name: Правила R8 для нативного моста
+        run: |
+          set -euo pipefail
+          identifier="$(node -p "require('./apps/mobile/src-tauri/tauri.conf.json').identifier")"
+          rules='apps/mobile/src-tauri/gen/android/app/proguard-shagi.pro'
+          cat > "${rules}" <<RULES
+          # Сгенерировано .github/workflows/build-android.yml.
+          # Мост Rust ↔ Kotlin держится на именах: их нельзя ни переименовывать,
+          # ни выкидывать как «неиспользуемые» — вызов приходит из JNI.
+          -keep class ${identifier}.** { *; }
+          -keepclasseswithmembernames class * { native <methods>; }
+          RULES
+          cat "${rules}"
+
+      # ── Сборка ────────────────────────────────────────────────────────────
+      - name: tauri android build
+        env:
+          # Отладочный профиль cargo кладёт в .so полную отладочную информацию,
+          # а шаблон Tauri просит AGP её не срезать (`jniLibs.keepDebugSymbols`).
+          # Символы debug-сборке не нужны (отлаживают Rust не по APK), поэтому
+          # режем их через штатный оверрайд профиля. На release не влияет.
+          CARGO_PROFILE_DEV_DEBUG: 'false'
+          CARGO_PROFILE_DEV_STRIP: 'symbols'
+        run: |
+          set -euo pipefail
+          # `release` — не «если получится», а следствие политики: до этого
+          # шага production без ключа уже упал. Дорога «production → нет
+          # секретов → --debug» в этом файле отсутствует физически.
+          if [ "${{ steps.keystore.outputs.build_type }}" = 'release' ]; then
+            pnpm --filter @shagi/mobile exec tauri android build --apk \
+              --target aarch64 --target armv7
+          else
+            pnpm --filter @shagi/mobile exec tauri android build --apk --debug \
+              --target aarch64 --target armv7
+          fi
+
+          echo '── что собралось ──'
+          find apps/mobile/src-tauri/gen/android/app/build/outputs -name '*.apk' -type f -printf '%p\t%s байт\n'
+
+      # ── Подпись ───────────────────────────────────────────────────────────
+      # Подписываем сами, а не конфигом Gradle: сгенерированный
+      # build.gradle.kts — чужой файл, править его патчем ради подписи
+      # рискованнее, чем вызвать штатные zipalign и apksigner. Заодно
+      # получаем `verify --print-certs` — доказательство стабильности
+      # подписи прямо в логе.
+      - name: Подписать APK
+        id: sign
+        if: steps.keystore.outputs.signed == 'true'
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          mapfile -t versions < <(find "${ANDROID_HOME}/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V)
+          [ "${#versions[@]}" -gt 0 ] || { echo 'build-tools не установлены' >&2; exit 1; }
+          tools="${versions[-1]}"
+          echo "build-tools: ${tools}"
+
+          mapfile -t found < <(find 'apps/mobile/src-tauri/gen/android/app/build/outputs/apk/universal/release' -name '*.apk' -type f | sort)
+          [ "${#found[@]}" -gt 0 ] || { echo 'release-APK не найден после сборки' >&2; exit 1; }
+          unsigned="${found[0]}"
+          echo "Подписываем ${unsigned}"
+
+          "${tools}/zipalign" -p -f 4 "${unsigned}" "${RUNNER_TEMP}/aligned.apk"
+          # Схемы названы явно, а не отданы на усмотрение инструмента: v2
+          # обязательна (при minSdk 26 без неё пакет проверяется только
+          # JAR-подписью), v3 даёт возможность когда-нибудь сменить ключ без
+          # переустановки, v1 — совместимость со старым софтом. v4 не нужна:
+          # она про инкрементальную установку с ADB, а не про sideload.
+          "${tools}/apksigner" sign \
+            --ks "${RUNNER_TEMP}/signing/shagi.jks" \
+            --ks-pass "pass:${ANDROID_KEYSTORE_PASSWORD}" \
+            --ks-key-alias "${ANDROID_KEY_ALIAS}" \
+            --key-pass "pass:${ANDROID_KEY_PASSWORD}" \
+            --v1-signing-enabled true \
+            --v2-signing-enabled true \
+            --v3-signing-enabled true \
+            --out "${RUNNER_TEMP}/signed.apk" \
+            "${RUNNER_TEMP}/aligned.apk"
+          echo "apksigner=${tools}/apksigner" >> "$GITHUB_OUTPUT"
+
+      # ── Проверка готового APK ────────────────────────────────────────────
+      # Ворота, не печать в лог: только пройденная проверка открывает
+      # публикацию. Проверяется готовый распространяемый файл, а не
+      # намерение — «keystore восстановился» и «APK подписан этим ключом» —
+      # разные утверждения.
+      - name: Проверить подпись APK
+        id: verify
+        if: steps.keystore.outputs.signed == 'true'
+        env:
+          EXPECTED_SIGNER_SHA256: ${{ steps.keystore.outputs.expected_signer_sha256 }}
+        run: |
+          set -uo pipefail
+          apksigner='${{ steps.sign.outputs.apksigner }}'
+          set +e
+          "${apksigner}" verify --verbose --print-certs "${RUNNER_TEMP}/signed.apk" \
+            > "${RUNNER_TEMP}/apksigner.txt" 2>&1
+          code=$?
+          set -e
+          cat "${RUNNER_TEMP}/apksigner.txt"
+
+          node apps/mobile/scripts/android-release-gate.mjs verify \
+            --output "${RUNNER_TEMP}/apksigner.txt" \
+            --expected "${EXPECTED_SIGNER_SHA256}" \
+            --exit-code "${code}"
+
+      # ── Сторож разрешений ГОТОВОГО пакета ────────────────────────────────
+      # Проверяется по СОБРАННОМУ файлу, а не по шаблону манифеста: Tauri
+      # генерирует манифест сам, и разрешение может приехать из зависимости,
+      # которую никто не звал. Аналитики в R1 у ШАГОВ нет вовсе — если
+      # `AD_ID`/Install Referrer всё же появятся в пакете, это обязано упасть.
+      - name: Разрешения собранного APK против списка
+        run: |
+          set -euo pipefail
+          apk="${RUNNER_TEMP}/signed.apk"
+          [ -f "${apk}" ] || apk="$(find apps/mobile/src-tauri/gen/android/app/build/outputs -name '*.apk' -type f | sort | head -1)"
+          [ -n "${apk}" ] || { echo 'APK не найден — нечего проверять' >&2; exit 1; }
+
+          # aapt2 лежит в build-tools; версия каталога плавает между образами.
+          aapt="$(find "${ANDROID_HOME}/build-tools" -maxdepth 2 -name 'aapt2' -type f | sort -V | tail -1)"
+          [ -n "${aapt}" ] || { echo 'aapt2 не найден в build-tools' >&2; exit 1; }
+
+          "${aapt}" dump permissions "${apk}" > "${RUNNER_TEMP}/permissions.txt"
+          echo '── что напечатал aapt2 ──'
+          cat "${RUNNER_TEMP}/permissions.txt"
+
+          node apps/mobile/scripts/android-release-gate.mjs permissions \
+            --list apps/mobile/android-permissions.txt \
+            --dump "${RUNNER_TEMP}/permissions.txt"
+
+      - name: Собрать артефакт
+        id: collect
+        run: |
+          set -euo pipefail
+          version='${{ steps.version.outputs.version }}'
+          mkdir -p artifacts
+
+          # `-debug` и в имени файла, и в имени связки: тот, кто скачает её
+          # из вкладки Actions, обязан понимать, что это не релиз.
+          debug="$([ "${{ steps.keystore.outputs.build_type }}" = 'release' ] && echo false || echo true)"
+
+          # Имя НЕ пишется буквально — ни здесь, ни в релизном job. Оба
+          # считают его одним расчётом по версии (правило СИМПАС живёт в
+          # android-release-gate.mjs), чтобы им было нечем разъехаться.
+          names="$(node apps/mobile/scripts/android-release-gate.mjs names \
+            --version "${version}" --debug "${debug}" --print)"
+          name="$(printf '%s\n' "${names}" | sed -n 's/^apk=//p')"
+          artifact="$(printf '%s\n' "${names}" | sed -n 's/^bundle=//p')"
+          [ -n "${name}" ] && [ -n "${artifact}" ] || {
+            echo 'расчёт имён ничего не дал' >&2
+            exit 1
+          }
+
+          if [ "${debug}" = 'false' ]; then
+            cp "${RUNNER_TEMP}/signed.apk" "artifacts/${name}"
+          else
+            mapfile -t found < <(find 'apps/mobile/src-tauri/gen/android/app/build/outputs/apk/universal/debug' -name '*.apk' -type f | sort)
+            [ "${#found[@]}" -gt 0 ] || { echo 'debug-APK не найден после сборки' >&2; exit 1; }
+            cp "${found[0]}" "artifacts/${name}"
+          fi
+
+          size="$(stat -c%s "artifacts/${name}")"
+          apk_sha256="$(sha256sum "artifacts/${name}" | cut -d' ' -f1)"
+          echo "apk_sha256=${apk_sha256}" >> "$GITHUB_OUTPUT"
+          echo "Артефакт: ${artifact} → ${name}, размер: $((size / 1024 / 1024)) МБ"
+
+          # Тег — единственное, что ещё можно написать мимо правила: его
+          # задаёт человек, а не расчёт. Его и проверяем.
+          if [ "${GITHUB_REF_TYPE}" = 'tag' ]; then
+            node apps/mobile/scripts/android-release-gate.mjs names \
+              --artifact "${name}" --version "${version}" \
+              --debug "${debug}" --tag "${GITHUB_REF_NAME}"
+          fi
+          echo "APK SHA-256: ${apk_sha256}"
+
+          # Паспорт сборки: чем подписано и из чего собрано. Едет рядом с APK
+          # и (на теге) в GitHub Release. Секретов в нём нет и быть не может —
+          # только два публичных отпечатка, версия и ссылка на коммит.
+          node apps/mobile/scripts/android-release-gate.mjs provenance \
+            --out "artifacts/${artifact}.json" \
+            --channel '${{ steps.channel.outputs.channel }}' \
+            --version "${version}" \
+            --application-id "$(node -p "require('./apps/mobile/src-tauri/tauri.conf.json').identifier")" \
+            --apk-sha256 "${apk_sha256}" \
+            --signer-sha256 '${{ steps.verify.outputs.signer_sha256 }}' \
+            --build-type "${{ steps.keystore.outputs.build_type }}"
+
+          # SPEC §6: APK <30 МБ. Не роняем сборку — сообщаем, чтобы бюджет не
+          # переползли молча. Debug тяжелее release по определению.
+          if [ "${size}" -gt 31457280 ]; then
+            if [ "${{ steps.keystore.outputs.build_type }}" = 'release' ]; then
+              echo "::warning::APK больше 30 МБ (${size} байт) — бюджет SPEC §6 превышен"
+            else
+              echo "::notice::debug-APK больше 30 МБ (${size} байт); бюджет SPEC §6 меряется по release-сборке"
+            fi
+          fi
+
+          echo "name=${name}" >> "$GITHUB_OUTPUT"
+          echo "bundle=${artifact}" >> "$GITHUB_OUTPUT"
+
+      # Единственная дорога наружу для этого прогона: артефакт GitHub Actions.
+      # У ШАГОВ нет сервера, значит нет и второй, запасной дороги — если
+      # выкладка сюда не удастся, весь job падает без дополнительной логики.
+      # 7 дней, а не 90 по умолчанию: APK, который нужен надолго, приезжает в
+      # GitHub Release по тегу, а не остаётся во вкладке Actions.
+      - name: Приложить APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.collect.outputs.bundle }}
+          path: |
+            artifacts/*.apk
+            artifacts/*.json
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Убрать ключ подписи
+        if: always()
+        run: rm -rf "${RUNNER_TEMP}/signing" "${RUNNER_TEMP}/signed.apk" "${RUNNER_TEMP}/aligned.apk"
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # RELEASE — только на теге и только для подписанной и проверенной сборки.
+  #
+  # `verified_release`, а не `signed`. Второе означает лишь «keystore
+  # восстановился»; публиковать людям можно только то, чья подпись проверена
+  # на ГОТОВОМ файле: не отладочная, совпадающая с ключом, со схемой v2.
+  #
+  # У ШАГОВ этот job — единственное «выкладывание» во всей схеме: нет
+  # сервера, нет фида обновлений, нет постоянной ссылки. GitHub Release —
+  # это и есть публикация.
+  # ─────────────────────────────────────────────────────────────────────────
+  release:
+    name: Релиз
+    needs: build
+    if: github.ref_type == 'tag' && needs.build.outputs.verified_release == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ── Имена считаются здесь заново ─────────────────────────────────────
+      # Через outputs job они не ездят: значение одного из секретов
+      # репозитория — само слово «shagi», и GitHub вычёркивает из outputs
+      # любую строку, где оно встретилось («Skip output … since it may
+      # contain secret»). В имени файла сборки оно есть всегда. Расчёт тот
+      # же самый, что в сборочном job, поэтому разъехаться им нечем.
+      - name: Посчитать имена по правилу СИМПАС
+        id: names
+        run: |
+          set -euo pipefail
+          node apps/mobile/scripts/android-release-gate.mjs names \
+            --version '${{ needs.build.outputs.version }}' --print
+
+      - name: Забрать APK
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ steps.names.outputs.bundle }}
+          path: artifacts
+
+      - name: Опубликовать в GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          if gh release view "${tag}" >/dev/null 2>&1; then
+            gh release upload "${tag}" artifacts/*.apk artifacts/*.json --clobber
+          else
+            gh release create "${tag}" artifacts/*.apk artifacts/*.json \
+              --title "ШАГИ ${{ needs.build.outputs.version }}" \
+              --generate-notes
+          fi
