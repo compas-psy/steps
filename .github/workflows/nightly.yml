@@ -1,0 +1,119 @@
+name: Ночной прогон
+
+# Полный E2E, визуальная регрессия, замеры производительности —
+# SPEC/08_DEVOPS_CICD_OPERATIONS.md §2: «Main/nightly adds full perf, evil
+# sync, full visual…», отдельно от PR CI (ci.yml).
+#
+# Перф — сознательно НЕ в PR CI (решение ?18 в .ultraplan/open-questions.md):
+# §2 не включает перф в список шагов PR CI, а раннеры GitHub слишком шумные
+# для стабильного p95 на общем hosted-раннере под нагрузкой соседних job'ов.
+# Ночной прогон — на idle-раннере, без соседей, здесь шум приемлем.
+#
+# Как и ci.yml/security.yml: workflow — только оркестрация, проверяющая
+# логика — в pnpm-командах и scripts/*.mjs, переносимо на GitVerse/
+# self-hosted (SPEC/08 §3).
+
+on:
+  schedule:
+    # 03:00 UTC — вне часов активной разработки, до начала рабочего дня.
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nightly-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ─────────────────────────────────────────────────────────────────────
+  # Полный E2E. Сейчас совпадает со смоуком из ci.yml — в волне 1 других
+  # Playwright-спеков ещё нет (критические флоу R1 из SPEC/06 §9 приезжают
+  # вместе с соответствующими эпиками E04–E12). Job уже настроен на полный
+  # прогон каталога `apps/web/e2e/**` без ограничения на один файл — по
+  # мере добавления спеков расширять здесь нечего, они подхватятся сами.
+  # ─────────────────────────────────────────────────────────────────────
+  full-e2e:
+    name: Полный E2E (веб)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Установить pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Установить Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+
+      - name: pnpm install --frozen-lockfile
+        run: pnpm install --frozen-lockfile
+
+      - name: Сборка веба
+        run: pnpm --filter @shagi/web build
+
+      - name: Установить браузер Playwright (Chromium)
+        working-directory: apps/web
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Полный прогон e2e/**
+        working-directory: apps/web
+        run: pnpm test:e2e
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Визуальная регрессия — SPEC/06 §10: golden-состояния (Welcome, Sign in,
+  # First Task, Today normal/missed, Quick Add parsed, Task detail,
+  # Inbox list/process, Plan, Project list/board, Data & Privacy,
+  # multi-select, Undo, context menu, command palette, Desktop
+  # Today/Board/Settings — production, без showcase-обвязки).
+  #
+  # Место зарезервировано, а не запущено: харнесс визрегрессии — предмет
+  # эпика E03 («Продакшн дизайн-система… харнесс a11y и визрегрессии»,
+  # .ultraplan/plan.md), которого на пакете работ E00.6 ещё нет. Условие —
+  # переменная репозитория `ENABLE_VISUAL_REGRESSION`, не заведённая нигде
+  # сейчас (значит false) — job виден в списке как честный "skipped", не
+  # подделанный "passed" и не буквальная константа `if: false` (её ловит
+  # actionlint как мёртвый код). Когда E03 добавит харнесс: завести
+  # переменную репозитория в true и вписать реальные шаги вместо TODO —
+  # не заводить job заново.
+  # ─────────────────────────────────────────────────────────────────────
+  visual-regression:
+    name: Визуальная регрессия (ожидает E03)
+    runs-on: ubuntu-latest
+    if: ${{ vars.ENABLE_VISUAL_REGRESSION == 'true' }}
+    timeout-minutes: 30
+    steps:
+      - name: Место зарезервировано под харнесс визрегрессии эпика E03
+        run: |
+          echo "TODO(E03): golden-состояния — SPEC/06 §10; production build, без device frames."
+          exit 1
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Перф-бюджеты — SPEC/06 §8: датасеты 10k/100k задач, 500 карточек доски,
+  # 200 проектов, 50 Today, 50 меток/задачу, 10k завершённых. «Master
+  # budgets are assertions in CI/nightly, not aspirations» — то есть это
+  # обязано быть реальным assert, а не отчёт для чтения человеком.
+  #
+  # Методика уже выбрана (?17): доменные/запросные бюджеты — Vitest bench
+  # на фиксированных датасетах, p95 по 30 прогонам; клиентские (запуск,
+  # keystroke) — Playwright trace; Android «mid-range» замораживается
+  # конкретной моделью в ADR. Сами бюджеты и код замеров — эпик E21, не
+  # этот пакет работ. Как и `visual-regression` выше: условие — переменная
+  # репозитория `ENABLE_PERF_BUDGETS` (сейчас не заведена → false), job
+  # виден зарезервированным местом, а не тихой дырой в pipeline и не мёртвой
+  # константой.
+  # ─────────────────────────────────────────────────────────────────────
+  performance:
+    name: Перф-бюджеты (ожидает E21)
+    runs-on: ubuntu-latest
+    if: ${{ vars.ENABLE_PERF_BUDGETS == 'true' }}
+    timeout-minutes: 30
+    steps:
+      - name: Место зарезервировано под перф-бюджеты эпика E21
+        run: |
+          echo "TODO(E21): SPEC/06 §8 датасеты; методика — ?17 в .ultraplan/open-questions.md."
+          exit 1

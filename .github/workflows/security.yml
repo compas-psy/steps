@@ -1,0 +1,204 @@
+name: Безопасность
+
+# Цепочка поставки (SPEC/08 §11.1, SPEC/05 §18.1/§19, решение ?19 в
+# .ultraplan/open-questions.md): SBOM, скан уязвимостей, скан секретов,
+# скан лицензий — обязательны для каждого релиза. Отдельный файл от ci.yml
+# намеренно: инструменты здесь (gitleaks, osv-scanner, CycloneDX) тянут сеть
+# и внешние базы данных, и незачем гонять их на каждый пуш в PR-ветку —
+# только на сам PR (once), на слияние в main и раз в неделю по расписанию
+# (уязвимости в уже смёрженных зависимостях появляются без наших коммитов).
+#
+# Все проверяющие команды — обычные бинарники/npm-пакеты, устанавливаемые
+# самим workflow (`go install …`, `pnpm dlx …`), а не проприетарные GitHub
+# Actions из маркетплейса: тот же набор команд буквально работает в
+# терминале разработчика и в любом другом CI-провайдере (SPEC/08 §3 —
+# переносимость GitHub/GitVerse/self-hosted, вендор CI не должен быть
+# закодирован в приложении). Единственное, что здесь специфично для GitHub —
+# `actions/*` для оркестрации (checkout/setup-node/setup-go/cache/
+# upload-artifact) и аннотации `::error`; сама проверяющая логика — либо
+# сторонний бинарник с открытой лицензией, либо `scripts/*.mjs` этого
+# репозитория.
+#
+# Версии внешних инструментов пинуются точно, как Node/pnpm/TypeScript в
+# ADR-0001: «последняя версия» на дату написания workflow и «последняя
+# версия» через полгода — разные вещи, а разъезжающийся скан — это скан,
+# результатам которого нельзя доверять из недели в неделю.
+
+on:
+  pull_request:
+    branches: ['main']
+  push:
+    branches: ['main']
+  schedule:
+    - cron: '17 4 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+env:
+  GITLEAKS_VERSION: 8.30.1
+  OSV_SCANNER_VERSION: 2.5.1
+  CDXGEN_VERSION: 12.8.4
+
+jobs:
+  # ─────────────────────────────────────────────────────────────────────
+  # Сторож ключей подписи. Отдельный job, не шаг внутри другого: у Записок
+  # исключение `!apps/mobile/keystore/zapiski-release.jks` в .gitignore
+  # отменяло `*.jks` ровно для боевого ключа Android и чуть не уехало в
+  # репозиторий обычным `git add` — поймали до того, как случилось. Ключ
+  # нельзя сменить после первой публикации в сторе, поэтому утечка
+  # необратима: чужой сборкой можно подписаться как нашим обновлением.
+  # Логика — scripts/check-signing-secrets.mjs, здесь только вызов: тот же
+  # скрипт запускает разработчик локально перед тем, как вообще создавать
+  # ключ (scripts/make-android-keystore.sh появится вместе с ним).
+  # ─────────────────────────────────────────────────────────────────────
+  signing-secrets:
+    name: Ключи подписи не в git
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Установить Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+
+      - name: .gitignore без исключений, секреты не отслеживаются
+        run: node scripts/check-signing-secrets.mjs
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Секреты во всей истории git.
+  # ─────────────────────────────────────────────────────────────────────
+  secrets:
+    name: Секреты (gitleaks)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # Нужна полная история, а не мелкий чекаут: gitleaks смотрит
+          # каждый коммит, секрет мог заехать и быть удалён потом — с точки
+          # зрения git история всё равно его хранит.
+          fetch-depth: 0
+
+      - name: Установить Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.7'
+
+      - name: Установить gitleaks
+        run: go install "github.com/zricethezav/gitleaks/v8@v${GITLEAKS_VERSION}"
+
+      - name: Скан истории git
+        run: |
+          set -euo pipefail
+          "$(go env GOPATH)/bin/gitleaks" git --no-banner --redact -v .
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Уязвимости в зависимостях — по факту установленного графа
+  # (pnpm-lock.yaml), не по декларациям package.json: ровно то, что реально
+  # едет в сборку.
+  # ─────────────────────────────────────────────────────────────────────
+  vulnerabilities:
+    name: Уязвимости зависимостей (osv-scanner)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Установить Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.7'
+
+      - name: Установить osv-scanner
+        run: go install "github.com/google/osv-scanner/v2/cmd/osv-scanner@v${OSV_SCANNER_VERSION}"
+
+      # SPEC/06 §12 и §19: exploitable critical/high — блокирующая находка.
+      # osv-scanner сам возвращает ненулевой код при найденных уязвимостях —
+      # никакого `|| true` здесь нет, в отличие от аудита, который выводится
+      # заметками (см. историю прошлых проектов): здесь red build и есть
+      # весь смысл шага.
+      - name: Скан pnpm-lock.yaml
+        run: |
+          set -euo pipefail
+          "$(go env GOPATH)/bin/osv-scanner" scan source --lockfile=pnpm-lock.yaml
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Лицензии зависимостей — allowlist, «не в списке» падает и требует
+  # решения человека (SPEC/05 §18.1). Логика полностью в
+  # scripts/check-license-allowlist.mjs + scripts/license-policy.json —
+  # workflow только ставит зависимости и вызывает скрипт.
+  # ─────────────────────────────────────────────────────────────────────
+  licenses:
+    name: Лицензии зависимостей (allowlist)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Установить pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Установить Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+
+      # Полная установка, не только резолвинг: скрипт читает реальные
+      # package.json из node_modules/.pnpm/**, а не пересчитывает граф сам.
+      - name: pnpm install --frozen-lockfile
+        run: pnpm install --frozen-lockfile
+
+      - name: Скан лицензий против allowlist
+        run: node scripts/check-license-allowlist.mjs
+
+  # ─────────────────────────────────────────────────────────────────────
+  # SBOM — CycloneDX, обязателен для каждого релиза (SPEC/08 §11.1).
+  # cdxgen, а не `cyclonedx-npm`: последний вызывает `npm ls` под капотом и
+  # не умеет граф зависимостей pnpm (node_modules/.pnpm/** — не тот layout,
+  # который ожидает npm) — на этом репозитории `cyclonedx-npm` падает с
+  # «missing: … required by …» на каждой платформенной optional-зависимости
+  # rolldown/oxlint. cdxgen читает pnpm-lock.yaml напрямую и с этим
+  # монорепозиторием работает без обходных путей.
+  # ─────────────────────────────────────────────────────────────────────
+  sbom:
+    name: SBOM (CycloneDX)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Установить pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Установить Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+
+      - name: pnpm install --frozen-lockfile
+        run: pnpm install --frozen-lockfile
+
+      - name: Сгенерировать SBOM
+        run: >
+          pnpm dlx "@cyclonedx/cdxgen@${CDXGEN_VERSION}"
+          --type js --spec-version 1.6 --output sbom.json .
+
+      - name: Сохранить SBOM как артефакт сборки
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-cyclonedx
+          path: sbom.json
+          retention-days: 90

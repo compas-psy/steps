@@ -1,0 +1,150 @@
+name: CI
+
+# Пайплайн проверки PR — порядок шагов SPEC/08_DEVOPS_CICD_OPERATIONS.md §2.
+# Каждый шаг здесь — вызов скрипта или pnpm-команды, объявленной в
+# package.json/scripts/*.mjs; ничего не существует только внутри workflow.
+# Это буквальное требование SPEC/08 §3: раннер (GitHub/GitVerse/self-hosted)
+# не должен быть закодирован ни в одном проверяющем скрипте — сам workflow
+# лишь вызывает их в нужном порядке на нужном раннере. Проверка, которую
+# нельзя запустить с ноутбука разработчика одной командой, спроектирована
+# неправильно (см. .ultraplan/plan.md → Verification).
+#
+# §2 называет 11 шагов; здесь девять — пункты 7 (OpenAPI contract) и 9
+# (server build) сознательно отложены: backend приезжает в волне 2, его
+# физически нет (.ultraplan/plan.md). Это не забывчивость — как появится
+# server/, эти два шага возвращаются на свои места в списке, а не
+# дописываются с нуля.
+#
+# Секретный/зависимостный/лицензионный/SBOM-скан (исходный пункт 10 §2) не
+# продублирован здесь отдельным job'ом — это весь `security.yml`: он тянет
+# внешние базы (gitleaks/osv-scanner/CycloneDX) и не должен гоняться на
+# каждый пуш в PR-ветку так же часто, как быстрые проверки этого файла
+# (security.yml запускается реже — см. его собственный комментарий).
+# `security.yml` — такой же обязательный статус-чек PR, просто в соседнем
+# файле.
+
+on:
+  pull_request:
+    branches: ['main']
+  push:
+    branches: ['main']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  # Тег — релизная точка, а не ветка разработки в процессе: прогон на тег
+  # никогда не отменяется прогоном на другую ветку/тег.
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+jobs:
+  pr-gate:
+    name: PR gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Node/pnpm читаются из .nvmrc и `packageManager` (package.json), а не
+      # прописаны числом здесь: ADR-0001 (docs/adr/0001-fiksaciya-tulchejna.md)
+      # фиксирует версии ровно в этих двух местах, и завести третий источник
+      # правды в workflow — значит воспроизвести то самое «у меня работает»,
+      # от которого сам ADR и защищается.
+      - name: Установить pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Установить Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+
+      - name: Путь стора pnpm
+        id: pnpm-store
+        run: echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+
+      - name: Кэш стора pnpm
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.pnpm-store.outputs.path }}
+          key: pnpm-store-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          # Ослабленный restore-keys: чужой PR с другим лок-файлом всё равно
+          # переиспользует уже скачанные пакеты, а не качает реестр с нуля.
+          restore-keys: |
+            pnpm-store-${{ runner.os }}-
+
+      # Шаг 1: установка по лок-файлу. Строго --frozen-lockfile, без
+      # запасного пути на --no-frozen-lockfile — расхождение lockfile с
+      # package.json обязано ронять сборку здесь и сейчас, а не тихо
+      # чиниться установкой и уезжать в pnpm-lock.yaml следующим коммитом
+      # человека, который даже не думал о версии зависимости.
+      - name: 1. pnpm install --frozen-lockfile
+        run: pnpm install --frozen-lockfile
+
+      # Шаг 2: формат и линт. oxlint у packages/ui и packages/app уже несёт
+      # правила адгезии дизайн-системы, поднятые до error (решение ?15,
+      # packages/ui/.oxlintrc.json) — отдельного job'а под них не нужно.
+      - name: 2. Формат (prettier --check)
+        run: pnpm format:check
+
+      - name: 2. Линт (oxlint, включая адгезию дизайн-системы)
+        run: pnpm lint
+
+      # Шаг 3: проверка типов по всем пакетам воркспейса.
+      - name: 3. Typecheck
+        run: pnpm typecheck
+
+      # Шаг 4: гейт токенов и строк. Первая половина (hex/px/шрифт вне
+      # токенов в packages/ui, packages/app) уже проверена на шаге 2 —
+      # это тот же `pnpm lint`. Вторая половина — полнота каталога ru-RU:
+      # SPEC/00 §13.1, «Missing Russian key … is a CI failure», не warning.
+      - name: 4. Каталог ru-RU полон (scripts/check-i18n-catalog.mjs)
+        run: pnpm check:i18n
+
+      # Шаг 5: модульные тесты. Разделение unit/integration — по имени
+      # файла (root package.json → test:unit/test:integration): единой
+      # интеграционной обвязки в проекте ещё нет, а заводить отдельный
+      # test-runner ради одного лишнего слоя конфигурации в волне 1 без
+      # необходимости — не тот компромисс.
+      - name: 5. Модульные тесты
+        run: pnpm test:unit
+
+      # Шаг 6: интеграционные тесты (SPEC/06 §1: SQLite/IndexedDB/Postgres
+      # API/sync/auth/attachments). В волне 1 их физически нет — реальные
+      # адаптеры хранилища приезжают в E02, backend — в волне 2, сейчас
+      # только каркас пакетов (packages/storage/test — один
+      # smoke-тест резолвинга модулей). Шаг не заглушка: `--passWithNoTests`
+      # пропускает пустое множество файлов `*.integration.test.*`, но как
+      # только появится первый такой файл с падающим тестом — красным
+      # станет этот шаг, не «когда-нибудь потом». Проверено при разработке
+      # пакета работ E00.6: временный `*.integration.test.ts` с заведомо
+      # неверным assert валил именно эту команду (см. отчёт агента).
+      - name: 6. Интеграционные тесты (пока пусто, гейт живой — см. комментарий)
+        run: pnpm test:integration
+
+      # Шаг 7 по нумерации задачи (исходный пункт 8 §2 — «web build»; пункт
+      # 7 §2, OpenAPI contract, пропущен — см. комментарий вверху файла).
+      # Собирается именно @shagi/web: apps/desktop и apps/mobile — Tauri,
+      # их пакуют build-android.yml и будущий build-windows.yml на других
+      # раннерах (SPEC/08 §3, раннер-сплит), не этот пайплайн.
+      - name: 7. Сборка веба
+        run: pnpm --filter @shagi/web build
+
+      # Шаг 8 (скан цепочки поставки) намеренно не здесь — см. комментарий
+      # вверху файла, это весь security.yml.
+
+      # Шаг 9: выбранные E2E. Chromium ставится версией, которую требует
+      # `@playwright/test@1.56.0`, закреплённый в apps/web/package.json
+      # (комментарий в apps/web/playwright.config.ts объясняет, почему
+      # именно эта версия, а не `^`). Полный E2E/визуальный прогон —
+      # ночной (nightly.yml); здесь только smoke по собранному dist/ —
+      # ровно то, что нужно, чтобы PR не сломал загрузку оболочки.
+      - name: Установить браузер Playwright (Chromium)
+        working-directory: apps/web
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: 9. E2E смоук (веб, по собранному dist/)
+        working-directory: apps/web
+        run: pnpm test:e2e

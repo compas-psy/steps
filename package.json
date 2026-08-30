@@ -13,8 +13,14 @@
     "typecheck": "pnpm -r typecheck",
     "lint": "pnpm -r lint",
     "test": "pnpm -r test",
+    "test:unit": "pnpm -r exec vitest run --exclude \"**/*.integration.test.*\"",
+    "test:integration": "pnpm -r exec vitest run --passWithNoTests \"integration.test\"",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "check:i18n": "node scripts/check-i18n-catalog.mjs",
+    "check:log-hygiene": "node scripts/check-log-hygiene.mjs",
+    "check:signing-secrets": "node scripts/check-signing-secrets.mjs",
+    "check:licenses": "node scripts/check-license-allowlist.mjs"
   },
   "devDependencies": {
     "oxlint": "1.80.0",
