@@ -62,16 +62,21 @@ name: Сборка Android
 #   scripts/check-signing-secrets.mjs — security.yml), а в лог печатается
 #   только ПУБЛИЧНЫЙ отпечаток сертификата.
 
+# Ветка по умолчанию у этого репозитория — НЕ `main`, её здесь вовсе нет
+# (`git ls-remote --heads origin` отдаёт одну строку). В `on:` выражения не
+# работают, поэтому имя перечислено буквально. Разбор — в шапке ci.yml.
+# ПЕРЕИМЕНОВАЛИ ВЕТКУ ИЛИ ЗАВЕЛИ `main` — ПРАВИТЬ ЗДЕСЬ, иначе workflow
+# молча перестанет запускаться.
 on:
   # Фильтра `paths` здесь нет намеренно: GitHub применил бы его и к тегам, а
   # тег `shagi-v*` на коммите без изменений в apps/mobile тихо не запустил
   # бы релиз. Отбор по изменённым файлам делает job `changes` ниже — он
   # умеет различать тег и пуш в ветку, а `on:` не умеет.
   push:
-    branches: [main]
+    branches: [main, claude/model-distribution-workflow-gi49ya]
     tags: ['shagi-v*']
   pull_request:
-    branches: [main]
+    branches: [main, claude/model-distribution-workflow-gi49ya]
     paths:
       - 'apps/mobile/**'
       - 'packages/**'

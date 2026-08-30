@@ -24,11 +24,16 @@ name: Безопасность
 # версия» через полгода — разные вещи, а разъезжающийся скан — это скан,
 # результатам которого нельзя доверять из недели в неделю.
 
+# Ветка по умолчанию у этого репозитория — НЕ `main`, её здесь вовсе нет
+# (`git ls-remote --heads origin` отдаёт одну строку). В `on:` выражения не
+# работают, поэтому имя перечислено буквально. Разбор — в шапке ci.yml.
+# ПЕРЕИМЕНОВАЛИ ВЕТКУ ИЛИ ЗАВЕЛИ `main` — ПРАВИТЬ ЗДЕСЬ, иначе workflow
+# молча перестанет запускаться.
 on:
   pull_request:
-    branches: ['main']
+    branches: ['main', 'claude/model-distribution-workflow-gi49ya']
   push:
-    branches: ['main']
+    branches: ['main', 'claude/model-distribution-workflow-gi49ya']
   schedule:
     - cron: '17 4 * * 1'
   workflow_dispatch:
