@@ -1,0 +1,21 @@
+{
+  "name": "@shagi/sync",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Outbox/inbox, per-field HLC, merge (SPEC §6, §7) — в волне 1 только форма данных, протокол приезжает в следующих пакетах работ",
+  "license": "UNLICENSED",
+  "type": "module",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run",
+    "lint": "oxlint ."
+  },
+  "devDependencies": {
+    "typescript": "5.9.3",
+    "vitest": "^4.1.11"
+  }
+}

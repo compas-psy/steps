@@ -1,0 +1,44 @@
+// Адгезия к дизайн-системе (packages/app) (docs/spec/DESIGN/design-system/_adherence.oxlintrc.json,
+// решение по открытому вопросу ?15 в .ultraplan/open-questions.md): образец
+// в docs/spec держит эти правила на `warn` — здесь всё поднято до `error`,
+// это решение владельца. Docs/spec редактировать нельзя, поэтому копия
+// живёт здесь, адаптированная под этот пакет, а не расширяет файл в
+// docs/spec напрямую.
+//
+// oxlint не умеет `no-restricted-syntax` нативно — его плагин `eslint`
+// покрывает только rule-набор, портированный в Rust, а этого правила там
+// нет («Rule 'no-restricted-syntax' not found in plugin 'eslint'»).
+// Поэтому оно подключено через `oxlint-plugin-eslint` (JS Plugins alpha,
+// https://oxc.rs/blog/2026-03-11-oxlint-js-plugins-alpha.html) — плагин
+// исполняет оригинальные ESLint-правила поверх AST, который строит oxlint.
+//
+// Регэксп на font-family здесь отличается от образца в docs/spec: там
+// `\s*` перед негативным lookahead бэктрекается до нулевой длины и гасит
+// саму проверку — значение `"font-family: Geist"` (буквально разрешённый
+// шрифт) ошибочно считалось нарушением. Здесь lookahead перенесён сразу
+// за двоеточие, backtracking больше не может его обойти.
+//
+// Правила из образца про пропсы конкретных компонентов (Badge/Button/...)
+// сюда не перенесены: тех компонентов в этом пакете работ ещё нет —
+// это заготовка (задача E00.1), сами компоненты и их пропсы — E03.
+{
+  "extends": ["../../.oxlintrc.json"],
+  "jsPlugins": [{ "name": "eslint-js", "specifier": "oxlint-plugin-eslint" }],
+  "rules": {
+    "eslint-js/no-restricted-syntax": [
+      "error",
+      {
+        "selector": "Literal[value=/#[0-9a-fA-F]{3,8}\\b/]",
+        "message": "Сырой hex-цвет запрещён — используйте токен дизайн-системы через var()."
+      },
+      {
+        "selector": "Literal[value=/\\b\\d+px\\b/]",
+        "message": "Сырой px запрещён — используйте spacing-токен дизайн-системы через var()."
+      },
+      {
+        "selector": "Literal[value=/font-family\\s*:(?!\\s*[\"']?(?:Geist Mono|Geist)\\b)/i]",
+        "message": "Шрифт не из дизайн-системы. Разрешены: Geist, Geist Mono."
+      }
+    ]
+  }
+}

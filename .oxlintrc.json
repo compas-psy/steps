@@ -1,0 +1,16 @@
+// Базовый oxlint-конфиг монорепозитория. oxlint ищет `.oxlintrc.json`,
+// поднимаясь от текущего каталога вверх по дереву — пакет без своего файла
+// молча наследует этот; `packages/ui` и `packages/app` держат свой,
+// расширяющий этот через `extends`, и добавляют туда правила адгезии
+// дизайн-системы (см. комментарий в их `.oxlintrc.json`).
+{
+  "categories": {
+    "correctness": "error",
+    "suspicious": "error"
+  },
+  "plugins": ["import", "typescript", "unicorn"],
+  "env": {
+    "builtin": true
+  },
+  "ignorePatterns": ["**/dist/**", "**/coverage/**"]
+}

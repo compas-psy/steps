@@ -1,0 +1,21 @@
+{
+  "name": "@shagi/telemetry",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Санированные контракты событий телеметрии — без сбора, отправки и PII",
+  "license": "UNLICENSED",
+  "type": "module",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run",
+    "lint": "oxlint ."
+  },
+  "devDependencies": {
+    "typescript": "5.9.3",
+    "vitest": "^4.1.11"
+  }
+}

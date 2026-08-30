@@ -1,0 +1,21 @@
+{
+  "name": "@shagi/i18n",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Каталоги строк, ICU MessageFormat, проверка полноты ru-RU как CI-гейт (SPEC §13.1) — см. docs/adr/0004-paket-i18n.md",
+  "license": "UNLICENSED",
+  "type": "module",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run",
+    "lint": "oxlint ."
+  },
+  "devDependencies": {
+    "typescript": "5.9.3",
+    "vitest": "^4.1.11"
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "name": "shagi",
+  "version": "0.1.0",
+  "private": true,
+  "description": "ШАГИ — personal task manager, экосистема СИМПАС. Local-first, offline-first, ru-RU.",
+  "license": "UNLICENSED",
+  "type": "module",
+  "packageManager": "pnpm@10.33.0",
+  "engines": {
+    "node": ">=24.20.0"
+  },
+  "scripts": {
+    "typecheck": "pnpm -r typecheck",
+    "lint": "pnpm -r lint",
+    "test": "pnpm -r test",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "devDependencies": {
+    "typescript": "5.9.3",
+    "vitest": "^4.1.11",
+    "oxlint": "1.80.0",
+    "oxlint-plugin-eslint": "1.80.0",
+    "prettier": "^3.9.6"
+  }
+}

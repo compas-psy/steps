@@ -1,0 +1,21 @@
+{
+  "name": "@shagi/contracts",
+  "version": "0.1.0",
+  "private": true,
+  "description": "DTO / Zod-схемы, совместимые с OpenAPI 3.1 (SPEC §3, §14) — контракт данных между core, storage, sync и server",
+  "license": "UNLICENSED",
+  "type": "module",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run",
+    "lint": "oxlint ."
+  },
+  "devDependencies": {
+    "typescript": "5.9.3",
+    "vitest": "^4.1.11"
+  }
+}

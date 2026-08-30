@@ -1,0 +1,51 @@
+node_modules/
+dist/
+build/
+coverage/
+*.tsbuildinfo
+
+# env
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# rust / tauri (apps/* появляются в E00.5, правило уже здесь — чтобы не забыть)
+target/
+apps/*/src-tauri/target/
+apps/*/src-tauri/gen/
+
+# android
+*.apk
+*.aab
+.gradle/
+local.properties
+gen/android/
+
+# editors / os
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# secrets — никогда не коммитить
+*.pem
+*.jks
+*.keystore
+*.p12
+tauri-private.key
+# НЕ ДОБАВЛЯТЬ СЮДА ИСКЛЮЧЕНИЯ (`!…`) ДЛЯ КЛЮЧЕЙ ПОДПИСИ.
+# У Записок такое исключение стояло: `!apps/mobile/keystore/zapiski-release.jks`
+# отменяло `*.jks` ровно для релизного ключа, и обычный `git add` положил бы
+# его в репозиторий — это поймали через `git add --dry-run` до того, как
+# случилось, и правило убрали. Ключ и алиас нельзя сменить после первой
+# публикации в сторе, поэтому утечка была бы необратима: чужой APK можно
+# подписать как наше обновление. Ключ приезжает в сборку только через секрет
+# CI (`ANDROID_KEYSTORE_BASE64` и т.п.), в git не попадает никогда.
+# Сторожить это правило будет отдельная проверка в CI (эпик E00.6).
