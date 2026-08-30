@@ -1,0 +1,3 @@
+{
+  "daysLeft": "{count, plural, one {# день} few {# дня} many {# дней} other {# дня}}"
+}

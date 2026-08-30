@@ -1,0 +1,4 @@
+{
+  "count": "{count, plural, one {# задача} few {# задачи} many {# задач} other {# задачи}}",
+  "remaining": "{count, plural, one {Осталась # задача} few {Осталось # задачи} many {Осталось # задач} other {Осталось # задачи}}"
+}
