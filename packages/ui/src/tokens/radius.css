@@ -1,0 +1,12 @@
+/**
+ * Радиусы скругления (SPEC/04_UI_DESIGN_SYSTEM.md §6: «Radii: 8,12,16,20,24,999»).
+ */
+
+:root {
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+  --radius-2xl: 24px;
+  --radius-full: 999px;
+}

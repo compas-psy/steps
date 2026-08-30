@@ -1,0 +1,232 @@
+/**
+ * Цветовые токены ШАГИ (SPEC/04_UI_DESIGN_SYSTEM.md §3 «Light tokens», §4
+ * «Dark theme exact baseline»).
+ *
+ * Источники и что откуда взято:
+ * - Базовая палитра (forest/sage/gold/ink/cream/white) и семантические роли
+ *   (background/foreground/card/muted/border/primary/accent/destructive) —
+ *   §3 ТЗ, значения совпадают побайтово с docs/spec/DESIGN/design-system/tokens/colors.css.
+ * - Статусные soft/500-пары и sidebar-токены — есть только в поставленном
+ *   CSS-бандле, не продублированы текстом в §3, но по `.ultraplan/research/02-ui.md`
+ *   §1.1 обязаны быть в токенах ШАГОВ (используются в прототипе). Значения
+ *   взяты как есть.
+ * - Тёмная тема — §4 «Dark theme exact baseline», отдельно посчитанная
+ *   палитра, НЕ инверсия светлой через фильтр.
+ * - `--svc-shagi-bg` / `--svc-shagi-fg` — сервис-знак ШАГОВ, единственное
+ *   отличие продукта ШАГИ от ПРАКТИКИ/СИМПАС в этом бандле (задание,
+ *   раздел «Важный контекст»).
+ *
+ * Переключение темы: System / Light / Dark (SPEC §4, §15 — три опции,
+ * НЕ пять — «paper» / «graphite» / «ink» — витрина сравнения тем семейства
+ * ЗАПИСКИ из HTML-прототипа физически не входят в этот пакет).
+ * - Light — голый `:root`, без атрибута.
+ * - Dark явный выбор — `[data-theme="dark"]` на корне.
+ * - System — `prefers-color-scheme: dark`, при условии что пользователь НЕ
+ *   выбрал Light явно (`:not([data-theme="light"])`) — иначе явный выбор
+ *   всегда должен побеждать системную настройку.
+ * Оба тёмных блока ниже объявляют один и тот же набор токенов с
+ * одинаковыми значениями — это проверяется тестом
+ * `test/tokens/themeCompleteness.test.ts` (блоки должны быть текстуально
+ * идентичны).
+ *
+ * Токены, отмеченные как «инвариантные» в реестре (`src/tokens/registry.ts`,
+ * `themed: false`), сознательно НЕ переопределяются в тёмных блоках —
+ * `--sidebar*`, `--svc-shagi-*`, базовая палитра (forest/sage-соответствие
+ * задаётся отдельно только там, где меняется — sage-* тему меняет, forest-*
+ * нет) и `--icon-*` в services.css.
+ *
+ * Отступление от поставленного CSS-бандла (задокументировано в отчёте
+ * пакета работ): `--sidebar-foreground` в бандле было алиасом на
+ * `var(--sage-50)`, которая в тёмной теме пересчитывается в почти чёрный
+ * (#16281F) — на форест-800-фоне сайдбара это тёмный текст на тёмном фоне,
+ * т.е. поставленный бандл был бы визуально сломан в dark theme. Сайдбар —
+ * это постоянно тёмная форест-поверхность независимо от темы приложения
+ * (форест-800 фон нигде не переопределяется по теме), поэтому его foreground
+ * тоже должен быть инвариантным — здесь он записан как самостоятельное
+ * значение, равное светлому `sage-50` (#F6FAF6), а не как алиас на
+ * тематизируемую переменную.
+ *
+ * Ещё два отступления — оба касаются НЕ зафиксированных в ТЗ ролей (§3/§4
+ * не называют `accent-foreground`/`destructive-foreground` явно, это роли
+ * только из CSS-бандля) и оба обоснованы контрастом (тест
+ * `test/tokens/contrast.test.ts`, полные числа — в отчёте пакета работ):
+ * - `--accent-foreground` (light): бандл использовал `var(--white)` —
+ *   белый текст на `--gold-500` даёт коэффициент 2.45, ниже даже AA-large
+ *   (порог 3). Тёмная тема для той же роли уже использует тёмный текст
+ *   (значение dark-блока ниже, ink-900) с коэффициентом 8.14 — здесь
+ *   применена та же схема (`var(--ink-900)`), коэффициент 6.86,
+ *   соответствует AA (порог 4.5).
+ * - `--destructive-foreground` (light): бандл использовал `var(--white)` —
+ *   белый текст на `--destructive` (значение зафиксировано §3) даёт
+ *   коэффициент 3.53, ниже AA для обычного текста (порог 4.5). Тёмная
+ *   тема для той же роли уже использует тёмный текст (значение
+ *   dark-блока ниже) — здесь применена та же схема (`var(--ink-900)`),
+ *   коэффициент 4.76, соответствует AA.
+ */
+
+:root {
+  color-scheme: light;
+
+  /* ── Forest greens — тема НЕ меняет (первичный брендовый цвет) ── */
+  --forest-900: #143d2f;
+  --forest-800: #1d4735;
+  --forest-700: #285b46;
+  --forest-600: #2f6a52;
+  --forest-500: #3b8f5a;
+
+  /* ── Sage — светлые сёрфейсы; тема меняет (см. тёмные блоки ниже) ── */
+  --sage-50: #f6faf6;
+  --sage-100: #eef4ef;
+  --sage-150: #e7f0ea;
+  --sage-200: #dde9e1;
+  --sage-300: #c7d8cd;
+
+  /* ── Gold accent — тема НЕ меняет ── */
+  --gold-500: #cc9e50;
+  --gold-400: #d8ae67;
+
+  /* ── Ink / нейтрали — тема НЕ меняет ── */
+  --ink-900: #142018;
+  --ink-500: #5f6c64;
+  --cream: #f7f8f4;
+  --white: #ffffff;
+
+  /* ── Семантические роли — light ── */
+  --background: var(--cream);
+  --foreground: var(--ink-900);
+  --card: var(--white);
+  --card-foreground: var(--ink-900);
+  --popover: var(--white);
+  --popover-foreground: var(--ink-900);
+  --muted: #f2f4ef;
+  --muted-foreground: var(--ink-500);
+  --secondary: #f2f4ef;
+  --secondary-foreground: var(--ink-900);
+  --border: #e4e9e3;
+  --input: var(--white);
+  --ring: var(--forest-700);
+  --primary: var(--forest-800);
+  --primary-foreground: var(--white);
+  --accent: var(--gold-500);
+  --accent-foreground: var(--ink-900);
+  --destructive: #e35d4f;
+  --destructive-foreground: var(--ink-900);
+
+  /* ── Статусные soft-tint пары — light ── */
+  --blue-soft: #eaf2ff;
+  --blue-500: #3b82f6;
+  --violet-soft: #f2ecff;
+  --violet-500: #8b5cf6;
+  --orange-soft: #fff2e8;
+  --orange-500: #f08a24;
+  --red-soft: #fff0ee;
+  --red-500: #e35d4f;
+  --success-soft: #eaf7ee;
+  --success-500: #3b8f5a;
+  --amber-soft: #fbf3e3;
+  --amber-500: #cc9e50;
+
+  /* ── Sidebar — постоянно тёмная форест-поверхность, инвариантна к теме ── */
+  --sidebar: var(--forest-800);
+  --sidebar-foreground: #f6faf6;
+  --sidebar-active: rgb(246 250 246 / 15%);
+  --sidebar-active-foreground: var(--white);
+  --sidebar-hover: rgb(255 255 255 / 8%);
+  --sidebar-muted: rgb(255 255 255 / 50%);
+  --sidebar-border: rgb(255 255 255 / 8%);
+
+  /* ── Сервис-знак ШАГОВ (единственный сервис в продукте) ── */
+  --svc-shagi-bg: #3b8f5a;
+  --svc-shagi-fg: #f7f8f4;
+}
+
+/* System: тёмная тема по системной настройке, если пользователь явно не
+   выбрал Light. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    color-scheme: dark;
+
+    --background: #10221a;
+    --foreground: #eaf3ec;
+    --card: #173326;
+    --card-foreground: #eaf3ec;
+    --popover: #173326;
+    --popover-foreground: #eaf3ec;
+    --muted: #1c3b2c;
+    --muted-foreground: #9fb3a6;
+    --secondary: #1c3b2c;
+    --secondary-foreground: #eaf3ec;
+    --border: #24452f;
+    --input: #1c3b2c;
+    --ring: #d8ae67;
+    --primary: #3b8f5a;
+    --primary-foreground: #0e1e16;
+    --accent: #d8ae67;
+    --accent-foreground: #142018;
+    --destructive: #e8695a;
+    --destructive-foreground: #1a0d0a;
+
+    --blue-soft: #12233a;
+    --blue-500: #6fa8ff;
+    --violet-soft: #241b3a;
+    --violet-500: #b39dff;
+    --orange-soft: #3a2712;
+    --orange-500: #ffa75c;
+    --red-soft: #3a1512;
+    --red-500: #ff8a7a;
+    --success-soft: #123422;
+    --success-500: #5fbe84;
+    --amber-soft: #332708;
+    --amber-500: #e8b96a;
+
+    --sage-50: #16281f;
+    --sage-100: #1b3226;
+    --sage-150: #1f3a2b;
+    --sage-200: #254433;
+    --sage-300: #33573f;
+  }
+}
+
+/* Dark: явный выбор темы через data-theme, побеждает system. */
+:root[data-theme='dark'] {
+  color-scheme: dark;
+
+  --background: #10221a;
+  --foreground: #eaf3ec;
+  --card: #173326;
+  --card-foreground: #eaf3ec;
+  --popover: #173326;
+  --popover-foreground: #eaf3ec;
+  --muted: #1c3b2c;
+  --muted-foreground: #9fb3a6;
+  --secondary: #1c3b2c;
+  --secondary-foreground: #eaf3ec;
+  --border: #24452f;
+  --input: #1c3b2c;
+  --ring: #d8ae67;
+  --primary: #3b8f5a;
+  --primary-foreground: #0e1e16;
+  --accent: #d8ae67;
+  --accent-foreground: #142018;
+  --destructive: #e8695a;
+  --destructive-foreground: #1a0d0a;
+
+  --blue-soft: #12233a;
+  --blue-500: #6fa8ff;
+  --violet-soft: #241b3a;
+  --violet-500: #b39dff;
+  --orange-soft: #3a2712;
+  --orange-500: #ffa75c;
+  --red-soft: #3a1512;
+  --red-500: #ff8a7a;
+  --success-soft: #123422;
+  --success-500: #5fbe84;
+  --amber-soft: #332708;
+  --amber-500: #e8b96a;
+
+  --sage-50: #16281f;
+  --sage-100: #1b3226;
+  --sage-150: #1f3a2b;
+  --sage-200: #254433;
+  --sage-300: #33573f;
+}

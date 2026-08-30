@@ -1,0 +1,28 @@
+/**
+ * Глобальные элементы (справочно: `docs/spec/DESIGN/design-system/tokens/base.css`
+ * из поставленного бандла — light-only там, здесь расширено под dark/system).
+ *
+ * Всё выражено через `var(--...)` — ни одного повторного raw-значения:
+ * фон/цвет тела, гарнитура, фокус-кольцо (`box-shadow`, не `outline`,
+ * §15 «Accessibility» требует видимый фокус, не диктует механизм),
+ * `::selection`.
+ */
+
+body {
+  font-family: var(--font-sans);
+  background: var(--background);
+  color: var(--foreground);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: var(--sage-200);
+  color: var(--forest-900);
+}
+
+:where(button, a, input, textarea, select, [tabindex]):focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ring) 45%, transparent);
+  border-radius: var(--radius-sm);
+}

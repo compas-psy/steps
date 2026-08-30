@@ -1,0 +1,22 @@
+/**
+ * Тени (SPEC/04_UI_DESIGN_SYSTEM.md §6 «Shadows»): «No harsh shadow /
+ * glassmorphism-driven UI» — мягкие, низкие, зеленовато-тонированные тени
+ * (rgba от `--ink-900`, #142018 → 20,32,24).
+ *
+ * `--shadow-header` — есть только в поставленном CSS-бандле, не в тексте
+ * §6, но зафиксирован как употребимый (`.ultraplan/research/02-ui.md`
+ * §1.5) — для sticky-заголовков/topbar.
+ *
+ * Тени не переопределяются по теме: источник (`tokens/shadows.css`
+ * бандла, `[data-theme="dark"]` блок прототипа) не даёт отдельного
+ * dark-набора теней — они остаются теми же rgba-значениями в обеих темах.
+ */
+
+:root {
+  --shadow-xs: 0 1px 2px rgb(20 32 24 / 4%);
+  --shadow-sm: 0 2px 8px rgb(20 32 24 / 4%);
+  --shadow-card: 0 8px 30px rgb(20 32 24 / 6%);
+  --shadow-card-hover: 0 10px 34px rgb(20 32 24 / 9%);
+  --shadow-floating: 0 14px 34px rgb(20 32 24 / 10%);
+  --shadow-header: 0 1px 8px rgb(20 32 24 / 4%);
+}

@@ -1,0 +1,34 @@
+/**
+ * Движение (SPEC/04_UI_DESIGN_SYSTEM.md §7 «Motion»):
+ * «150–300ms ease. Completion 150–250ms. No bounce/parallax.
+ * Reduced Motion removes translate/scale, preserving instant/fade <=100ms.
+ * Press scale .97 allowed for buttons/cards where useful, not for text
+ * inputs/list rows.»
+ *
+ * `prefers-reduced-motion: reduce` переопределяет длительности и press-scale
+ * на уровне токенов — компоненты (E03), которые читают `var(--motion-*)`,
+ * автоматически получают редьюс-мошн-поведение без собственной логики:
+ * все длительности схлопываются к `--motion-duration-reduced` (100ms,
+ * оставляет fade), а `--motion-scale-press` становится `1` (масштаб
+ * убран, translate/scale-анимации через этот токен эффекта не дают).
+ */
+
+:root {
+  --motion-duration-fast: 150ms;
+  --motion-duration-base: 200ms;
+  --motion-duration-slow: 300ms;
+  --motion-duration-completion: 200ms;
+  --motion-duration-reduced: 100ms;
+  --motion-easing-standard: ease;
+  --motion-scale-press: 0.97;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-duration-fast: var(--motion-duration-reduced);
+    --motion-duration-base: var(--motion-duration-reduced);
+    --motion-duration-slow: var(--motion-duration-reduced);
+    --motion-duration-completion: var(--motion-duration-reduced);
+    --motion-scale-press: 1;
+  }
+}

@@ -1,0 +1,45 @@
+/**
+ * Отступы и лэйаут-константы (SPEC/04_UI_DESIGN_SYSTEM.md §6 «Spacing»,
+ * §8 «Responsive»).
+ *
+ * Шкала отступов — «4,8,12,16,20,24,32,40,48» (§6), 4px-база.
+ * Тач-таргет — «Touch target >=44×44 logical px» (§6), общий для всех
+ * интерактивных элементов, не только кнопок.
+ * `--layout-mobile-margin` — «Mobile outer margin 16» (§8), выражен как
+ * алиас на `--space-4`, а не отдельное число, чтобы не плодить два токена
+ * с одним значением.
+ * Остальные лэйаут-константы (контейнер, sidebar, inspector, минимальное
+ * окно десктоп-шелла) — §8 «Responsive» → «Desktop» / «Native window
+ * minimum»; конкретные baseline-значения (240 / 400 / 1240) — из
+ * `docs/spec/DESIGN/design-system/tokens/radius.css` (CSS-бандл,
+ * `.ultraplan/research/02-ui.md` §1.4 — container-max 1240, sidebar-width
+ * 240, «из DS-бандла (desktop layout baseline)»), допустимые диапазоны —
+ * из текста §8 самого ТЗ.
+ */
+
+:root {
+  /* ── Шкала отступов (4px база) ── */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+
+  /* ── Доступность ── */
+  --touch-target-min: 44px;
+
+  /* ── Лэйаут ── */
+  --layout-mobile-margin: var(--space-4);
+  --container-max: 1240px;
+  --sidebar-width: 240px;
+  --sidebar-width-max: 280px;
+  --inspector-width: 400px;
+  --inspector-width-min: 360px;
+  --inspector-width-max: 440px;
+  --native-window-min-width: 980px;
+  --native-window-min-height: 640px;
+}

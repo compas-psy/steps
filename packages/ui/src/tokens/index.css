@@ -1,0 +1,23 @@
+/**
+ * Единая точка входа в слой токенов `@shagi/ui`. Импортирует все
+ * token-файлы пакета — потребитель (`@shagi/app`) подключает один этот
+ * файл, а не отдельные `tokens/*.css` по одному.
+ *
+ * Порядок важен только для читаемости каскада: `fonts.css` (@font-face,
+ * без custom properties) идёт первым, затем токены-значения, `base.css`
+ * (глобальные элементы, использует токены) — последним.
+ *
+ * Ни один `@import` здесь не указывает на внешний URL — все пути
+ * относительные, внутри пакета (проверяется
+ * `test/tokens/no-network-imports.test.ts`).
+ */
+
+@import './fonts.css';
+@import './colors.css';
+@import './typography.css';
+@import './radius.css';
+@import './spacing.css';
+@import './shadow.css';
+@import './motion.css';
+@import './breakpoints.css';
+@import './base.css';

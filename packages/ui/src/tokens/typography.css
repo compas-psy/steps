@@ -1,0 +1,123 @@
+/**
+ * Типографика ШАГИ (SPEC/04_UI_DESIGN_SYSTEM.md §5 «Typography», §2 «Fonts»).
+ *
+ * Шрифтовые семейства ссылаются на self-hosted `@font-face` из `fonts.css`
+ * (см. там же — почему self-host обязателен, §2: «Runtime Google Fonts
+ * network dependency prohibited»). Порядок fallback-стека — дословно из §2.
+ *
+ * Шкала размеров/интерлиньяжей — §5 плюс KPI-число, которого нет в тексте
+ * §5, но которое `.ultraplan/research/02-ui.md` §1.3 фиксирует как
+ * токенизированное в поставленном CSS-бандле и обязательное к переносу.
+ *
+ * `--text-mobile-heading` — мобильный заголовок Today/Inbox/Plan (§5:
+ * «Mobile Today heading follows handoff ~22px rather than blindly using
+ * desktop page title»). В HTML-прототипе (`ШАГИ - R1 Design.dc.html`,
+ * напр. строки 215, 277, 494, 555) заголовок задан как
+ * `font-size:22px; font-weight:700; letter-spacing:-0.01em` БЕЗ явного
+ * line-height — `--lh-mobile-heading` здесь досчитан по тому же
+ * отношению line-height/font-size, что и у соседних по весу стилей шкалы
+ * (~1.25–1.3), это не дословное значение из источника.
+ */
+
+:root {
+  /* ── Семейства (self-hosted, см. fonts.css) ── */
+  --font-sans:
+    'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
+    sans-serif;
+  --font-mono: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* ── Начертания, реально используемые в продукте ── */
+  --fw-normal: 400;
+  --fw-medium: 500;
+  --fw-semibold: 600;
+  --fw-bold: 700;
+
+  /* ── Шкала типов (§5) ── */
+  --text-page-title: 40px;
+  --lh-page-title: 44px;
+  --ls-page-title: -0.02em;
+
+  --text-hero-title: 24px;
+  --lh-hero-title: 30px;
+
+  --text-section-title: 20px;
+  --lh-section-title: 26px;
+
+  --text-body-primary: 15px;
+  --lh-body-primary: 22px;
+
+  --text-body-secondary: 14px;
+  --lh-body-secondary: 20px;
+
+  --text-small-meta: 12px;
+  --lh-small-meta: 16px;
+
+  --text-caption: 11px;
+  --lh-caption: 14px;
+  --ls-caption: 0.04em;
+
+  /* KPI-число — из CSS-бандла, не в тексте §5, но токенизировано намеренно */
+  --text-kpi-number: 32px;
+  --lh-kpi-number: 34px;
+
+  /* Мобильный Today-заголовок — §5, ~22px, line-height досчитан (см. шапку файла) */
+  --text-mobile-heading: 22px;
+  --lh-mobile-heading: 28px;
+  --ls-mobile-heading: -0.01em;
+}
+
+/* ── Именованные стили (используют исключительно var() — ни одного
+   повторного raw-значения вне объявления токена выше) ── */
+.text-page-title {
+  font-size: var(--text-page-title);
+  line-height: var(--lh-page-title);
+  font-weight: var(--fw-bold);
+  letter-spacing: var(--ls-page-title);
+}
+.text-hero-title {
+  font-size: var(--text-hero-title);
+  line-height: var(--lh-hero-title);
+  font-weight: var(--fw-semibold);
+}
+.text-section-title {
+  font-size: var(--text-section-title);
+  line-height: var(--lh-section-title);
+  font-weight: var(--fw-semibold);
+}
+.text-body-primary {
+  font-size: var(--text-body-primary);
+  line-height: var(--lh-body-primary);
+  font-weight: var(--fw-medium);
+}
+.text-body-secondary {
+  font-size: var(--text-body-secondary);
+  line-height: var(--lh-body-secondary);
+  font-weight: var(--fw-medium);
+}
+.text-small-meta {
+  font-size: var(--text-small-meta);
+  line-height: var(--lh-small-meta);
+  font-weight: var(--fw-medium);
+}
+.text-caption {
+  font-size: var(--text-caption);
+  line-height: var(--lh-caption);
+  font-weight: var(--fw-bold);
+  text-transform: uppercase;
+  letter-spacing: var(--ls-caption);
+}
+.text-kpi-number {
+  font-size: var(--text-kpi-number);
+  line-height: var(--lh-kpi-number);
+  font-weight: var(--fw-bold);
+  font-variant-numeric: tabular-nums;
+}
+.text-mobile-heading {
+  font-size: var(--text-mobile-heading);
+  line-height: var(--lh-mobile-heading);
+  font-weight: var(--fw-bold);
+  letter-spacing: var(--ls-mobile-heading);
+}
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}

@@ -1,0 +1,82 @@
+/**
+ * Self-hosted шрифты (SPEC/04_UI_DESIGN_SYSTEM.md §2 «Fonts»):
+ * «Fonts self-hosted/packaged. Runtime Google Fonts network dependency
+ * prohibited.»
+ *
+ * Поставленный `docs/spec/DESIGN/design-system/tokens/fonts.css` нарушает
+ * это требование дословно — единственная строка того файла тянет CSS с
+ * внешнего домена Google Fonts через `@import`. Здесь вместо этого —
+ * семь правил на локальные `.woff2`, никакого сетевого обращения при
+ * сборке или в рантайме.
+ *
+ * Файлы — из официального npm-пакета `geist@1.7.2` (Vercel,
+ * https://github.com/vercel/geist-font), лицензия SIL Open Font License 1.1.
+ * Полный текст лицензии и метаданные — `src/fonts/notices.ts`
+ * (`FONT_THIRD_PARTY_NOTICES`, забирается экраном «О приложении / Лицензии»)
+ * и `src/fonts/licenses/geist-OFL.txt`.
+ *
+ * Начертания — ровно те, что требует §2: Geist 400/500/600/700 (UI),
+ * Geist Mono 400/500/600 (время/табличные/технические микротексты).
+ * Кириллица (включая «ё») проверена в исходных `.woff2` — обе гарнитуры
+ * покрывают базовый русский алфавит.
+ *
+ * `font-display: swap` — текст рендерится системным fallback-стеком
+ * (см. `typography.css`, `--font-sans`/`--font-mono`) немедленно, без
+ * invisible-text-периода, и переключается на Geist/Geist Mono по загрузке.
+ */
+
+@font-face {
+  font-family: 'Geist';
+  src: url('../fonts/geist-sans/geist-sans-400.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Geist';
+  src: url('../fonts/geist-sans/geist-sans-500.woff2') format('woff2');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Geist';
+  src: url('../fonts/geist-sans/geist-sans-600.woff2') format('woff2');
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Geist';
+  src: url('../fonts/geist-sans/geist-sans-700.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Geist Mono';
+  src: url('../fonts/geist-mono/geist-mono-400.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Geist Mono';
+  src: url('../fonts/geist-mono/geist-mono-500.woff2') format('woff2');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Geist Mono';
+  src: url('../fonts/geist-mono/geist-mono-600.woff2') format('woff2');
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}

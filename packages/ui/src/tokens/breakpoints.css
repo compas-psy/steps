@@ -1,0 +1,19 @@
+/**
+ * Брейкпоинты (SPEC/04_UI_DESIGN_SYSTEM.md §8 «Responsive»):
+ * mobile <600, tablet 600–1023, desktop >=1024.
+ *
+ * CSS custom properties нельзя подставить внутрь `@media (min-width: …)`
+ * (медиа-условие не резолвит переменные) — эти токены здесь существуют как
+ * машиночитаемый источник истины для реестра/тестов и для JS, который
+ * читает их через `getComputedStyle` или (проще и без раскладки) через
+ * парные числовые константы `src/tokens/breakpoints.ts` — оба места
+ * обязаны совпадать, это проверяет
+ * `test/tokens/breakpoints-consistency.test.ts`. Компоненты (E03), которым
+ * нужны настоящие `@media`-брейкпоинты в CSS, обязаны использовать эти же
+ * числа буквально в своём `@media`, а не изобретать новые.
+ */
+
+:root {
+  --breakpoint-tablet-min: 600px;
+  --breakpoint-desktop-min: 1024px;
+}
