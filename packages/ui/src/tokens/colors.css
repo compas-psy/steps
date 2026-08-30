@@ -160,7 +160,7 @@
     --input: #1c3b2c;
     --ring: #d8ae67;
     --primary: #3b8f5a;
-    --primary-foreground: #0e1e16;
+    --primary-foreground: #0a1610; /* Отличается от ТЗ §4 для соответствия §15 (WCAG AA), см. ADR-0002 */
     --accent: #d8ae67;
     --accent-foreground: #142018;
     --destructive: #e8695a;
@@ -205,7 +205,7 @@
   --input: #1c3b2c;
   --ring: #d8ae67;
   --primary: #3b8f5a;
-  --primary-foreground: #0e1e16;
+  --primary-foreground: #0a1610; /* Отличается от ТЗ §4 для соответствия §15 (WCAG AA), см. ADR-0002 */
   --accent: #d8ae67;
   --accent-foreground: #142018;
   --destructive: #e8695a;

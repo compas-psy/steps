@@ -59,8 +59,7 @@ describe('контраст AA — light', () => {
 });
 
 describe('контраст AA — dark', () => {
-  // primary/primary-foreground разбирается отдельно ниже — это единственная
-  // пара с известным, не устранимым в этом пакете работ разрывом AA.
+  // primary/primary-foreground проверяется отдельно ниже в отдельном describe-блоке.
   it.each(PAIRS)('%s / %s >= 4.5:1', (bg, fg) => {
     expect(resolvedContrast(darkDict, bg, fg)).toBeGreaterThanOrEqual(WCAG_AA_NORMAL_TEXT);
   });
@@ -74,7 +73,7 @@ describe('контраст AA — sidebar (инвариантен к теме)',
   });
 });
 
-describe('контраст AA — primary/primary-foreground (light проходит, dark — нет)', () => {
+describe('контраст AA — primary/primary-foreground', () => {
   it('light: primary / primary-foreground >= 4.5:1', () => {
     expect(resolvedContrast(lightDict, 'primary', 'primary-foreground')).toBeGreaterThanOrEqual(
       WCAG_AA_NORMAL_TEXT,
@@ -82,39 +81,15 @@ describe('контраст AA — primary/primary-foreground (light проход
   });
 
   /**
-   * ИЗВЕСТНЫЙ, НЕ ИСПРАВЛЯЕМЫЙ разрыв AA — задокументирован по прямому
-   * указанию задания пакета работ («не подгоняй порог: зафиксируй факт,
-   * тест оставь падающим или помеченным»).
-   *
-   * `--primary:#3B8F5A` и `--primary-foreground:#0E1E16` в тёмной теме —
-   * оба значения зафиксированы дословно в SPEC §4 «Dark theme exact
-   * baseline» и не подлежат изменению в этом пакете работ (замороженный
-   * контракт, `docs/spec/` не редактируется, а изобретать новый hex для
-   * этой роли значило бы нарушить §4 побайтово).
-   *
-   * Фактический коэффициент — 4.33:1, нужно 4.5:1 для обычного текста
-   * (не хватает 0.17). Для крупного/жирного текста (>=19px bold или
-   * >=24px normal) порог AA-large — 3:1, и 4.33 его комфортно проходит:
-   * если эта роль используется только для лейблов крупных/жирных кнопок,
-   * разрыв не блокирует конкретные экраны — но как токен общего
-   * назначения "primary/primary-foreground" не гарантирует AA для
-   * произвольного текста нормального размера в тёмной теме.
-   *
-   * `it.fails` держит сьют зелёным, документируя это как ОЖИДАЕМЫЙ
-   * результат: если контраст этой пары когда-нибудь случайно поднимется
-   * выше 4.5 (например, при пересчёте палитры в будущем пакете работ),
-   * тест сам укажет на расхождение и потребует пересмотра.
+   * `--primary-foreground` в тёмной теме было отклонение от SPEC §4
+   * (WCAG AA разрыв: 4.33:1 вместо 4.5:1), исправлено решением
+   * владельца продукта (см. ADR-0002): затемнение текста с #0E1E16
+   * на #0A1610, сохраняя фирменный зелёный фон #3B8F5A нетронутым.
+   * Коэффициент контрастности теперь >= 4.5:1 и соответствует AA.
    */
-  it.fails(
-    'dark: primary / primary-foreground НЕ достигает 4.5:1 (факт: ~4.33:1, заморожено §4)',
-    () => {
-      expect(resolvedContrast(darkDict, 'primary', 'primary-foreground')).toBeGreaterThanOrEqual(
-        WCAG_AA_NORMAL_TEXT,
-      );
-    },
-  );
-
-  it('dark: primary / primary-foreground проходит хотя бы AA-large (3:1)', () => {
-    expect(resolvedContrast(darkDict, 'primary', 'primary-foreground')).toBeGreaterThanOrEqual(3);
+  it('dark: primary / primary-foreground >= 4.5:1', () => {
+    expect(resolvedContrast(darkDict, 'primary', 'primary-foreground')).toBeGreaterThanOrEqual(
+      WCAG_AA_NORMAL_TEXT,
+    );
   });
 });
