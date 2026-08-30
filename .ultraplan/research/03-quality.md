@@ -297,3 +297,35 @@ Environments (§1): local/test-CI/staging/production, отдельные БД/б
 5. **"Master budgets are assertions in CI/nightly"** — неясно, входят ли perf-тесты в блокирующий PR CI (список §2 08_DEVOPS не включает perf explicitly, только nightly добавляет "full perf"), т.е. PR CI не блокируется перф-бюджетами, только nightly/main — это стоит явно зафиксировать в декомпозиции задач CI.
 6. **Redaction tests** (`05_SECURITY...` §6) названы mandatory, но конкретный формат/фреймворк для проверки "не логируется контент" не определён — нужно спроектировать (например: линт по паттернам полей, или property-test на logger).
 7. **ADR-процесс** сам по себе не формализован (нет шаблона/директории ADR в прочитанных файлах) — для декомпозиции стоит завести `docs/adr/` и процесс с первой же архитектурной задачи (Task-модель, sync-протокол-заготовка).
+
+---
+
+## 10. Кросс-ответы на вопросы домена
+
+Проверено по `03_BACKEND_API.md` и `05_SECURITY_PRIVACY_LEGAL.md` (файлы, прочитанные полностью в рамках этого исследования); там, где найдено релевантное в других уже прочитанных мной файлах (`06_TESTING_ACCEPTANCE.md`), это отмечено отдельно.
+
+1. **Формат `owner_scope`** — в моих файлах ответа нет. В `03_BACKEND_API.md` слово "scope" встречается только в контексте `link_scope`/`project-scoped`/JSONB "ownership/scope fields" (§6, §15, §16), но модели local-profile-UUID vs account-scope там нет. Не покрыто ни в 03, ни в 05.
+
+2. **Таксономия стабильных error code** — есть точный список, `03_BACKEND_API.md` §19 "Error contract":
+   > `AUTH_OTP_INVALID, AUTH_OTP_EXPIRED, AUTH_RATE_LIMITED, AUTH_REQUIRED, PERMISSION_DENIED, UPGRADE_REQUIRED, SYNC_CONFLICT, SYNC_SCHEMA_TOO_NEW, PROJECT_LIMIT_REACHED, TEMPORAL_CONFLICT, ATTACHMENT_TOO_LARGE, ATTACHMENT_QUOTA_EXCEEDED, ATTACHMENT_UPLOAD_FAILED, IMPORT_INVALID, IMPORT_PARTIAL, SUBSCRIPTION_REQUIRED, CALENDAR_AUTH_EXPIRED, SHARED_MEMBERSHIP_REVOKED, SMART_DISABLED, SMART_PROVIDER_UNAVAILABLE, VECTOR_LOW_CONFIDENCE, VECTOR_PARTIAL_FAILURE, VECTOR_MIC_PERMISSION_DENIED, VECTOR_SESSION_EXPIRED.`
+   Для отклонённых sync-мутаций релевантны конкретно `SYNC_CONFLICT` и `SYNC_SCHEMA_TOO_NEW` (плюс `TEMPORAL_CONFLICT`/`PROJECT_LIMIT_REACHED` для доменных валидационных отказов). Формат ответа задан в §19: `{"error":{"code":"...","message_key":"...","details":{},"request_id":"..."}}`, "Server `message` is never rendered directly; UI uses localized catalog."
+
+3. **Криптоформат "cached signed" entitlement** — в `03_BACKEND_API.md` §11 сказано только: "Signed entitlement document cached client-side with expiry." Алгоритм подписи, где хранится/проверяется ключ, что именно подписывается и точный TTL — не указаны ни в §11, ни где-либо ещё в файле. В `05_SECURITY_PRIVACY_LEGAL.md` слово "entitlement" не встречается вовсе. **В моих файлах точного крипто-формата нет** — только факт, что документ подписан и кэшируется с expiry.
+
+4. **Локальное шифрование данных at rest на клиенте** — в моих файлах явного требования шифровать всю локальную SQLite/IndexedDB нет. Конкретно:
+   - `05_SECURITY_PRIVACY_LEGAL.md` §4 "At rest" говорит только о **серверной** стороне: "encrypted server volumes/backups/object storage; credentials per service; secrets manager/CI secret store."
+   - §5 "Local secrets": "Native refresh/auth secrets: Android Keystore / Windows Credential Manager / Apple Keychain. **No plaintext refresh token in SQLite.** Web: HttpOnly Secure session/refresh cookie; no token in localStorage. IndexedDB only application data."
+   Вывод из текста: защита ограничена **secure storage только для секретов/токенов** (Keystore/Credential Manager/Keychain, HttpOnly cookie на Web); для самих прикладных данных (задачи и т.п.) в SQLite/IndexedDB требование полного шифрования at rest **не сформулировано** — сказано лишь, что refresh-токен не должен лежать в SQLite открытым текстом, а IndexedDB предназначена только под application data (без явного "encrypted"). Прямого да/нет по шифрованию всей БД задач в моих файлах нет.
+
+5. **Семантика системного фильтра «Без даты»** — в моих файлах (03, 05) ответа нет; тема не затрагивается ни разу. Согласуется с ожиданием координатора — вероятный источник `12_SCREEN_STATE_MATRIX.md`, который я не читал.
+
+6. **Материализация R3-колонок (`source_channel`, `source_capture_batch_id`, `source_intent_id`) в миграциях первой волны** — прямого указания "добавить эти колонки уже в R1 schema" ни в `03_BACKEND_API.md`, ни в `07_RELEASES_FUTURE.md` нет. Ближайшее релевантное:
+   - `03_BACKEND_API.md` §17.7 "Provenance" описывает эти поля только в контексте объектов, **создаваемых Vector** в R3: "Target objects receive only: `source=vector`; `source_channel`; opaque `source_capture_batch_id`; `source_intent_id`; creation timestamp." — это спецификация R3-функциональности, а не инструкция по срокам миграции схемы.
+   - `03_BACKEND_API.md` §17.9 "Vector calls normal target commands": "SHAGI intent invokes the same `CreateTaskCommand`/validation/capture semantics as text Quick Add. Vector never writes SHAGI DB directly..." — это подтверждает архитектурный принцип единой команды создания (см. раздел 7 моего отчёта), но не говорит явно про timing миграции колонок.
+   - `07_RELEASES_FUTURE.md` не содержит раздела про схему БД/миграции вообще (это описание фич по релизам, не data model).
+   **Вывод: явного требования материализовать эти R3-колонки уже в R1-миграциях в 03 или 07 нет** — это остаётся решением реализации/ADR, а не нормативным требованием этих двух файлов.
+
+7. **Алгоритм fractional rank** (алфавит, числовой порог длины для ренормализации) — в моих файлах не встречается (`rank`/`fractional` не найдены ни в 03, ни в 05 через grep). Ответа нет.
+
+8. **Численный допуск clock skew для HLC** — в `03_BACKEND_API.md` clock skew числом не задан; единственное упоминание — `"clocks":{"planned_date":"hlc"}` в §5 (структура поля, без порога). В `05_SECURITY_PRIVACY_LEGAL.md` тема не встречается вовсе.
+   **Но:** в файле `06_TESTING_ACCEPTANCE.md` (не входит в пару 03/05, но я его тоже читал по своему заданию) §5 "Evil sync suite", пункт 12, есть точное число: **"client clock skew ±24h."** Это тестовый сценарий (устройство с рассинхронизацией часов до ±24 часов должно давать детерминированную конвергенцию), а не явно объявленный "tolerance" в бэкенд-контракте — но это единственное численное значение допуска skew, которое мне встретилось во всей проверенной документации, и стоит использовать как рабочий ориентир при отсутствии числа в 02/03.
