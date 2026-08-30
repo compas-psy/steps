@@ -1,13 +1,98 @@
 /**
- * `@shagi/core` — домен ШАГОВ: сущности, команды, инварианты (SPEC/00 §7.1),
- * доменное время на `Temporal` (§5), повторы и fractional rank (§6).
+ * `@shagi/core` — домен ШАГОВ: сущности, инварианты (SPEC/00 §7.1),
+ * доменное время на `Temporal` (§5), Today-классификация и правила сброса
+ * полей (конспект §3, §5).
  *
- * Единственная точка входа для мутаций — `CreateTaskCommand` и соседние
- * команды (план волны, раздел «Что закладывается с первого коммита»);
- * прямая запись в хранилище в обход команд запрещена. Один и тот же
- * валидатор инвариантов §7.1 обслуживает и локальные команды, и входящие
- * sync-патчи — здесь, а не продублированным в `storage`/`sync`.
+ * Границы пакета работ E01.1: только типы и чистые функции. Единственная
+ * точка входа для *мутаций* — `CreateTaskCommand` и соседние команды
+ * (следующий пакет работ); прямая запись в хранилище в обход команд
+ * запрещена. Общий валидатор инвариантов §7.1, который обслуживает и
+ * локальные команды, и входящие sync-патчи, — тоже следующий пакет работ;
+ * там, где инвариант выражен типом ниже (discriminated union), валидатору
+ * нечего проверять — он невозможен уже на уровне компиляции.
  *
  * Пакет не знает про UI, SQLite/IndexedDB или сеть — только домен.
  */
 export const PACKAGE_NAME = '@shagi/core' as const;
+
+// --- Скалярные value-types -------------------------------------------------
+export {
+  asUuid,
+  isUuid,
+  makeDurationMinutes,
+  makeOccurrenceSeq,
+  makePriority,
+  type Branded,
+  type DurationMinutes,
+  type FieldClocks,
+  type OccurrenceSeq,
+  type OwnerScope,
+  type Priority,
+  type Rank,
+  type Uuid,
+} from './values.js';
+
+// --- Hybrid Logical Clock ---------------------------------------------------
+export { compareHlc, isHlcAfter, type Hlc } from './hlc.js';
+
+// --- Сущности ----------------------------------------------------------------
+export {
+  type CaptureState,
+  type CompletionKind,
+  type DayBucket,
+  type SourceChannel,
+  type Task,
+  type TaskCompletion,
+  type TaskCore,
+  type TaskDeadline,
+  type TaskHierarchy,
+  type TaskPlanning,
+  type TaskProjectPlacement,
+  type TaskProvenance,
+  type TaskSnapshot,
+  type TaskSource,
+  type TaskStatus,
+} from './entities/task.js';
+export { type Project, type ProjectDefaultView } from './entities/project.js';
+export { type Section } from './entities/section.js';
+export { type Label } from './entities/label.js';
+export { isTaskLabelActive, type TaskLabel } from './entities/task-label.js';
+export { type ChecklistItem } from './entities/checklist-item.js';
+export { type Reminder, type ReminderKind } from './entities/reminder.js';
+export {
+  type RecurrenceAnchor,
+  type RecurrenceAnchorType,
+  type RecurrenceSeries,
+  type RecurrenceTemplate,
+} from './entities/recurrence-series.js';
+export { type Attachment, type AttachmentState } from './entities/attachment.js';
+export { type TaskLink } from './entities/task-link.js';
+export { type ImportBatch } from './entities/import-batch.js';
+export { type EntityType } from './entities/entity-type.js';
+export { type SyncOutboxEntry } from './entities/sync-outbox.js';
+export { type SyncConflict } from './entities/sync-conflict.js';
+
+// --- Temporal-модель (§5, конспект §3) --------------------------------------
+export { effectiveDeadlineDateTime, isDeadlinePassed } from './temporal/deadline.js';
+export {
+  doesDurationCrossDeadline,
+  isAvailableFromConflict,
+  isDeadlineBeforeAvailableFrom,
+  isPlannedAfterDeadline,
+  isReminderAfterDeadline,
+} from './temporal/predicates.js';
+export { toZonedDateTime } from './temporal/timezone.js';
+
+// --- Правила (конспект §3, §5) -----------------------------------------------
+export {
+  clearDeadline,
+  clearPlannedDate,
+  setDayBucketLater,
+  setPlannedDate,
+  setPlannedTime,
+} from './rules/field-resets.js';
+export {
+  classifyTaskForToday,
+  type TaskForTodayClassification,
+  type TodayGroup,
+} from './rules/today-classification.js';
