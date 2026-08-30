@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="_ds/design-system-66188c07-9b47-4513-950f-4bff1348c44e/tokens/fonts.css">
+  <link rel="stylesheet" href="_ds/design-system-66188c07-9b47-4513-950f-4bff1348c44e/tokens/colors.css">
+  <link rel="stylesheet" href="_ds/design-system-66188c07-9b47-4513-950f-4bff1348c44e/tokens/typography.css">
+  <link rel="stylesheet" href="_ds/design-system-66188c07-9b47-4513-950f-4bff1348c44e/tokens/radius.css">
+  <link rel="stylesheet" href="_ds/design-system-66188c07-9b47-4513-950f-4bff1348c44e/tokens/shadows.css">
+  <link rel="stylesheet" href="_ds/design-system-66188c07-9b47-4513-950f-4bff1348c44e/tokens/services.css">
+  <link rel="stylesheet" href="_ds/design-system-66188c07-9b47-4513-950f-4bff1348c44e/tokens/base.css">
+  <link rel="stylesheet" href="_ds/design-system-66188c07-9b47-4513-950f-4bff1348c44e/styles.css">
+  <script src="_ds/design-system-66188c07-9b47-4513-950f-4bff1348c44e/_ds_bundle.js"></script>
+  <style>
+    body { margin: 0; background: var(--sage-50); }
+    a { color: var(--forest-800); } a:hover { color: var(--forest-600); }
+    @keyframes vector-rec { 0%,100% { opacity: 1; } 50% { opacity: .3; } }
+    @keyframes vector-wave { 0%,100% { transform: scaleY(.3); } 50% { transform: scaleY(1); } }
+    @keyframes vector-ring { 0% { transform: scale(1); opacity: .55; } 100% { transform: scale(1.7); opacity: 0; } }
+  </style>
+</helmet>
+
+<div style="min-height:100vh;background:var(--sage-50);font-family:var(--font-sans);">
+
+  <div style="padding:40px 40px 8px;max-width:1400px;margin:0 auto;">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+      <span style="width:34px;height:34px;border-radius:10px;background:var(--forest-800);color:#fff;display:flex;align-items:center;justify-content:center;">
+        <x-import component-from-global-scope="DesignSystem_66188c.Icon" name="mic" size="18" hint-size="18px,18px"></x-import>
+      </span>
+      <div>
+        <div style="font-size:20px;font-weight:700;color:var(--foreground);letter-spacing:.02em;">ВЕКТОР <span style="font-weight:500;color:var(--muted-foreground);font-size:14px;">(черновое название)</span></div>
+        <div style="font-family:var(--font-mono);font-size:11px;color:var(--muted-foreground);">R3 VECTOR · multimodal intent layer · аналог Ramble · §55 ТЗ ШАГИ</div>
+      </div>
+    </div>
+    <h1 style="font-size:26px;font-weight:700;letter-spacing:-0.01em;color:var(--foreground);margin:18px 0 6px;">Customer Journey Map: голосовой сброс мыслей на ходу</h1>
+    <p style="font-size:14px;color:var(--muted-foreground);margin:0 0 28px;max-width:760px;line-height:1.6;">Персона: пользователь ШАГОВ, ведёт машину, руки и внимание заняты. В голове три несвязанных дела и одна идея. Пайплайн: <b>Input → Intent → Entity extraction → Router → Target app/action</b>. Confidence model решает, что происходит дальше без лишних касаний.</p>
+
+    <!-- Emotion arc -->
+    <div style="display:flex;align-items:flex-end;gap:0;height:110px;margin-bottom:8px;">
+      <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;"><div style="width:10px;height:38%;border-radius:4px;background:var(--orange-500);"></div><span style="font-size:11px;color:var(--muted-foreground);margin-top:6px;text-align:center;">Тревога<br>«не забыть»</span></div>
+      <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;"><div style="width:10px;height:64%;border-radius:4px;background:var(--gold-500);"></div><span style="font-size:11px;color:var(--muted-foreground);margin-top:6px;text-align:center;">Облегчение<br>«говорю свободно»</span></div>
+      <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;"><div style="width:10px;height:46%;border-radius:4px;background:var(--orange-500);"></div><span style="font-size:11px;color:var(--muted-foreground);margin-top:6px;text-align:center;">Неопределённость<br>«поняло верно?»</span></div>
+      <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;"><div style="width:10px;height:58%;border-radius:4px;background:var(--gold-500);"></div><span style="font-size:11px;color:var(--muted-foreground);margin-top:6px;text-align:center;">Контроль<br>«я подтвердил»</span></div>
+      <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;"><div style="width:10px;height:82%;border-radius:4px;background:var(--success-500);"></div><span style="font-size:11px;color:var(--muted-foreground);margin-top:6px;text-align:center;">Уверенность<br>«всё на месте»</span></div>
+      <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;"><div style="width:10px;height:90%;border-radius:4px;background:var(--success-500);"></div><span style="font-size:11px;color:var(--muted-foreground);margin-top:6px;text-align:center;">Доверие<br>«не думаю об этом»</span></div>
+    </div>
+    <div style="height:1px;background:var(--border);margin-bottom:8px;"></div>
+  </div>
+
+  <!-- STAGE 1 -->
+  <div style="max-width:1400px;margin:0 auto;padding:28px 40px;border-top:1px solid var(--border);display:grid;grid-template-columns:260px 1fr;gap:28px;">
+    <div>
+      <div style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:var(--gold-500);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;">Этап 1</div>
+      <div style="font-size:19px;font-weight:700;color:var(--foreground);margin-bottom:8px;">Триггер</div>
+      <div style="display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:999px;background:var(--sage-100);color:var(--forest-800);font-size:12px;font-weight:600;">За рулём, руки заняты</div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;box-shadow:var(--shadow-xs);">
+        <div style="font-size:11px;font-weight:700;color:var(--muted-foreground);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;">Действие</div>
+        <div style="font-size:14px;color:var(--foreground);line-height:1.5;">Вспоминает три дела и одну идею сразу. Тянуться к экрану и печатать — не вариант.</div>
+      </div>
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;box-shadow:var(--shadow-xs);">
+        <div style="font-size:11px;font-weight:700;color:var(--muted-foreground);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;">Мысль</div>
+        <div style="font-size:14px;color:var(--foreground);line-height:1.5;">«Если не скажу сейчас — забуду половину до вечера».</div>
+      </div>
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;box-shadow:var(--shadow-xs);">
+        <div style="font-size:11px;font-weight:700;color:var(--muted-foreground);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;">Точка контакта</div>
+        <div style="font-size:14px;color:var(--foreground);line-height:1.5;">Голосовой shortcut / виджет на экране блокировки / часы (future integration surface, §11).</div>
+      </div>
+      <div style="background:var(--success-soft);border:1px solid color-mix(in srgb, var(--success-500) 25%, transparent);border-radius:14px;padding:16px;">
+        <div style="font-size:11px;font-weight:700;color:var(--success-500);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;">Возможность</div>
+        <div style="font-size:14px;color:var(--foreground);line-height:1.5;">Захват без разрыва текущего действия — руки и глаза остаются на дороге.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- STAGE 2 -->
+  <div style="max-width:1400px;margin:0 auto;padding:28px 40px;border-top:1px solid var(--border);display:grid;grid-template-columns:260px 1fr;gap:28px;">
+    <div>
+      <div style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:var(--gold-500);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;">Этап 2</div>
+      <div style="font-size:19px;font-weight:700;color:var(--foreground);margin-bottom:8px;">Захват (Input)</div>
+      <div style="width:220px;background:var(--card);border:1px solid var(--border);border-radius:16px;padding:14px;box-shadow:var(--shadow-card);">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;"><span style="width:10px;height:10px;border-radius:50%;background:var(--red-500);animation:vector-rec 1.1s infinite;"></span><span style="font-size:12px;font-weight:600;color:var(--muted-foreground);">Слушаю…</span></div>
+        <div style="font-size:13px;color:var(--foreground);line-height:1.5;">«…купить корм коту, ещё отправить Ивану презентацию до пятницы, и вообще — идея для курса про фокус»</div>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;box-shadow:var(--shadow-xs);">
+        <div style="font-size:11px;font-weight:700;color:var(--muted-foreground);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;">Действие</div>
+        <div style="font-size:14px;color:var(--foreground);line-height:1.5;">Говорит потоком, без пауз и без попытки заранее структурировать мысль — как в Ramble.</div>
+      </div>
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;box-shadow:var(--shadow-xs);">
+        <div style="font-size:11px;font-weight:700;color:var(--muted-foreground);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;">Мысль</div>
+        <div style="font-size:14px;color:var(--foreground);line-height:1.5;">Видит live partial transcript — можно говорить быстрее, ошибка не страшна, всё редактируется потом.</div>
+      </div>
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;box-shadow:var(--shadow-xs);">
+        <div style="font-size:11px;font-weight:700;color:var(--muted-foreground);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;">Точка контакта</div>
+        <div style="font-size:14px;color:var(--foreground);line-height:1.5;">Streaming partial transcript на экране/часах; ASR — GigaAM, локально где возможно (§55, не брендируется в UI).</div>
+      </div>
+      <div style="background:var(--red-soft);border:1px solid color-mix(in srgb, var(--red-500) 25%, transparent);border-radius:14px;padding:16px;">
+        <div style="font-size:11px;font-weight:700;color:var(--red-500);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;">Риск</div>
+        <div style="font-size:14px;color:var(--foreground);line-height:1.5;">Шум в машине, лаг в транскрипте — если отставание видно, доверие к записи падает уже на этом шаге.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- STAGE 3 -->
+  <div style="max-width:1400px;margin:0 auto;padding:28px 40px;border-top:1px solid var(--border);display:grid;grid-template-columns:260px 1fr;gap:28px;">
+    <div>
+      <div style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:var(--gold-500);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;">Этап 3</div>
+      <div style="font-size:19px;font-weight:700;color:var(--foreground);margin-bottom:8px;">Разбор (Intent → Entity → Router)</div>
+      <div style="display:flex;flex-direction:column;gap:6px;">
+        <div style="font-size:12px;padding:6px 10px;border-radius:8px;background:var(--sage-100);color:var(--forest-800);">1 фраза → 3 интента</div>
+        <div style="font-size:12px;padding:6px 10px;border-radius:8px;background:var(--sage-100);color:var(--forest-800);">2 → ШАГИ, 1 → ЗАПИСКИ</div>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;box-shadow:var(--shadow-xs);">
+        <div style="font-size:11px;font-weight:700;color:var(--muted-foreground);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;">Действие</div>
+        <div style="font-size:14px;color:var(--foreground);line-height:1.5;">Ничего не делает — пайплайн сам режет поток на сущности и маршрутизирует по приложениям-получателям.</div>
+      </div>
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;box-shadow:var(--shadow-xs);">
+        <div style="font-size:11px;font-weight:700;color:var(--muted-foreground);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;">Мысль</div>
+        <div style="font-size:14px;color:var(--foreground);line-height:1.5;">Пауза без обратной связи тревожит — нужен короткий тактильный/звуковой отклик, а не тишина.</div>
+      </div>
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;box-shadow:var(--shadow-xs);">
+        <div style="font-size:11px;font-weight:700;color:var(--muted-foreground);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;">Точка контакта</div>
+        <div style="font-size:14px;color:var(--foreground);line-height:1.5;">Фоновая обработка; исходное аудио не хранится после успешного распознавания (privacy-by-default, §55).</div>
+      </div>
+      <div style="background:var(--orange-soft);border:1px solid color-mix(in srgb, var(--orange-500) 25%, transparent);border-radius:14px;padding:16px;">
+        <div style="font-size:11px;font-weight:700;color:var(--orange-500);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;">Риск</div>
+        <div style="font-size:14px;color:var(--foreground);line-height:1.5;">Ошибка распознавания не должна вести к скрытому долгому хранению записи «на всякий случай».</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- STAGE 4: confidence branches -->
+  <div style="max-width:1400px;margin:0 auto;padding:28px 40px;border-top:1px solid var(--border);">
+    <div style="display:grid;grid-template-columns:260px 1fr;gap:28px;margin-bottom:18px;">
+      <div>
+        <div style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:var(--gold-500);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;">Этап 4</div>
+        <div style="font-size:19px;font-weight:700;color:var(--foreground);margin-bottom:8px;">Confidence model — развилка</div>
+        <div style="font-size:13px;color:var(--muted-foreground);line-height:1.6;">Каждый из 3 извлечённых интентов проходит развилку independently — не вся фраза целиком.</div>
+      </div>
+      <div style="font-size:13px;color:var(--muted-foreground);line-height:1.6;align-self:center;">High → выполнить сразу + Undo · Medium → короткий preview на подтверждение · Low → один уточняющий вопрос, не больше (§55).</div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;">
+      <div style="background:var(--success-soft);border:1.5px solid var(--success-500);border-radius:16px;padding:18px;">
+        <div style="font-size:11px;font-weight:700;color:var(--success-500);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px;">High confidence</div>
+        <div style="font-size:13px;color:var(--muted-foreground);margin-bottom:8px;">«Купить корм коту»</div>
+        <div style="background:var(--card);border-radius:10px;padding:10px 12px;display:flex;align-items:center;justify-content:space-between;">
+          <span style="font-size:13px;font-weight:600;color:var(--foreground);">Добавлено в Входящие</span>
+          <span style="font-size:12px;font-weight:700;color:var(--forest-800);">Отменить</span>
+        </div>
+        <div style="font-size:12px;color:var(--muted-foreground);margin-top:10px;line-height:1.5;">Выполняется без подтверждения — быстро + Undo (V04).</div>
+      </div>
+      <div style="background:var(--amber-soft);border:1.5px solid var(--gold-500);border-radius:16px;padding:18px;">
+        <div style="font-size:11px;font-weight:700;color:var(--gold-500);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px;">Medium confidence</div>
+        <div style="font-size:13px;color:var(--muted-foreground);margin-bottom:8px;">«Отправить Ивану презентацию до пятницы»</div>
+        <div style="background:var(--card);border-radius:10px;padding:10px 12px;">
+          <div style="font-size:13px;font-weight:600;color:var(--foreground);margin-bottom:6px;">До пятницы, 5 сент? Иван П. — 2 контакта с этим именем</div>
+          <div style="display:flex;gap:6px;"><span style="font-size:12px;font-weight:600;padding:5px 10px;border-radius:8px;background:var(--forest-800);color:#fff;">Верно</span><span style="font-size:12px;font-weight:600;padding:5px 10px;border-radius:8px;border:1px solid var(--border);color:var(--foreground);">Исправить</span></div>
+        </div>
+        <div style="font-size:12px;color:var(--muted-foreground);margin-top:10px;line-height:1.5;">Preview перед сохранением — можно исправить target/дату/объект (V05).</div>
+      </div>
+      <div style="background:var(--red-soft);border:1.5px solid var(--red-500);border-radius:16px;padding:18px;">
+        <div style="font-size:11px;font-weight:700;color:var(--red-500);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px;">Low confidence</div>
+        <div style="font-size:13px;color:var(--muted-foreground);margin-bottom:8px;">«…идея для курса про фокус»</div>
+        <div style="background:var(--card);border-radius:10px;padding:10px 12px;">
+          <div style="font-size:13px;font-weight:600;color:var(--foreground);">Это заметка или задача?</div>
+          <div style="display:flex;gap:6px;margin-top:6px;"><span style="font-size:12px;font-weight:600;padding:5px 10px;border-radius:8px;background:var(--forest-800);color:#fff;">Заметка</span><span style="font-size:12px;font-weight:600;padding:5px 10px;border-radius:8px;border:1px solid var(--border);color:var(--foreground);">Задача</span></div>
+        </div>
+        <div style="font-size:12px;color:var(--muted-foreground);margin-top:10px;line-height:1.5;">Только один необходимый вопрос — не форма (V06).</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- STAGE 5 -->
+  <div style="max-width:1400px;margin:0 auto;padding:28px 40px;border-top:1px solid var(--border);display:grid;grid-template-columns:260px 1fr;gap:28px;">
+    <div>
+      <div style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:var(--gold-500);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;">Этап 5</div>
+      <div style="font-size:19px;font-weight:700;color:var(--foreground);margin-bottom:8px;">Результат в целевом продукте</div>
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:12px;box-shadow:var(--shadow-xs);">
+        <div style="font-size:11px;font-weight:700;color:var(--muted-foreground);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;">Связано</div>
+        <div style="font-size:13px;color:var(--foreground);">🎙 Голосовой ввод · 09:14</div>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;box-shadow:var(--shadow-xs);">
+        <div style="font-size:11px;font-weight:700;color:var(--muted-foreground);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;">Действие</div>
+        <div style="font-size:14px;color:var(--foreground);line-height:1.5;">Позже открывает ШАГИ и ЗАПИСКИ — видит готовые объекты, а не сырую запись для расшифровки.</div>
+      </div>
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;box-shadow:var(--shadow-xs);">
+        <div style="font-size:11px;font-weight:700;color:var(--muted-foreground);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;">Мысль</div>
+        <div style="font-size:14px;color:var(--foreground);line-height:1.5;">«Всё три дела на месте, и понятно, что каждое пришло из одной и той же фразы».</div>
+      </div>
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;box-shadow:var(--shadow-xs);">
+        <div style="font-size:11px;font-weight:700;color:var(--muted-foreground);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;">Точка контакта</div>
+        <div style="font-size:14px;color:var(--foreground);line-height:1.5;">Task Detail / заметка показывают источник — «ясно, что объект создан через ВЕКТОР» (V07).</div>
+      </div>
+      <div style="background:var(--success-soft);border:1px solid color-mix(in srgb, var(--success-500) 25%, transparent);border-radius:14px;padding:16px;">
+        <div style="font-size:11px;font-weight:700;color:var(--success-500);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;">Возможность</div>
+        <div style="font-size:14px;color:var(--foreground);line-height:1.5;">Одна фраза → несколько продуктов СИМПАС наполняются одновременно, без переключения между ними.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- STAGE 6 -->
+  <div style="max-width:1400px;margin:0 auto;padding:28px 40px 56px;border-top:1px solid var(--border);display:grid;grid-template-columns:260px 1fr;gap:28px;">
+    <div>
+      <div style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:var(--gold-500);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;">Этап 6</div>
+      <div style="font-size:19px;font-weight:700;color:var(--foreground);margin-bottom:8px;">Доверие и повтор</div>
+      <div style="display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:999px;background:var(--sage-100);color:var(--forest-800);font-size:12px;font-weight:600;">Метрика: доля задач через голос растёт (§86)</div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;box-shadow:var(--shadow-xs);">
+        <div style="font-size:11px;font-weight:700;color:var(--muted-foreground);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;">Действие</div>
+        <div style="font-size:14px;color:var(--foreground);line-height:1.5;">Продолжает вести машину — не отвлекается на проверку, потому что ошибки были пойманы на шаге confidence.</div>
+      </div>
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;box-shadow:var(--shadow-xs);">
+        <div style="font-size:11px;font-weight:700;color:var(--muted-foreground);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;">Мысль</div>
+        <div style="font-size:14px;color:var(--foreground);line-height:1.5;">«В следующий раз просто наговорю всё сразу, не буду открывать приложения».</div>
+      </div>
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;box-shadow:var(--shadow-xs);">
+        <div style="font-size:11px;font-weight:700;color:var(--muted-foreground);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;">Точка контакта</div>
+        <div style="font-size:14px;color:var(--foreground);line-height:1.5;">Settings → Данные и конфиденциальность → управление голосовыми данными (future, §43.2).</div>
+      </div>
+      <div style="background:var(--success-soft);border:1px solid color-mix(in srgb, var(--success-500) 25%, transparent);border-radius:14px;padding:16px;">
+        <div style="font-size:11px;font-weight:700;color:var(--success-500);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;">Возможность</div>
+        <div style="font-size:14px;color:var(--foreground);line-height:1.5;">Голос становится основным способом захвата для мультизадачных ситуаций — NLP-текст остаётся для тихих моментов.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= ANDROID SCREENS ================= -->
+  <div style="max-width:1400px;margin:0 auto;padding:40px 40px 72px;border-top:1px solid var(--border);">
+    <div style="margin-bottom:24px;">
+      <div style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:var(--gold-500);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">V01–V06 · R3 VECTOR concept frames · Android</div>
+      <h2 style="font-size:22px;font-weight:700;letter-spacing:-0.01em;color:var(--foreground);margin:0 0 4px;">Как это выглядит в приложении ШАГИ</h2>
+      <p style="font-size:14px;color:var(--muted-foreground);margin:0;max-width:760px;">Composer остаётся архитектурно расширяемым (§27, §55): Voice — ещё одна вкладка рядом с Текстом, а не отдельное приложение.</p>
+    </div>
+    <div style="display:flex;gap:32px;flex-wrap:wrap;align-items:flex-start;">
+
+      <!-- V01 Composer Multimodal -->
+      <div style="display:flex;flex-direction:column;align-items:center;">
+        <div style="font-family:var(--font-mono);font-size:11px;font-weight:600;color:var(--muted-foreground);margin-bottom:12px;">[R3][V][01] Composer / Multimodal</div>
+        <div style="width:390px;height:844px;border-radius:46px;background:var(--forest-900);padding:12px;box-shadow:var(--shadow-floating);">
+          <div style="width:100%;height:100%;background:var(--background);border-radius:36px;overflow:hidden;position:relative;display:flex;flex-direction:column;">
+            <div style="flex:1;background:rgba(20,32,24,.35);position:relative;">
+              <div style="position:absolute;top:18px;left:24px;font-size:13px;font-weight:600;color:rgba(255,255,255,.7);">9:41</div>
+              <div style="position:absolute;top:70px;left:24px;opacity:.5;font-size:20px;font-weight:700;color:#fff;">Суббота, 29 августа</div>
+            </div>
+            <div style="background:var(--card);border-radius:24px 24px 0 0;box-shadow:0 -8px 24px rgba(20,32,24,.12);padding:14px 22px 30px;">
+              <div style="width:36px;height:4px;border-radius:99px;background:var(--border);margin:0 auto 16px;"></div>
+              <div style="display:flex;gap:8px;margin-bottom:16px;">
+                <div style="display:flex;align-items:center;gap:6px;padding:8px 14px;border-radius:999px;background:var(--sage-100);color:var(--forest-800);font-size:13px;font-weight:700;"><x-import component-from-global-scope="DesignSystem_66188c.Icon" name="format" size="15" hint-size="15px,15px"></x-import>Текст</div>
+                <div style="display:flex;align-items:center;gap:6px;padding:8px 14px;border-radius:999px;border:1px solid var(--border);color:var(--muted-foreground);font-size:13px;font-weight:600;"><x-import component-from-global-scope="DesignSystem_66188c.Icon" name="mic" size="15" hint-size="15px,15px"></x-import>Голос</div>
+                <div style="display:flex;align-items:center;gap:6px;padding:8px 14px;border-radius:999px;border:1px solid var(--border);color:var(--muted-foreground);font-size:13px;font-weight:600;"><x-import component-from-global-scope="DesignSystem_66188c.Icon" name="attach" size="15" hint-size="15px,15px"></x-import>Файл</div>
+              </div>
+              <div style="border:1px solid var(--border);border-radius:16px;padding:16px;display:flex;align-items:center;justify-content:space-between;">
+                <span style="font-size:15px;color:var(--muted-foreground);">Что нужно сделать?</span>
+                <span style="width:40px;height:40px;border-radius:50%;background:var(--forest-800);display:flex;align-items:center;justify-content:center;color:#fff;"><x-import component-from-global-scope="DesignSystem_66188c.Icon" name="mic" size="19" hint-size="19px,19px"></x-import></span>
+              </div>
+              <div style="text-align:center;font-size:11px;color:var(--muted-foreground);margin-top:12px;">Голос — ещё одна вкладка Composer'а, не отдельный экран</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- V02 Voice Listening -->
+      <div style="display:flex;flex-direction:column;align-items:center;">
+        <div style="font-family:var(--font-mono);font-size:11px;font-weight:600;color:var(--muted-foreground);margin-bottom:12px;">[R3][V][02] Voice Listening</div>
+        <div style="width:390px;height:844px;border-radius:46px;background:var(--forest-900);padding:12px;box-shadow:var(--shadow-floating);">
+          <div style="width:100%;height:100%;background:linear-gradient(160deg,#173626,#0d1712);border-radius:36px;overflow:hidden;position:relative;display:flex;flex-direction:column;">
+            <div style="display:flex;justify-content:space-between;padding:18px 24px 0;font-size:13px;font-weight:600;color:rgba(255,255,255,.8);"><span>9:41</span><span style="opacity:.5;">••••</span></div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:26px;">
+              <div style="position:relative;width:96px;height:96px;display:flex;align-items:center;justify-content:center;">
+                <span style="position:absolute;width:96px;height:96px;border-radius:50%;border:2px solid var(--gold-400);animation:vector-ring 1.6s ease-out infinite;"></span>
+                <span style="position:absolute;width:96px;height:96px;border-radius:50%;border:2px solid var(--gold-400);animation:vector-ring 1.6s ease-out infinite .5s;"></span>
+                <span style="width:72px;height:72px;border-radius:50%;background:var(--gold-500);display:flex;align-items:center;justify-content:center;color:var(--forest-900);"><x-import component-from-global-scope="DesignSystem_66188c.Icon" name="mic" size="30" hint-size="30px,30px"></x-import></span>
+              </div>
+              <div style="display:flex;align-items:center;gap:3px;height:28px;">
+                <span style="width:4px;height:100%;border-radius:2px;background:rgba(255,255,255,.7);animation:vector-wave .7s ease-in-out infinite;"></span>
+                <span style="width:4px;height:100%;border-radius:2px;background:rgba(255,255,255,.7);animation:vector-wave .7s ease-in-out infinite .1s;"></span>
+                <span style="width:4px;height:100%;border-radius:2px;background:rgba(255,255,255,.7);animation:vector-wave .7s ease-in-out infinite .2s;"></span>
+                <span style="width:4px;height:100%;border-radius:2px;background:rgba(255,255,255,.7);animation:vector-wave .7s ease-in-out infinite .3s;"></span>
+                <span style="width:4px;height:100%;border-radius:2px;background:rgba(255,255,255,.7);animation:vector-wave .7s ease-in-out infinite .15s;"></span>
+                <span style="width:4px;height:100%;border-radius:2px;background:rgba(255,255,255,.7);animation:vector-wave .7s ease-in-out infinite .25s;"></span>
+              </div>
+              <div style="max-width:280px;text-align:center;font-size:17px;color:#fff;line-height:1.5;">купить корм коту, ещё отправить Ивану презентацию до пятницы<span style="opacity:.4;">…</span></div>
+            </div>
+            <div style="display:flex;justify-content:space-around;padding:0 40px 40px;">
+              <span style="font-size:14px;font-weight:600;color:rgba(255,255,255,.7);">Отмена</span>
+              <span style="font-size:14px;font-weight:700;color:var(--gold-400);">Готово</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- V03 Live Parsing -->
+      <div style="display:flex;flex-direction:column;align-items:center;">
+        <div style="font-family:var(--font-mono);font-size:11px;font-weight:600;color:var(--muted-foreground);margin-bottom:12px;">[R3][V][03] Live Parsing</div>
+        <div style="width:390px;height:844px;border-radius:46px;background:var(--forest-900);padding:12px;box-shadow:var(--shadow-floating);">
+          <div style="width:100%;height:100%;background:var(--background);border-radius:36px;overflow:hidden;position:relative;display:flex;flex-direction:column;">
+            <div style="display:flex;justify-content:space-between;padding:18px 24px 0;font-size:13px;font-weight:600;color:var(--foreground);"><span>9:41</span><span style="opacity:.5;">••••</span></div>
+            <div style="padding:16px 24px 4px;"><div style="font-size:18px;font-weight:700;color:var(--foreground);">Разобрали на 3 пункта</div><div style="font-size:13px;color:var(--muted-foreground);margin-top:2px;">Проверьте перед сохранением</div></div>
+            <div style="flex:1;overflow:hidden;padding:12px 24px;display:flex;flex-direction:column;gap:12px;">
+              <div style="border:1.5px solid var(--forest-800);border-radius:14px;padding:12px 14px;">
+                <span style="font-size:11px;font-weight:700;padding:3px 9px;border-radius:999px;background:var(--sage-100);color:var(--forest-800);">→ ШАГИ</span>
+                <div style="font-size:14px;color:var(--foreground);margin-top:8px;">Купить корм коту</div>
+              </div>
+              <div style="border:1.5px solid var(--forest-800);border-radius:14px;padding:12px 14px;">
+                <span style="font-size:11px;font-weight:700;padding:3px 9px;border-radius:999px;background:var(--sage-100);color:var(--forest-800);">→ ШАГИ</span>
+                <div style="font-size:14px;color:var(--foreground);margin-top:8px;">Отправить Ивану презентацию <span style="background:var(--amber-soft);color:var(--gold-500);border-radius:6px;padding:1px 6px;font-weight:600;">до пятницы</span></div>
+              </div>
+              <div style="border:1.5px solid #C8604A;border-radius:14px;padding:12px 14px;">
+                <span style="font-size:11px;font-weight:700;padding:3px 9px;border-radius:999px;background:#FBF3E3;color:#C8604A;">→ ЗАПИСКИ</span>
+                <div style="font-size:14px;color:var(--foreground);margin-top:8px;">Идея для курса про фокус</div>
+              </div>
+            </div>
+            <div style="padding:12px 24px 34px;"><x-import component-from-global-scope="DesignSystem_66188c.Button" variant="primary" size="lg" block="{{ true }}" hint-size="100%,52px">Сохранить все 3</x-import></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- V04-06 Confidence results -->
+      <div style="display:flex;flex-direction:column;align-items:center;">
+        <div style="font-family:var(--font-mono);font-size:11px;font-weight:600;color:var(--muted-foreground);margin-bottom:12px;">[R3][V][04–06] Результаты по confidence</div>
+        <div style="width:390px;height:844px;border-radius:46px;background:var(--forest-900);padding:12px;box-shadow:var(--shadow-floating);">
+          <div style="width:100%;height:100%;background:var(--background);border-radius:36px;overflow:hidden;position:relative;display:flex;flex-direction:column;">
+            <div style="display:flex;justify-content:space-between;padding:18px 24px 0;font-size:13px;font-weight:600;color:var(--foreground);"><span>9:41</span><span style="opacity:.5;">••••</span></div>
+            <div style="padding:16px 24px 4px;"><div style="font-size:18px;font-weight:700;color:var(--foreground);">Готово</div></div>
+            <div style="flex:1;overflow:hidden;padding:10px 24px;display:flex;flex-direction:column;gap:12px;">
+              <div style="background:var(--success-soft);border-radius:14px;padding:12px 14px;">
+                <div style="font-size:11px;font-weight:700;color:var(--success-500);text-transform:uppercase;margin-bottom:6px;">Готово автоматически</div>
+                <div style="display:flex;align-items:center;justify-content:space-between;"><span style="font-size:14px;font-weight:600;color:var(--foreground);">Купить корм коту</span><span style="font-size:12px;font-weight:700;color:var(--forest-800);">Отменить</span></div>
+              </div>
+              <div style="background:var(--amber-soft);border-radius:14px;padding:12px 14px;">
+                <div style="font-size:11px;font-weight:700;color:var(--gold-500);text-transform:uppercase;margin-bottom:6px;">Подтвердите</div>
+                <div style="font-size:14px;font-weight:600;color:var(--foreground);margin-bottom:2px;">Отправить Ивану презентацию</div>
+                <div style="font-size:12px;color:var(--muted-foreground);margin-bottom:8px;">до пт, 5 сен · Иван П. — 2 контакта с этим именем</div>
+                <div style="display:flex;gap:8px;"><span style="flex:1;text-align:center;font-size:12px;font-weight:700;padding:7px;border-radius:9px;background:var(--forest-800);color:#fff;">Верно</span><span style="flex:1;text-align:center;font-size:12px;font-weight:700;padding:7px;border-radius:9px;border:1px solid var(--border);color:var(--foreground);">Исправить</span></div>
+              </div>
+              <div style="background:var(--red-soft);border-radius:14px;padding:12px 14px;">
+                <div style="font-size:11px;font-weight:700;color:var(--red-500);text-transform:uppercase;margin-bottom:6px;">Уточните</div>
+                <div style="font-size:14px;font-weight:600;color:var(--foreground);margin-bottom:8px;">«…идея для курса про фокус» — это заметка или задача?</div>
+                <div style="display:flex;gap:8px;"><span style="flex:1;text-align:center;font-size:12px;font-weight:700;padding:7px;border-radius:9px;background:var(--forest-800);color:#fff;">Заметка</span><span style="flex:1;text-align:center;font-size:12px;font-weight:700;padding:7px;border-radius:9px;border:1px solid var(--border);color:var(--foreground);">Задача</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Android mic permission -->
+      <div style="display:flex;flex-direction:column;align-items:center;">
+        <div style="font-family:var(--font-mono);font-size:11px;font-weight:600;color:var(--muted-foreground);margin-bottom:12px;">Android · системный запрос разрешения</div>
+        <div style="width:390px;height:844px;border-radius:46px;background:var(--forest-900);padding:12px;box-shadow:var(--shadow-floating);">
+          <div style="width:100%;height:100%;background:var(--background);border-radius:36px;overflow:hidden;position:relative;display:flex;flex-direction:column;">
+            <div style="display:flex;justify-content:space-between;padding:18px 24px 0;font-size:13px;font-weight:600;color:var(--foreground);"><span>9:41</span><span style="opacity:.5;">••••</span></div>
+            <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:0 32px;">
+              <div style="width:100%;background:var(--card);border-radius:20px;padding:22px;box-shadow:var(--shadow-card);text-align:center;">
+                <span style="width:52px;height:52px;border-radius:50%;background:var(--sage-100);display:inline-flex;align-items:center;justify-content:center;color:var(--forest-800);margin-bottom:14px;"><x-import component-from-global-scope="DesignSystem_66188c.Icon" name="mic" size="24" hint-size="24px,24px"></x-import></span>
+                <div style="font-size:16px;font-weight:700;color:var(--foreground);margin-bottom:8px;">Разрешить ШАГАМ доступ к микрофону?</div>
+                <div style="font-size:13px;color:var(--muted-foreground);line-height:1.5;margin-bottom:18px;">Нужно для голосового ввода. Запись не сохраняется после распознавания.</div>
+                <div style="display:flex;flex-direction:column;gap:8px;">
+                  <span style="font-size:14px;font-weight:700;color:var(--forest-800);padding:10px;">Разрешить только во время использования</span>
+                  <span style="font-size:14px;font-weight:600;color:var(--muted-foreground);padding:10px;">Не разрешать</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+</div>
+
+</x-dc>
+</body>
+</html>

@@ -1,0 +1,964 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="_ds/design-system-66188c07-9b47-4513-950f-4bff1348c44e/tokens/fonts.css">
+  <link rel="stylesheet" href="_ds/design-system-66188c07-9b47-4513-950f-4bff1348c44e/tokens/colors.css">
+  <link rel="stylesheet" href="_ds/design-system-66188c07-9b47-4513-950f-4bff1348c44e/tokens/typography.css">
+  <link rel="stylesheet" href="_ds/design-system-66188c07-9b47-4513-950f-4bff1348c44e/tokens/radius.css">
+  <link rel="stylesheet" href="_ds/design-system-66188c07-9b47-4513-950f-4bff1348c44e/tokens/shadows.css">
+  <link rel="stylesheet" href="_ds/design-system-66188c07-9b47-4513-950f-4bff1348c44e/tokens/services.css">
+  <link rel="stylesheet" href="_ds/design-system-66188c07-9b47-4513-950f-4bff1348c44e/tokens/base.css">
+  <link rel="stylesheet" href="_ds/design-system-66188c07-9b47-4513-950f-4bff1348c44e/styles.css">
+  <script src="_ds/design-system-66188c07-9b47-4513-950f-4bff1348c44e/_ds_bundle.js"></script>
+  <style>
+    body { margin: 0; background: var(--sage-50); }
+    a { color: var(--forest-800); }
+    a:hover { color: var(--forest-600); }
+    [data-theme="dark"] {
+      --background: #10221A; --foreground: #EAF3EC;
+      --card: #173326; --card-foreground: #EAF3EC;
+      --popover: #173326; --popover-foreground: #EAF3EC;
+      --muted: #1C3B2C; --muted-foreground: #9FB3A6;
+      --secondary: #1C3B2C; --secondary-foreground: #EAF3EC;
+      --border: #24452F; --input: #1C3B2C;
+      --ring: #D8AE67; --accent: #D8AE67; --accent-foreground: #142018;
+      --primary: #3B8F5A; --primary-foreground: #0E1E16;
+      --destructive: #E8695A; --destructive-foreground: #1a0d0a;
+      --blue-soft: #12233A; --blue-500: #6FA8FF;
+      --violet-soft: #241B3A; --violet-500: #B39DFF;
+      --orange-soft: #3A2712; --orange-500: #FFA75C;
+      --red-soft: #3A1512; --red-500: #FF8A7A;
+      --success-soft: #123422; --success-500: #5FBE84;
+      --amber-soft: #332708; --amber-500: #E8B96A;
+      --sage-50: #16281F; --sage-100: #1B3226; --sage-150: #1F3A2B; --sage-200: #254433; --sage-300: #33573F;
+    }
+    /* ЗАПИСКИ family: терракота — цвет идентичности (accent/ring only), интерфейс остаётся спокойным (§zapiski-handoff) */
+    [data-theme="paper"] {
+      --background: #F7F3EA; --foreground: #2B2420;
+      --card: #FFFDF8; --card-foreground: #2B2420; --popover: #FFFDF8; --popover-foreground: #2B2420;
+      --muted: #EFE7D8; --muted-foreground: #7A6F5E;
+      --secondary: #EFE7D8; --secondary-foreground: #2B2420;
+      --border: #E6DCC8; --input: #FFFDF8; --ring: #C8604A;
+      --accent: #C8604A; --accent-foreground: #FBF3E3;
+      --sage-50: #F9F3E7; --sage-100: #F1E7D2; --sage-150: #EADCC0; --sage-200: #DFCBA5; --sage-300: #CBAD7C;
+    }
+    [data-theme="graphite"] {
+      --background: #1B1B1D; --foreground: #EDEDEE;
+      --card: #242426; --card-foreground: #EDEDEE; --popover: #242426; --popover-foreground: #EDEDEE;
+      --muted: #2C2C2F; --muted-foreground: #9B9B9E;
+      --secondary: #2C2C2F; --secondary-foreground: #EDEDEE;
+      --border: #34343A; --input: #2C2C2F; --ring: #C8604A;
+      --accent: #C8604A; --accent-foreground: #1B1B1D;
+      --sage-50: #202022; --sage-100: #26262A; --sage-150: #2C2C31; --sage-200: #35353B; --sage-300: #46464D;
+      --blue-soft: #1A2233; --blue-500: #6FA8FF; --violet-soft: #241F30; --violet-500: #B39DFF;
+      --orange-soft: #2E2318; --orange-500: #FFA75C; --red-soft: #2E1A18; --red-500: #FF8A7A;
+      --success-soft: #16281E; --success-500: #5FBE84; --amber-soft: #2B2416; --amber-500: #E8B96A;
+      --destructive: #E8695A; --destructive-foreground: #1a0d0a;
+    }
+    [data-theme="ink"] {
+      --background: #0E1420; --foreground: #E7EAF0;
+      --card: #161D2C; --card-foreground: #E7EAF0; --popover: #161D2C; --popover-foreground: #E7EAF0;
+      --muted: #1C2438; --muted-foreground: #8992A8;
+      --secondary: #1C2438; --secondary-foreground: #E7EAF0;
+      --border: #28304A; --input: #1C2438; --ring: #C8604A;
+      --accent: #C8604A; --accent-foreground: #0E1420;
+      --sage-50: #131A29; --sage-100: #172030; --sage-150: #1B2537; --sage-200: #222E44; --sage-300: #2D3B57;
+      --blue-soft: #17223A; --blue-500: #7FB0FF; --violet-soft: #221E3A; --violet-500: #B8A4FF;
+      --orange-soft: #33261A; --orange-500: #FFAA66; --red-soft: #331B1A; --red-500: #FF8F80;
+      --success-soft: #142A22; --success-500: #63C08A; --amber-soft: #302614; --amber-500: #EABD70;
+      --destructive: #E8695A; --destructive-foreground: #1a0d0a;
+    }
+    @keyframes shagi-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+  </style>
+</helmet>
+
+<div style="min-height:100vh;background:var(--sage-50);font-family:var(--font-sans);" data-theme="{{ theme }}">
+
+  <div style="position:sticky;top:0;z-index:50;background:color-mix(in srgb, var(--sage-50) 82%, transparent);backdrop-filter:blur(18px);border-bottom:1px solid var(--border);padding:14px 32px;display:flex;align-items:center;justify-content:space-between;gap:20px;flex-wrap:wrap;">
+    <div style="display:flex;align-items:center;gap:12px;">
+      <x-import component-from-global-scope="DesignSystem_66188c.ServiceMark" service="shagi" size="34" hint-size="34px,34px"></x-import>
+      <div>
+        <div style="font-size:15px;font-weight:700;color:var(--foreground);letter-spacing:-0.01em;">ШАГИ — R1 Design</div>
+        <div style="font-family:var(--font-mono);font-size:11px;color:var(--muted-foreground);">СИМПАС · Personal Task Manager · v4.0 FINAL</div>
+      </div>
+    </div>
+    <nav style="display:flex;gap:18px;flex-wrap:wrap;">
+      <a href="#sec-onboarding" style="font-size:13px;font-weight:600;text-decoration:none;">Онбординг</a>
+      <a href="#sec-today" style="font-size:13px;font-weight:600;text-decoration:none;">Сегодня</a>
+      <a href="#sec-capture" style="font-size:13px;font-weight:600;text-decoration:none;">Ввод</a>
+      <a href="#sec-detail" style="font-size:13px;font-weight:600;text-decoration:none;">Задача</a>
+      <a href="#sec-inbox" style="font-size:13px;font-weight:600;text-decoration:none;">Входящие</a>
+      <a href="#sec-plan" style="font-size:13px;font-weight:600;text-decoration:none;">План</a>
+      <a href="#sec-projects" style="font-size:13px;font-weight:600;text-decoration:none;">Проекты</a>
+      <a href="#sec-settings" style="font-size:13px;font-weight:600;text-decoration:none;">Настройки</a>
+      <a href="#sec-interactions" style="font-size:13px;font-weight:600;text-decoration:none;">Взаимодействия</a>
+      <a href="#sec-desktop" style="font-size:13px;font-weight:600;text-decoration:none;">Desktop</a>
+    </nav>
+    <x-import component-from-global-scope="DesignSystem_66188c.SegmentedControl" options="{{ themeOptions }}" value="{{ theme }}" onChange="{{ setTheme }}" hint-size="360px,40px"</x-import>
+  </div>
+
+  <!-- ================= ONBOARDING ================= -->
+  <section id="sec-onboarding" style="padding:56px 32px 8px;max-width:1560px;margin:0 auto;">
+    <div style="margin-bottom:24px;">
+      <div style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:var(--gold-500);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">Onboarding · R1 CORE</div>
+      <h2 style="font-size:24px;font-weight:700;letter-spacing:-0.01em;color:var(--foreground);margin:0 0 4px;">M02–M04 · Начать без стены регистрации</h2>
+      <p style="font-size:14px;color:var(--muted-foreground);margin:0;max-width:680px;">«Начать» работает локально; «Войти» не обязателен. Первая задача — настоящая, не демо.</p>
+    </div>
+    <div style="display:flex;gap:32px;flex-wrap:wrap;align-items:flex-start;">
+
+      <!-- M02 Welcome -->
+      <div style="display:flex;flex-direction:column;align-items:center;">
+        <div style="font-family:var(--font-mono);font-size:11px;font-weight:600;color:var(--muted-foreground);margin-bottom:12px;">[R1][M][02] Welcome</div>
+        <div style="width:390px;height:844px;border-radius:46px;background:var(--forest-900);padding:12px;box-shadow:var(--shadow-floating);">
+          <div style="width:100%;height:100%;background:var(--background);border-radius:36px;overflow:hidden;position:relative;display:flex;flex-direction:column;">
+            <div style="flex:1;background:linear-gradient(160deg,var(--forest-800),var(--forest-900) 70%);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;">
+              <x-import component-from-global-scope="DesignSystem_66188c.ServiceMark" service="shagi" size="88" shape="rounded" hint-size="88px,88px"></x-import>
+              <div style="text-align:center;color:#fff;">
+                <div style="font-size:26px;font-weight:700;letter-spacing:.1em;">ШАГИ</div>
+                <div style="font-size:12px;color:rgba(255,255,255,.6);margin-top:4px;font-family:var(--font-mono);">часть экосистемы СИМПАС</div>
+              </div>
+            </div>
+            <div style="padding:28px 24px 34px;display:flex;flex-direction:column;gap:16px;">
+              <div style="text-align:center;">
+                <div style="font-size:20px;font-weight:700;color:var(--foreground);margin-bottom:6px;">Что мне делать дальше?</div>
+                <div style="font-size:14px;color:var(--muted-foreground);line-height:1.5;">Зафиксировать быстро. Понять день сразу. Сделать вовремя.</div>
+              </div>
+              <x-import component-from-global-scope="DesignSystem_66188c.Button" variant="primary" size="lg" block="{{ true }}" hint-size="100%,52px">Начать</x-import>
+              <x-import component-from-global-scope="DesignSystem_66188c.Button" variant="ghost" size="lg" block="{{ true }}" hint-size="100%,52px">Войти</x-import>
+              <div style="text-align:center;font-size:11px;color:var(--muted-foreground);">Работает офлайн. Аккаунт можно добавить позже.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- M03 Sign in -->
+      <div style="display:flex;flex-direction:column;align-items:center;">
+        <div style="font-family:var(--font-mono);font-size:11px;font-weight:600;color:var(--muted-foreground);margin-bottom:12px;">[R1][M][03] Sign in</div>
+        <div style="width:390px;height:844px;border-radius:46px;background:var(--forest-900);padding:12px;box-shadow:var(--shadow-floating);">
+          <div style="width:100%;height:100%;background:var(--background);border-radius:36px;overflow:hidden;position:relative;display:flex;flex-direction:column;">
+            <div style="display:flex;justify-content:space-between;padding:18px 24px 0;font-size:13px;font-weight:600;color:var(--foreground);"><span>9:41</span><span style="opacity:.5;">••••</span></div>
+            <div style="display:flex;align-items:center;gap:12px;padding:20px 20px 8px;">
+              <span style="color:var(--foreground);"><x-import component-from-global-scope="DesignSystem_66188c.Icon" name="back" size="20" hint-size="20px,20px"></x-import></span>
+              <span style="font-size:17px;font-weight:700;color:var(--foreground);">Войти</span>
+            </div>
+            <div style="padding:16px 24px;display:flex;flex-direction:column;gap:18px;">
+              <div>
+                <div style="font-size:12px;font-weight:600;color:var(--muted-foreground);margin-bottom:6px;">Email</div>
+                <x-import component-from-global-scope="DesignSystem_66188c.Input" placeholder="you@example.com" hint-size="100%,46px"></x-import>
+              </div>
+              <x-import component-from-global-scope="DesignSystem_66188c.Button" variant="primary" size="lg" block="{{ true }}" hint-size="100%,52px">Получить код</x-import>
+              <div style="display:flex;align-items:center;gap:10px;color:var(--muted-foreground);font-size:12px;"><div style="flex:1;height:1px;background:var(--border);"></div>или<div style="flex:1;height:1px;background:var(--border);"></div></div>
+              <div style="display:flex;align-items:center;justify-content:center;gap:10px;height:52px;border:1px solid var(--border);border-radius:14px;background:var(--card);">
+                <img src="assets/yandex-logo.png" alt="" style="width:20px;height:20px;object-fit:contain;">
+                <span style="font-size:14px;font-weight:600;color:var(--foreground);">Войти через Яндекс ID</span>
+              </div>
+              <div style="text-align:center;font-size:12px;color:var(--muted-foreground);line-height:1.5;margin-top:6px;">Регистрация не обязательна.<br><a href="#" style="font-weight:600;">Продолжить без аккаунта</a></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- M04 First task onboarding -->
+      <div style="display:flex;flex-direction:column;align-items:center;">
+        <div style="font-family:var(--font-mono);font-size:11px;font-weight:600;color:var(--muted-foreground);margin-bottom:12px;">[R1][M][04] First task</div>
+        <div style="width:390px;height:844px;border-radius:46px;background:var(--forest-900);padding:12px;box-shadow:var(--shadow-floating);">
+          <div style="width:100%;height:100%;background:var(--background);border-radius:36px;overflow:hidden;position:relative;display:flex;flex-direction:column;">
+            <div style="display:flex;justify-content:space-between;padding:18px 24px 0;font-size:13px;font-weight:600;color:var(--foreground);"><span>9:41</span><span style="opacity:.5;">••••</span></div>
+            <div style="padding:28px 24px 0;">
+              <div style="font-size:20px;font-weight:700;color:var(--foreground);margin-bottom:4px;">Первая задача</div>
+              <div style="font-size:14px;color:var(--muted-foreground);">Начните с чего-то простого</div>
+            </div>
+            <div style="padding:28px 24px;">
+              <div style="border:1.5px solid var(--ring);border-radius:16px;padding:16px;background:var(--card);box-shadow:0 0 0 3px color-mix(in srgb, var(--ring) 18%, transparent);">
+                <div style="font-size:16px;color:var(--foreground);">Купить хлеб<span style="display:inline-block;width:2px;height:16px;background:var(--forest-800);margin-left:2px;vertical-align:middle;animation:shagi-pulse 1s infinite;"></span></div>
+              </div>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;">
+                <div style="font-size:13px;padding:8px 14px;border-radius:999px;background:var(--sage-100);color:var(--forest-800);">Купить хлеб</div>
+                <div style="font-size:13px;padding:8px 14px;border-radius:999px;background:var(--sage-100);color:var(--forest-800);">Позвонить врачу</div>
+                <div style="font-size:13px;padding:8px 14px;border-radius:999px;background:var(--sage-100);color:var(--forest-800);">Забрать посылку</div>
+              </div>
+            </div>
+            <div style="margin-top:auto;padding:20px 24px 34px;display:flex;flex-direction:column;gap:10px;">
+              <x-import component-from-global-scope="DesignSystem_66188c.Button" variant="primary" size="lg" block="{{ true }}" hint-size="100%,52px">Сохранить</x-import>
+              <div style="text-align:center;font-size:11px;color:var(--muted-foreground);">Так теперь будет выглядеть каждый день</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ================= TODAY ================= -->
+  <section id="sec-today" style="padding:56px 32px 8px;max-width:1560px;margin:0 auto;">
+    <div style="margin-bottom:24px;">
+      <div style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:var(--gold-500);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">Today · R1 CORE</div>
+      <h2 style="font-size:24px;font-weight:700;letter-spacing:-0.01em;color:var(--foreground);margin:0 0 4px;">M07, M09–M10 · Главный экран продукта</h2>
+      <p style="font-size:14px;color:var(--muted-foreground);margin:0;max-width:760px;">«Просрочен срок» и «Не по плану» — два разных состояния, никогда не смешиваются: разная сила акцента, разное действие по умолчанию.</p>
+    </div>
+    <div style="display:flex;gap:32px;flex-wrap:wrap;align-items:flex-start;">
+
+      <!-- M07 Today Normal -->
+      <div style="display:flex;flex-direction:column;align-items:center;">
+        <div style="font-family:var(--font-mono);font-size:11px;font-weight:600;color:var(--muted-foreground);margin-bottom:12px;">[R1][M][07] Today / Normal</div>
+        <div style="width:390px;height:844px;border-radius:46px;background:var(--forest-900);padding:12px;box-shadow:var(--shadow-floating);">
+          <div style="width:100%;height:100%;background:var(--background);border-radius:36px;overflow:hidden;position:relative;display:flex;flex-direction:column;">
+            <div style="display:flex;justify-content:space-between;padding:18px 24px 0;font-size:13px;font-weight:600;color:var(--foreground);flex-shrink:0;"><span>9:41</span><span style="opacity:.5;">••••</span></div>
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 24px 4px;flex-shrink:0;">
+              <div style="font-size:22px;font-weight:700;color:var(--foreground);letter-spacing:-0.01em;">Суббота, 29 августа</div>
+              <div style="position:relative;color:var(--foreground);">
+                <x-import component-from-global-scope="DesignSystem_66188c.Icon" name="archive" size="21" hint-size="21px,21px"></x-import>
+                <span style="position:absolute;top:-4px;right:-6px;background:var(--gold-500);color:#fff;font-size:9px;font-weight:700;border-radius:999px;padding:1px 5px;">3</span>
+              </div>
+            </div>
+            <div style="flex:1;overflow:hidden;">
+              <div style="padding:16px 24px 6px;display:flex;align-items:center;justify-content:space-between;"><span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--gold-500);">Главное</span><span style="font-size:11px;color:var(--muted-foreground);">2/3</span></div>
+              <div style="display:flex;align-items:center;gap:12px;padding:10px 24px;border-bottom:1px solid var(--border);">
+                <div style="width:22px;height:22px;border-radius:50%;border:2px solid var(--gold-500);flex-shrink:0;"></div>
+                <div style="flex:1;"><div style="font-size:15px;font-weight:600;color:var(--foreground);">Отправить квартальный отчёт</div><div style="font-size:12px;color:var(--muted-foreground);margin-top:2px;">14:00 · 45 мин</div></div>
+                <span style="width:8px;height:8px;border-radius:50%;background:var(--gold-500);"></span>
+              </div>
+              <div style="display:flex;align-items:center;gap:12px;padding:10px 24px;border-bottom:1px solid var(--border);">
+                <div style="width:22px;height:22px;border-radius:50%;border:2px solid var(--gold-500);flex-shrink:0;"></div>
+                <div style="flex:1;"><div style="font-size:15px;font-weight:600;color:var(--foreground);">Забрать документы из банка</div></div>
+                <span style="width:8px;height:8px;border-radius:50%;background:var(--gold-500);"></span>
+              </div>
+
+              <div style="padding:18px 24px 6px;"><span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted-foreground);">По времени</span></div>
+              <div style="display:flex;align-items:center;gap:12px;padding:10px 24px;border-bottom:1px solid var(--border);">
+                <div style="width:22px;height:22px;border-radius:50%;border:2px solid var(--border);flex-shrink:0;"></div>
+                <div style="flex:1;"><div style="font-size:15px;font-weight:500;color:var(--foreground);">Созвон с командой</div><div style="font-size:12px;color:var(--muted-foreground);margin-top:2px;">11:00 · 30 мин</div></div>
+              </div>
+              <div style="display:flex;align-items:center;gap:12px;padding:10px 24px;border-bottom:1px solid var(--border);">
+                <div style="width:22px;height:22px;border-radius:50%;border:2px solid var(--border);flex-shrink:0;"></div>
+                <div style="flex:1;"><div style="font-size:15px;font-weight:500;color:var(--foreground);">Забрать посылку</div><div style="font-size:12px;color:var(--muted-foreground);margin-top:2px;">18:30</div></div>
+              </div>
+
+              <div style="padding:18px 24px 6px;"><span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted-foreground);">Сегодня</span></div>
+              <div style="display:flex;align-items:center;gap:12px;padding:10px 24px;border-bottom:1px solid var(--border);">
+                <div style="width:22px;height:22px;border-radius:50%;border:2px solid var(--border);flex-shrink:0;"></div>
+                <div style="flex:1;"><div style="font-size:15px;font-weight:500;color:var(--foreground);">Купить хлеб</div></div>
+              </div>
+              <div style="display:flex;align-items:center;gap:12px;padding:10px 24px;border-bottom:1px solid var(--border);">
+                <div style="width:22px;height:22px;border-radius:50%;border:2px solid var(--border);flex-shrink:0;"></div>
+                <div style="flex:1;"><div style="font-size:15px;font-weight:500;color:var(--foreground);">Полить цветы</div></div>
+              </div>
+
+              <div style="padding:18px 24px 6px;"><span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted-foreground);">Когда будет время</span></div>
+              <div style="display:flex;align-items:center;gap:12px;padding:10px 24px;opacity:.6;">
+                <div style="width:22px;height:22px;border-radius:50%;border:2px dashed var(--border);flex-shrink:0;"></div>
+                <div style="flex:1;"><div style="font-size:15px;font-weight:500;color:var(--foreground);">Разобрать фото с отпуска</div></div>
+              </div>
+            </div>
+            <div style="display:flex;align-items:center;justify-content:space-around;padding:8px 8px 22px;border-top:1px solid var(--border);background:var(--card);flex-shrink:0;">
+              <div style="display:flex;flex-direction:column;align-items:center;gap:3px;color:var(--forest-800);"><x-import component-from-global-scope="DesignSystem_66188c.Icon" name="list" size="20" hint-size="20px,20px"></x-import><span style="font-size:10px;font-weight:700;">Сегодня</span></div>
+              <div style="display:flex;flex-direction:column;align-items:center;gap:3px;color:var(--muted-foreground);"><x-import component-from-global-scope="DesignSystem_66188c.Icon" name="meeting" size="20" hint-size="20px,20px"></x-import><span style="font-size:10px;font-weight:600;">План</span></div>
+              <div style="width:46px;height:46px;border-radius:50%;background:var(--forest-800);display:flex;align-items:center;justify-content:center;margin-top:-16px;box-shadow:var(--shadow-sm);color:#fff;"><x-import component-from-global-scope="DesignSystem_66188c.Icon" name="add" size="22" hint-size="22px,22px"></x-import></div>
+              <div style="display:flex;flex-direction:column;align-items:center;gap:3px;color:var(--muted-foreground);"><x-import component-from-global-scope="DesignSystem_66188c.Icon" name="archive" size="20" hint-size="20px,20px"></x-import><span style="font-size:10px;font-weight:600;">Проекты</span></div>
+              <div style="display:flex;flex-direction:column;align-items:center;gap:3px;color:var(--muted-foreground);"><x-import component-from-global-scope="DesignSystem_66188c.Icon" name="search" size="20" hint-size="20px,20px"></x-import><span style="font-size:10px;font-weight:600;">Поиск</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- M09/M10 Missed plan + Deadline missed -->
+      <div style="display:flex;flex-direction:column;align-items:center;">
+        <div style="font-family:var(--font-mono);font-size:11px;font-weight:600;color:var(--muted-foreground);margin-bottom:12px;">[R1][M][09/10] Просрочен срок + Не по плану</div>
+        <div style="width:390px;height:844px;border-radius:46px;background:var(--forest-900);padding:12px;box-shadow:var(--shadow-floating);">
+          <div style="width:100%;height:100%;background:var(--background);border-radius:36px;overflow:hidden;position:relative;display:flex;flex-direction:column;">
+            <div style="display:flex;justify-content:space-between;padding:18px 24px 0;font-size:13px;font-weight:600;color:var(--foreground);flex-shrink:0;"><span>9:41</span><span style="opacity:.5;">••••</span></div>
+            <div style="padding:16px 24px 4px;flex-shrink:0;"><div style="font-size:22px;font-weight:700;color:var(--foreground);letter-spacing:-0.01em;">Суббота, 29 августа</div></div>
+            <div style="flex:1;overflow:hidden;">
+
+              <div style="margin:8px 16px 0;background:var(--red-soft);border-radius:16px;overflow:hidden;">
+                <div style="display:flex;align-items:center;gap:8px;padding:12px 14px 6px;">
+                  <x-import component-from-global-scope="DesignSystem_66188c.Icon" name="request" size="15" style="{{ redIconStyle }}" hint-size="15px,15px"></x-import>
+                  <span style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--red-500);">Просрочен срок</span><span style="font-size:11px;color:var(--red-500);opacity:.7;">2</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:12px;padding:8px 14px;">
+                  <div style="width:20px;height:20px;border-radius:50%;background:var(--red-500);color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;flex-shrink:0;">!</div>
+                  <div style="flex:1;"><div style="font-size:14px;font-weight:600;color:var(--foreground);">Оплатить аренду офиса</div><div style="font-size:12px;color:var(--red-500);font-weight:600;margin-top:2px;">до 27 авг, 18:00</div></div>
+                </div>
+                <div style="display:flex;align-items:center;gap:12px;padding:8px 14px 14px;">
+                  <div style="width:20px;height:20px;border-radius:50%;background:var(--red-500);color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;flex-shrink:0;">!</div>
+                  <div style="flex:1;"><div style="font-size:14px;font-weight:600;color:var(--foreground);">Продлить страховку</div><div style="font-size:12px;color:var(--red-500);font-weight:600;margin-top:2px;">до 28 авг</div></div>
+                </div>
+              </div>
+
+              <div style="margin:12px 16px 0;background:var(--orange-soft);border-radius:16px;overflow:hidden;">
+                <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px 8px;">
+                  <span style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--orange-500);">Не по плану · 2</span>
+                </div>
+                <div style="display:flex;gap:8px;padding:0 14px 10px;">
+                  <div style="flex:1;text-align:center;font-size:12px;font-weight:600;padding:7px;border-radius:10px;background:var(--card);color:var(--orange-500);border:1px solid color-mix(in srgb, var(--orange-500) 25%, transparent);">→ Сегодня</div>
+                  <div style="flex:1;text-align:center;font-size:12px;font-weight:600;padding:7px;border-radius:10px;background:var(--card);color:var(--orange-500);border:1px solid color-mix(in srgb, var(--orange-500) 25%, transparent);">→ Завтра</div>
+                </div>
+                <div style="display:flex;align-items:center;gap:12px;padding:8px 14px;">
+                  <div style="width:20px;height:20px;border-radius:50%;border:2px solid var(--orange-500);flex-shrink:0;"></div>
+                  <div style="flex:1;"><div style="font-size:14px;font-weight:600;color:var(--foreground);">Согласовать бюджет</div><div style="font-size:12px;color:var(--orange-500);margin-top:2px;">план: пт, 28 авг</div></div>
+                  <div style="font-size:12px;font-weight:600;color:var(--forest-800);">Перепланировать</div>
+                </div>
+                <div style="display:flex;align-items:center;gap:12px;padding:8px 14px 14px;">
+                  <div style="width:20px;height:20px;border-radius:50%;border:2px solid var(--orange-500);flex-shrink:0;"></div>
+                  <div style="flex:1;"><div style="font-size:14px;font-weight:600;color:var(--foreground);">Позвонить в поддержку</div><div style="font-size:12px;color:var(--orange-500);margin-top:2px;">план: чт, 27 авг</div></div>
+                </div>
+              </div>
+
+              <div style="padding:16px 24px 6px;"><span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--gold-500);">Главное</span></div>
+              <div style="display:flex;align-items:center;gap:12px;padding:10px 24px;border-bottom:1px solid var(--border);">
+                <div style="width:22px;height:22px;border-radius:50%;border:2px solid var(--gold-500);flex-shrink:0;"></div>
+                <div style="flex:1;"><div style="font-size:15px;font-weight:600;color:var(--foreground);">Отправить квартальный отчёт</div><div style="font-size:12px;color:var(--muted-foreground);margin-top:2px;">14:00 · 45 мин</div></div>
+              </div>
+              <div style="padding:16px 24px 6px;"><span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted-foreground);">Сегодня</span></div>
+              <div style="display:flex;align-items:center;gap:12px;padding:10px 24px;">
+                <div style="width:22px;height:22px;border-radius:50%;border:2px solid var(--border);flex-shrink:0;"></div>
+                <div style="flex:1;"><div style="font-size:15px;font-weight:500;color:var(--foreground);">Купить хлеб</div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ================= CAPTURE / NLP ================= -->
+  <section id="sec-capture" style="padding:56px 32px 8px;max-width:1560px;margin:0 auto;">
+    <div style="margin-bottom:24px;">
+      <div style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:var(--gold-500);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">Capture · R1 CORE</div>
+      <h2 style="font-size:24px;font-weight:700;letter-spacing:-0.01em;color:var(--foreground);margin:0 0 4px;">M20–M21 · Quick Add + детерминированный NLP</h2>
+      <p style="font-size:14px;color:var(--muted-foreground);margin:0;max-width:760px;">Открытие сразу даёт фокус в поле. Распознанные токены — редактируемые chips; при сохранении удаляются из title.</p>
+    </div>
+    <div style="display:flex;gap:32px;flex-wrap:wrap;align-items:flex-start;">
+
+      <div style="display:flex;flex-direction:column;align-items:center;">
+        <div style="font-family:var(--font-mono);font-size:11px;font-weight:600;color:var(--muted-foreground);margin-bottom:12px;">[R1][M][20/21] Quick Add / NLP parsed</div>
+        <div style="width:390px;height:844px;border-radius:46px;background:var(--forest-900);padding:12px;box-shadow:var(--shadow-floating);">
+          <div style="width:100%;height:100%;background:var(--background);border-radius:36px;overflow:hidden;position:relative;display:flex;flex-direction:column;">
+            <div style="flex:1;background:rgba(20,32,24,.35);position:relative;">
+              <div style="position:absolute;top:18px;left:24px;right:24px;font-size:13px;font-weight:600;color:rgba(255,255,255,.7);">9:41</div>
+              <div style="position:absolute;top:70px;left:24px;right:24px;opacity:.5;">
+                <div style="font-size:20px;font-weight:700;color:#fff;">Суббота, 29 августа</div>
+              </div>
+            </div>
+            <div style="background:var(--card);border-radius:24px 24px 0 0;box-shadow:0 -8px 24px rgba(20,32,24,.12);padding:10px 22px 30px;">
+              <div style="width:36px;height:4px;border-radius:99px;background:var(--border);margin:0 auto 18px;"></div>
+              <div style="font-size:17px;color:var(--foreground);line-height:1.5;margin-bottom:14px;">Позвонить врачу <span style="background:var(--sage-150);color:var(--forest-800);border-radius:8px;padding:2px 8px;font-weight:600;font-size:15px;">завтра</span> <span style="background:var(--sage-150);color:var(--forest-800);border-radius:8px;padding:2px 8px;font-weight:600;font-size:15px;">11:00</span></div>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px;">
+                <div style="display:flex;align-items:center;gap:6px;font-size:13px;padding:8px 12px;border-radius:999px;background:var(--sage-100);color:var(--forest-800);font-weight:600;">Завтра, 30 авг ×</div>
+                <div style="display:flex;align-items:center;gap:6px;font-size:13px;padding:8px 12px;border-radius:999px;background:var(--sage-100);color:var(--forest-800);font-weight:600;">11:00 ×</div>
+              </div>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;padding-top:14px;border-top:1px solid var(--border);">
+                <div style="font-size:13px;padding:8px 12px;border-radius:999px;border:1px solid var(--border);color:var(--muted-foreground);font-weight:600;">Проект</div>
+                <div style="font-size:13px;padding:8px 12px;border-radius:999px;border:1px solid var(--border);color:var(--muted-foreground);font-weight:600;">Приоритет</div>
+                <div style="font-size:13px;padding:8px 12px;border-radius:999px;border:1px solid var(--border);color:var(--muted-foreground);font-weight:600;">Ещё</div>
+              </div>
+              <div style="margin-top:20px;">
+                <x-import component-from-global-scope="DesignSystem_66188c.Button" variant="primary" size="lg" block="{{ true }}" hint-size="100%,52px">Сохранить</x-import>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:16px;max-width:420px;padding-top:30px;">
+        <div style="font-size:13px;font-weight:700;color:var(--foreground);">Грамматика токенов (§28.2)</div>
+        <div style="display:flex;flex-direction:column;gap:10px;">
+          <div style="display:flex;align-items:center;gap:10px;"><x-import component-from-global-scope="DesignSystem_66188c.Badge" variant="secondary" hint-size="auto,24px">до 14 сен</x-import><span style="font-size:13px;color:var(--muted-foreground);">маркер «до …» → Deadline, не Planned Date</span></div>
+          <div style="display:flex;align-items:center;gap:10px;"><x-import component-from-global-scope="DesignSystem_66188c.Badge" variant="secondary" hint-size="auto,24px">#проект</x-import><span style="font-size:13px;color:var(--muted-foreground);">префикс # с автокомплитом</span></div>
+          <div style="display:flex;align-items:center;gap:10px;"><x-import component-from-global-scope="DesignSystem_66188c.Badge" variant="secondary" hint-size="auto,24px">@метка</x-import><span style="font-size:13px;color:var(--muted-foreground);">префикс @ с автокомплитом</span></div>
+          <div style="display:flex;align-items:center;gap:10px;"><x-import component-from-global-scope="DesignSystem_66188c.Badge" variant="secondary" hint-size="auto,24px">!1–!4</x-import><span style="font-size:13px;color:var(--muted-foreground);">явный приоритет; «важно/срочно» не парсится</span></div>
+          <div style="display:flex;align-items:center;gap:10px;"><x-import component-from-global-scope="DesignSystem_66188c.Badge" variant="new" hint-size="auto,24px">вечером · 19:00</x-import><span style="font-size:13px;color:var(--muted-foreground);">неоднозначность → suggestion, не скрытый выбор</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= TASK DETAIL ================= -->
+  <section id="sec-detail" style="padding:56px 32px 8px;max-width:1560px;margin:0 auto;">
+    <div style="margin-bottom:24px;">
+      <div style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:var(--gold-500);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">Task Detail · R1 CORE</div>
+      <h2 style="font-size:24px;font-weight:700;letter-spacing:-0.01em;color:var(--foreground);margin:0 0 4px;">M24–M26 · Простая задача остаётся простой</h2>
+      <p style="font-size:14px;color:var(--muted-foreground);margin:0;max-width:760px;">Progressive disclosure: полная temporal-модель раскрывается только когда нужна. «Подзадачи» и «Чек-лист» — раздельные подписанные блоки.</p>
+    </div>
+    <div style="display:flex;gap:32px;flex-wrap:wrap;align-items:flex-start;">
+
+      <!-- M24 Task Detail Simple -->
+      <div style="display:flex;flex-direction:column;align-items:center;">
+        <div style="font-family:var(--font-mono);font-size:11px;font-weight:600;color:var(--muted-foreground);margin-bottom:12px;">[R1][M][24] Task Detail / Simple</div>
+        <div style="width:390px;height:844px;border-radius:46px;background:var(--forest-900);padding:12px;box-shadow:var(--shadow-floating);">
+          <div style="width:100%;height:100%;background:var(--background);border-radius:36px;overflow:hidden;position:relative;display:flex;flex-direction:column;">
+            <div style="display:flex;justify-content:space-between;padding:18px 24px 0;font-size:13px;font-weight:600;color:var(--foreground);"><span>9:41</span><span style="opacity:.5;">••••</span></div>
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px;">
+              <span style="color:var(--foreground);"><x-import component-from-global-scope="DesignSystem_66188c.Icon" name="back" size="20" hint-size="20px,20px"></x-import></span>
+              <span style="font-size:13px;font-weight:700;color:var(--forest-800);">Готово</span>
+            </div>
+            <div style="padding:16px 24px;display:flex;gap:14px;align-items:flex-start;">
+              <div style="width:26px;height:26px;border-radius:50%;border:2px solid var(--border);flex-shrink:0;margin-top:2px;"></div>
+              <div style="font-size:20px;font-weight:600;color:var(--foreground);line-height:1.3;">Купить хлеб</div>
+            </div>
+            <div style="padding:0 24px;"><span style="font-size:12px;padding:5px 11px;border-radius:999px;background:var(--muted);color:var(--muted-foreground);font-weight:600;">Входящие</span></div>
+            <div style="margin:20px 24px 0;height:1px;background:var(--border);"></div>
+            <div style="padding:16px 24px;display:flex;flex-direction:column;gap:14px;">
+              <div style="display:flex;align-items:center;gap:10px;color:var(--muted-foreground);"><x-import component-from-global-scope="DesignSystem_66188c.Icon" name="meeting" size="18" hint-size="18px,18px"></x-import><span style="font-size:14px;font-weight:500;">Добавить дату</span></div>
+              <div style="display:flex;align-items:center;gap:10px;color:var(--muted-foreground);"><x-import component-from-global-scope="DesignSystem_66188c.Icon" name="format" size="18" hint-size="18px,18px"></x-import><span style="font-size:14px;font-weight:500;">Приоритет</span></div>
+              <div style="display:flex;align-items:center;gap:10px;color:var(--muted-foreground);"><x-import component-from-global-scope="DesignSystem_66188c.Icon" name="list" size="18" hint-size="18px,18px"></x-import><span style="font-size:14px;font-weight:500;">Добавить заметку</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- M25 Task Detail Full -->
+      <div style="display:flex;flex-direction:column;align-items:center;">
+        <div style="font-family:var(--font-mono);font-size:11px;font-weight:600;color:var(--muted-foreground);margin-bottom:12px;">[R1][M][25] Task Detail / Full</div>
+        <div style="width:390px;height:844px;border-radius:46px;background:var(--forest-900);padding:12px;box-shadow:var(--shadow-floating);">
+          <div style="width:100%;height:100%;background:var(--background);border-radius:36px;overflow:hidden;position:relative;display:flex;flex-direction:column;">
+            <div style="display:flex;justify-content:space-between;padding:18px 24px 0;font-size:13px;font-weight:600;color:var(--foreground);flex-shrink:0;"><span>9:41</span><span style="opacity:.5;">••••</span></div>
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 20px 6px;flex-shrink:0;">
+              <span style="color:var(--foreground);"><x-import component-from-global-scope="DesignSystem_66188c.Icon" name="back" size="20" hint-size="20px,20px"></x-import></span>
+              <span style="color:var(--muted-foreground);"><x-import component-from-global-scope="DesignSystem_66188c.Icon" name="more" size="20" hint-size="20px,20px"></x-import></span>
+            </div>
+            <div style="flex:1;overflow:hidden;padding:6px 24px 20px;">
+              <div style="display:flex;gap:12px;align-items:flex-start;margin-bottom:6px;">
+                <div style="width:24px;height:24px;border-radius:50%;border:2px solid var(--forest-800);flex-shrink:0;margin-top:2px;"></div>
+                <div style="font-size:18px;font-weight:600;color:var(--foreground);line-height:1.3;">Подготовить презентацию</div>
+              </div>
+              <div style="margin-left:36px;margin-bottom:14px;"><span style="font-size:12px;padding:4px 10px;border-radius:999px;background:var(--sage-100);color:var(--forest-800);font-weight:600;">Работа · Запуск сайта</span></div>
+
+              <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted-foreground);margin-bottom:8px;">Планирование</div>
+              <div style="display:flex;flex-direction:column;gap:0;background:var(--card);border:1px solid var(--border);border-radius:14px;overflow:hidden;margin-bottom:14px;">
+                <div style="display:flex;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--border);"><span style="font-size:13px;color:var(--muted-foreground);">Когда делать</span><span style="font-size:13px;font-weight:600;color:var(--foreground);">Вт, 10 сен · 14:00</span></div>
+                <div style="display:flex;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--border);"><span style="font-size:13px;color:var(--muted-foreground);">Длительность</span><span style="font-size:13px;font-weight:600;color:var(--foreground);">45 мин</span></div>
+                <div style="display:flex;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--border);"><span style="font-size:13px;color:var(--muted-foreground);">Срок</span><span style="font-size:13px;font-weight:700;color:var(--orange-500);">до 12 сен, 18:00</span></div>
+                <div style="display:flex;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--border);"><span style="font-size:13px;color:var(--muted-foreground);">Напоминание</span><span style="font-size:13px;font-weight:600;color:var(--foreground);">10 сен, 13:45</span></div>
+                <div style="display:flex;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--border);"><span style="font-size:13px;color:var(--muted-foreground);">Повтор</span><span style="font-size:13px;font-weight:600;color:var(--foreground);">Не повторяется</span></div>
+                <div style="display:flex;justify-content:space-between;padding:10px 14px;"><span style="font-size:13px;color:var(--muted-foreground);">Доступно с</span><span style="font-size:13px;font-weight:600;color:var(--foreground);">8 сен</span></div>
+              </div>
+
+              <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted-foreground);margin-bottom:8px;">Организация</div>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
+                <x-import component-from-global-scope="DesignSystem_66188c.Badge" variant="pending" hint-size="auto,24px">P2 · Важно</x-import>
+                <x-import component-from-global-scope="DesignSystem_66188c.Badge" variant="secondary" hint-size="auto,24px">#презентации</x-import>
+              </div>
+              <div style="font-size:12px;font-weight:700;color:var(--muted-foreground);margin-bottom:6px;">Подзадачи</div>
+              <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px;">
+                <div style="display:flex;align-items:center;gap:10px;"><div style="width:18px;height:18px;border-radius:50%;background:var(--forest-800);color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;">✓</div><span style="font-size:13px;color:var(--muted-foreground);text-decoration:line-through;">Собрать данные по продажам</span></div>
+                <div style="display:flex;align-items:center;gap:10px;"><div style="width:18px;height:18px;border-radius:50%;border:2px solid var(--border);"></div><span style="font-size:13px;color:var(--foreground);">Сверстать слайды</span></div>
+              </div>
+              <div style="font-size:12px;font-weight:700;color:var(--muted-foreground);margin-bottom:6px;">Чек-лист</div>
+              <div style="display:flex;flex-direction:column;gap:8px;">
+                <div style="display:flex;align-items:center;gap:10px;"><div style="width:16px;height:16px;border-radius:5px;border:2px solid var(--border);"></div><span style="font-size:13px;color:var(--foreground);">Ноутбук и переходник HDMI</span></div>
+                <div style="display:flex;align-items:center;gap:10px;"><div style="width:16px;height:16px;border-radius:5px;border:2px solid var(--border);"></div><span style="font-size:13px;color:var(--foreground);">Распечатать раздатку</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:14px;max-width:380px;padding-top:30px;">
+        <div style="font-size:13px;font-weight:700;color:var(--foreground);">M26 · Recurring edit (§18.3)</div>
+        <div style="background:var(--card);border:1px solid var(--border);border-radius:16px;padding:16px;box-shadow:var(--shadow-card);">
+          <div style="font-size:14px;font-weight:600;color:var(--foreground);margin-bottom:10px;">Изменить время начала?</div>
+          <div style="display:flex;flex-direction:column;gap:8px;">
+            <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1.5px solid var(--forest-800);border-radius:12px;"><div style="width:16px;height:16px;border-radius:50%;border:5px solid var(--forest-800);"></div><span style="font-size:13px;font-weight:600;color:var(--foreground);">Это повторение</span></div>
+            <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--border);border-radius:12px;"><div style="width:16px;height:16px;border-radius:50%;border:2px solid var(--border);"></div><span style="font-size:13px;font-weight:600;color:var(--foreground);">Вся серия</span></div>
+          </div>
+        </div>
+        <p style="font-size:13px;color:var(--muted-foreground);line-height:1.6;margin:0;">Молчаливое применение ко всей серии запрещено (§18.3). §18.5: если следующий occurrence уже создан, вместо Restore предлагается «Создать отдельную копию».</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= INBOX ================= -->
+  <section id="sec-inbox" style="padding:56px 32px 8px;max-width:1560px;margin:0 auto;">
+    <div style="margin-bottom:24px;">
+      <div style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:var(--gold-500);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">Inbox · R1 CORE</div>
+      <h2 style="font-size:24px;font-weight:700;letter-spacing:-0.01em;color:var(--foreground);margin:0 0 4px;">M12–M13 · Входящие = project_id null</h2>
+      <p style="font-size:14px;color:var(--muted-foreground);margin:0;max-width:760px;">Быстрая фиксация без обязательной организации. «Разобрать входящие» — по одной задаче.</p>
+    </div>
+    <div style="display:flex;gap:32px;flex-wrap:wrap;align-items:flex-start;">
+
+      <!-- M12 Inbox Default -->
+      <div style="display:flex;flex-direction:column;align-items:center;">
+        <div style="font-family:var(--font-mono);font-size:11px;font-weight:600;color:var(--muted-foreground);margin-bottom:12px;">[R1][M][12] Inbox / Default</div>
+        <div style="width:390px;height:844px;border-radius:46px;background:var(--forest-900);padding:12px;box-shadow:var(--shadow-floating);">
+          <div style="width:100%;height:100%;background:var(--background);border-radius:36px;overflow:hidden;position:relative;display:flex;flex-direction:column;">
+            <div style="display:flex;justify-content:space-between;padding:18px 24px 0;font-size:13px;font-weight:600;color:var(--foreground);flex-shrink:0;"><span>9:41</span><span style="opacity:.5;">••••</span></div>
+            <div style="padding:16px 24px 8px;flex-shrink:0;"><div style="font-size:22px;font-weight:700;color:var(--foreground);">Входящие</div><div style="font-size:13px;color:var(--muted-foreground);margin-top:2px;">6 задач</div></div>
+            <div style="flex:1;overflow:hidden;">
+              <div style="display:flex;align-items:center;gap:12px;padding:11px 24px;border-bottom:1px solid var(--border);"><div style="width:22px;height:22px;border-radius:50%;border:2px solid var(--border);flex-shrink:0;"></div><div style="flex:1;font-size:15px;color:var(--foreground);">Оплатить интернет</div></div>
+              <div style="display:flex;align-items:center;gap:12px;padding:11px 24px;border-bottom:1px solid var(--border);"><div style="width:22px;height:22px;border-radius:50%;border:2px solid var(--border);flex-shrink:0;"></div><div style="flex:1;"><div style="font-size:15px;color:var(--foreground);">Идея для подарка маме</div></div></div>
+              <div style="display:flex;align-items:center;gap:12px;padding:11px 24px;border-bottom:1px solid var(--border);"><div style="width:22px;height:22px;border-radius:50%;border:2px solid var(--border);flex-shrink:0;"></div><div style="flex:1;"><div style="font-size:15px;color:var(--foreground);">Записаться к стоматологу</div><div style="font-size:12px;color:var(--muted-foreground);margin-top:2px;">Ср, 2 сен</div></div></div>
+              <div style="display:flex;align-items:center;gap:12px;padding:11px 24px;border-bottom:1px solid var(--border);"><div style="width:22px;height:22px;border-radius:50%;border:2px solid var(--border);flex-shrink:0;"></div><div style="flex:1;font-size:15px;color:var(--foreground);">Почитать статью про NLP</div></div>
+              <div style="display:flex;align-items:center;gap:12px;padding:11px 24px;border-bottom:1px solid var(--border);"><div style="width:22px;height:22px;border-radius:50%;border:2px solid var(--border);flex-shrink:0;"></div><div style="flex:1;font-size:15px;color:var(--foreground);">Купить корм для кота</div></div>
+              <div style="display:flex;align-items:center;gap:12px;padding:11px 24px;"><div style="width:22px;height:22px;border-radius:50%;border:2px solid var(--border);flex-shrink:0;"></div><div style="flex:1;font-size:15px;color:var(--foreground);">Обновить резюме</div></div>
+            </div>
+            <div style="padding:12px 24px 30px;flex-shrink:0;"><x-import component-from-global-scope="DesignSystem_66188c.Button" variant="secondary" size="lg" block="{{ true }}" hint-size="100%,52px">Разобрать входящие →</x-import></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- M13 Inbox Process -->
+      <div style="display:flex;flex-direction:column;align-items:center;">
+        <div style="font-family:var(--font-mono);font-size:11px;font-weight:600;color:var(--muted-foreground);margin-bottom:12px;">[R1][M][13] Inbox / Process mode</div>
+        <div style="width:390px;height:844px;border-radius:46px;background:var(--forest-900);padding:12px;box-shadow:var(--shadow-floating);">
+          <div style="width:100%;height:100%;background:var(--background);border-radius:36px;overflow:hidden;position:relative;display:flex;flex-direction:column;">
+            <div style="display:flex;justify-content:space-between;padding:18px 24px 0;font-size:13px;font-weight:600;color:var(--foreground);flex-shrink:0;"><span>9:41</span><span style="opacity:.5;">••••</span></div>
+            <div style="padding:16px 24px 0;flex-shrink:0;">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;"><span style="font-size:14px;font-weight:600;color:var(--foreground);">Разбор входящих</span><span style="color:var(--muted-foreground);"><x-import component-from-global-scope="DesignSystem_66188c.Icon" name="close" size="18" hint-size="18px,18px"></x-import></span></div>
+              <div style="height:5px;border-radius:99px;background:var(--muted);overflow:hidden;"><div style="width:50%;height:100%;background:var(--forest-800);border-radius:99px;"></div></div>
+              <div style="font-size:11px;color:var(--muted-foreground);margin-top:5px;">Задача 3 из 6</div>
+            </div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:0 24px;">
+              <div style="position:relative;width:100%;height:210px;display:flex;align-items:center;justify-content:center;">
+                <div style="position:absolute;width:86%;height:150px;top:26px;background:var(--card);border:1px solid var(--border);border-radius:20px;opacity:.35;"></div>
+                <div style="position:absolute;width:93%;height:168px;top:13px;background:var(--card);border:1px solid var(--border);border-radius:20px;opacity:.65;"></div>
+                <div style="position:relative;width:100%;background:var(--card);border:1px solid var(--border);border-radius:20px;padding:30px 22px;box-shadow:var(--shadow-card);text-align:center;">
+                  <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted-foreground);margin-bottom:12px;">Из Входящих · без даты и проекта</div>
+                  <div style="font-size:20px;font-weight:700;color:var(--foreground);line-height:1.4;">Оплатить интернет</div>
+                </div>
+              </div>
+              <div style="font-size:12px;color:var(--muted-foreground);margin-top:14px;">← смахните, чтобы пропустить · выберите действие ниже</div>
+            </div>
+            <div style="padding:0 24px 12px;display:flex;gap:8px;">
+              <x-import component-from-global-scope="DesignSystem_66188c.Button" variant="primary" size="md" hint-size="auto,44px" style="{{ flex1 }}">Сегодня</x-import>
+              <x-import component-from-global-scope="DesignSystem_66188c.Button" variant="secondary" size="md" hint-size="auto,44px" style="{{ flex1 }}">Дата</x-import>
+              <x-import component-from-global-scope="DesignSystem_66188c.Button" variant="secondary" size="md" hint-size="auto,44px" style="{{ flex1 }}">Проект</x-import>
+            </div>
+            <div style="padding:0 24px 34px;display:flex;justify-content:space-between;"><span style="font-size:13px;font-weight:600;color:var(--destructive);">Удалить</span><span style="font-size:13px;font-weight:600;color:var(--muted-foreground);">Пропустить →</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= PLAN ================= -->
+  <section id="sec-plan" style="padding:56px 32px 8px;max-width:1560px;margin:0 auto;">
+    <div style="margin-bottom:24px;">
+      <div style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:var(--gold-500);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">Plan · R1 CORE</div>
+      <h2 style="font-size:24px;font-weight:700;letter-spacing:-0.01em;color:var(--foreground);margin:0 0 4px;">M14 · Agenda</h2>
+      <p style="font-size:14px;color:var(--muted-foreground);margin:0;max-width:760px;">Будущие дни, задачи без времени; Available From показан на дате доступности с маркером «станет доступна».</p>
+    </div>
+    <div style="display:flex;gap:32px;flex-wrap:wrap;align-items:flex-start;">
+      <div style="display:flex;flex-direction:column;align-items:center;">
+        <div style="font-family:var(--font-mono);font-size:11px;font-weight:600;color:var(--muted-foreground);margin-bottom:12px;">[R1][M][14] Plan / Agenda</div>
+        <div style="width:390px;height:844px;border-radius:46px;background:var(--forest-900);padding:12px;box-shadow:var(--shadow-floating);">
+          <div style="width:100%;height:100%;background:var(--background);border-radius:36px;overflow:hidden;position:relative;display:flex;flex-direction:column;">
+            <div style="display:flex;justify-content:space-between;padding:18px 24px 0;font-size:13px;font-weight:600;color:var(--foreground);flex-shrink:0;"><span>9:41</span><span style="opacity:.5;">••••</span></div>
+            <div style="padding:16px 24px 12px;flex-shrink:0;"><div style="font-size:22px;font-weight:700;color:var(--foreground);">План</div></div>
+            <div style="display:flex;gap:8px;padding:0 20px 14px;flex-shrink:0;">
+              <div style="display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px 0;border-radius:14px;width:44px;color:var(--muted-foreground);"><span style="font-size:11px;">Пн</span><span style="font-size:14px;font-weight:600;">31</span></div>
+              <div style="display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px 0;border-radius:14px;width:44px;background:var(--forest-800);color:#fff;"><span style="font-size:11px;">Вт</span><span style="font-size:14px;font-weight:700;">1</span></div>
+              <div style="display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px 0;border-radius:14px;width:44px;color:var(--muted-foreground);"><span style="font-size:11px;">Ср</span><span style="font-size:14px;font-weight:600;">2</span></div>
+              <div style="display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px 0;border-radius:14px;width:44px;color:var(--muted-foreground);"><span style="font-size:11px;">Чт</span><span style="font-size:14px;font-weight:600;">3</span></div>
+              <div style="display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px 0;border-radius:14px;width:44px;color:var(--muted-foreground);"><span style="font-size:11px;">Пт</span><span style="font-size:14px;font-weight:600;">4</span></div>
+              <div style="display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px 0;border-radius:14px;width:44px;color:var(--muted-foreground);"><span style="font-size:11px;">Сб</span><span style="font-size:14px;font-weight:600;">5</span></div>
+            </div>
+            <div style="flex:1;overflow:hidden;">
+              <div style="padding:8px 24px 6px;"><span style="font-size:12px;font-weight:700;color:var(--forest-800);">Вторник, 1 сентября</span></div>
+              <div style="display:flex;align-items:center;gap:12px;padding:9px 24px;border-bottom:1px solid var(--border);"><div style="width:20px;height:20px;border-radius:50%;border:2px solid var(--border);flex-shrink:0;"></div><div style="font-size:14px;color:var(--foreground);">Забрать вещи из химчистки</div></div>
+              <div style="display:flex;align-items:center;gap:12px;padding:9px 24px;border-bottom:1px solid var(--border);opacity:.55;"><div style="width:20px;height:20px;border-radius:50%;border:2px dashed var(--border);flex-shrink:0;"></div><div><div style="font-size:14px;color:var(--foreground);">Подать заявку на грант</div><div style="font-size:11px;color:var(--muted-foreground);">станет доступна</div></div></div>
+              <div style="padding:14px 24px 6px;"><span style="font-size:12px;font-weight:700;color:var(--muted-foreground);">Пятница, 4 сентября</span></div>
+              <div style="display:flex;align-items:center;gap:12px;padding:9px 24px;border-bottom:1px solid var(--border);"><div style="width:20px;height:20px;border-radius:50%;border:2px solid var(--border);flex-shrink:0;"></div><div><div style="font-size:14px;color:var(--foreground);">Встреча с поставщиком</div><div style="font-size:11px;color:var(--muted-foreground);">10:00</div></div></div>
+              <div style="padding:14px 24px 6px;"><span style="font-size:12px;font-weight:700;color:var(--muted-foreground);">Суббота, 5 сентября</span></div>
+              <div style="display:flex;align-items:center;gap:12px;padding:9px 24px;"><div style="width:20px;height:20px;border-radius:50%;border:2px solid var(--border);flex-shrink:0;"></div><div style="font-size:14px;color:var(--foreground);">День рождения Кати</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= PROJECTS ================= -->
+  <section id="sec-projects" style="padding:56px 32px 8px;max-width:1560px;margin:0 auto;">
+    <div style="margin-bottom:24px;">
+      <div style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:var(--gold-500);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">Projects · R1 CORE</div>
+      <h2 style="font-size:24px;font-weight:700;letter-spacing:-0.01em;color:var(--foreground);margin:0 0 4px;">M17–M18 · List и Board — одна модель Section</h2>
+      <p style="font-size:14px;color:var(--muted-foreground);margin:0;max-width:760px;">Board columns = Sections. «Без раздела» видна только когда непуста.</p>
+    </div>
+    <div style="display:flex;gap:32px;flex-wrap:wrap;align-items:flex-start;">
+
+      <!-- M17 List -->
+      <div style="display:flex;flex-direction:column;align-items:center;">
+        <div style="font-family:var(--font-mono);font-size:11px;font-weight:600;color:var(--muted-foreground);margin-bottom:12px;">[R1][M][17] Project / List</div>
+        <div style="width:390px;height:844px;border-radius:46px;background:var(--forest-900);padding:12px;box-shadow:var(--shadow-floating);">
+          <div style="width:100%;height:100%;background:var(--background);border-radius:36px;overflow:hidden;position:relative;display:flex;flex-direction:column;">
+            <div style="display:flex;justify-content:space-between;padding:18px 24px 0;font-size:13px;font-weight:600;color:var(--foreground);flex-shrink:0;"><span>9:41</span><span style="opacity:.5;">••••</span></div>
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 24px 10px;flex-shrink:0;">
+              <div style="font-size:20px;font-weight:700;color:var(--foreground);">Работа</div>
+              <x-import component-from-global-scope="DesignSystem_66188c.SegmentedControl" options="{{ viewOptions }}" value="list" hint-size="140px,40px"></x-import>
+            </div>
+            <div style="flex:1;overflow:hidden;">
+              <div style="padding:10px 24px 4px;"><span style="font-size:12px;font-weight:700;color:var(--muted-foreground);">ИДЕИ</span></div>
+              <div style="display:flex;align-items:center;gap:12px;padding:8px 24px;border-bottom:1px solid var(--border);"><div style="width:20px;height:20px;border-radius:50%;border:2px solid var(--border);flex-shrink:0;"></div><div style="font-size:14px;color:var(--foreground);">Редизайн лендинга</div></div>
+              <div style="padding:12px 24px 4px;"><span style="font-size:12px;font-weight:700;color:var(--muted-foreground);">СДЕЛАТЬ</span></div>
+              <div style="display:flex;align-items:center;gap:12px;padding:8px 24px;border-bottom:1px solid var(--border);"><div style="width:20px;height:20px;border-radius:50%;border:2px solid var(--border);flex-shrink:0;"></div><div style="font-size:14px;color:var(--foreground);">Написать ТЗ для разработки</div></div>
+              <div style="display:flex;align-items:center;gap:12px;padding:8px 24px;border-bottom:1px solid var(--border);"><div style="width:20px;height:20px;border-radius:50%;border:2px solid var(--border);flex-shrink:0;"></div><div style="font-size:14px;color:var(--foreground);">Собрать команду</div></div>
+              <div style="padding:12px 24px 4px;"><span style="font-size:12px;font-weight:700;color:var(--muted-foreground);">В РАБОТЕ</span></div>
+              <div style="display:flex;align-items:center;gap:12px;padding:8px 24px;border-bottom:1px solid var(--border);"><div style="width:20px;height:20px;border-radius:50%;border:2px solid var(--gold-500);flex-shrink:0;"></div><div style="font-size:14px;color:var(--foreground);">Подготовить презентацию</div></div>
+              <div style="display:flex;align-items:center;gap:12px;padding:9px 24px;color:var(--muted-foreground);"><x-import component-from-global-scope="DesignSystem_66188c.Icon" name="add" size="18" hint-size="18px,18px"></x-import><span style="font-size:14px;">Добавить задачу</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- M18 Board -->
+      <div style="display:flex;flex-direction:column;align-items:center;">
+        <div style="font-family:var(--font-mono);font-size:11px;font-weight:600;color:var(--muted-foreground);margin-bottom:12px;">[R1][M][18] Project / Board</div>
+        <div style="width:390px;height:844px;border-radius:46px;background:var(--forest-900);padding:12px;box-shadow:var(--shadow-floating);">
+          <div style="width:100%;height:100%;background:var(--background);border-radius:36px;overflow:hidden;position:relative;display:flex;flex-direction:column;">
+            <div style="display:flex;justify-content:space-between;padding:18px 24px 0;font-size:13px;font-weight:600;color:var(--foreground);flex-shrink:0;"><span>9:41</span><span style="opacity:.5;">••••</span></div>
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 24px 10px;flex-shrink:0;">
+              <div style="font-size:20px;font-weight:700;color:var(--foreground);">Работа</div>
+              <x-import component-from-global-scope="DesignSystem_66188c.SegmentedControl" options="{{ viewOptions }}" value="board" hint-size="140px,40px"></x-import>
+            </div>
+            <div style="flex:1;overflow-x:auto;overflow-y:hidden;display:flex;gap:10px;padding:4px 20px 16px;-webkit-mask-image:linear-gradient(to right, black 88%, transparent);mask-image:linear-gradient(to right, black 88%, transparent);">
+              <div style="width:132px;flex-shrink:0;">
+                <div style="font-size:11px;font-weight:700;color:var(--muted-foreground);margin-bottom:8px;">ИДЕИ · 1</div>
+                <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:10px;font-size:13px;color:var(--foreground);margin-bottom:8px;box-shadow:var(--shadow-xs);">Редизайн лендинга</div>
+              </div>
+              <div style="width:132px;flex-shrink:0;">
+                <div style="font-size:11px;font-weight:700;color:var(--muted-foreground);margin-bottom:8px;">СДЕЛАТЬ · 2</div>
+                <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:10px;font-size:13px;color:var(--foreground);margin-bottom:8px;box-shadow:var(--shadow-xs);">Написать ТЗ</div>
+                <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:10px;font-size:13px;color:var(--foreground);box-shadow:var(--shadow-xs);">Собрать команду</div>
+              </div>
+              <div style="width:132px;flex-shrink:0;">
+                <div style="font-size:11px;font-weight:700;color:var(--muted-foreground);margin-bottom:8px;">В РАБОТЕ · 1</div>
+                <div style="background:var(--card);border:1.5px solid var(--gold-500);border-radius:12px;padding:10px;font-size:13px;color:var(--foreground);box-shadow:var(--shadow-xs);">Подготовить презентацию<div style="font-size:11px;color:var(--muted-foreground);margin-top:4px;">14:00 · 45 мин</div></div>
+              </div>
+              <div style="width:132px;flex-shrink:0;">
+                <div style="font-size:11px;font-weight:700;color:var(--muted-foreground);margin-bottom:8px;">ФИНАЛ · 0</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= SETTINGS ================= -->
+  <section id="sec-settings" style="padding:56px 32px 8px;max-width:1560px;margin:0 auto;">
+    <div style="margin-bottom:24px;">
+      <div style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:var(--gold-500);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">Settings · R1 CORE</div>
+      <h2 style="font-size:24px;font-weight:700;letter-spacing:-0.01em;color:var(--foreground);margin:0 0 4px;">M51 · Данные и конфиденциальность</h2>
+      <p style="font-size:14px;color:var(--muted-foreground);margin:0;max-width:760px;">Local/cloud статус, export, legal links, аналитика и destructive actions — раздельно и без dark patterns.</p>
+    </div>
+    <div style="display:flex;gap:32px;flex-wrap:wrap;align-items:flex-start;">
+      <div style="display:flex;flex-direction:column;align-items:center;">
+        <div style="font-family:var(--font-mono);font-size:11px;font-weight:600;color:var(--muted-foreground);margin-bottom:12px;">[R1][M][51] Data &amp; Privacy</div>
+        <div style="width:390px;height:844px;border-radius:46px;background:var(--forest-900);padding:12px;box-shadow:var(--shadow-floating);">
+          <div style="width:100%;height:100%;background:var(--background);border-radius:36px;overflow:hidden;position:relative;display:flex;flex-direction:column;">
+            <div style="display:flex;justify-content:space-between;padding:18px 24px 0;font-size:13px;font-weight:600;color:var(--foreground);flex-shrink:0;"><span>9:41</span><span style="opacity:.5;">••••</span></div>
+            <div style="display:flex;align-items:center;gap:10px;padding:16px 20px 10px;flex-shrink:0;"><span style="color:var(--foreground);"><x-import component-from-global-scope="DesignSystem_66188c.Icon" name="back" size="20" hint-size="20px,20px"></x-import></span><span style="font-size:17px;font-weight:700;color:var(--foreground);">Данные и конфиденциальность</span></div>
+            <div style="flex:1;overflow:hidden;padding:6px 20px;">
+              <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;margin-bottom:16px;overflow:hidden;">
+                <div style="display:flex;align-items:center;justify-content:space-between;padding:13px 16px;border-bottom:1px solid var(--border);"><span style="font-size:14px;color:var(--foreground);">Хранение</span><x-import component-from-global-scope="DesignSystem_66188c.Badge" variant="confirmed" hint-size="auto,22px">Синхронизируется</x-import></div>
+                <div style="display:flex;align-items:center;justify-content:space-between;padding:13px 16px;border-bottom:1px solid var(--border);"><span style="font-size:14px;color:var(--foreground);">Экспорт данных</span><span style="color:var(--muted-foreground);font-size:14px;">›</span></div>
+                <div style="display:flex;align-items:center;justify-content:space-between;padding:13px 16px;"><span style="font-size:14px;color:var(--foreground);">Аналитика и диагностика</span><div style="width:38px;height:22px;border-radius:99px;background:var(--forest-800);position:relative;"><div style="width:18px;height:18px;border-radius:50%;background:#fff;position:absolute;top:2px;right:2px;"></div></div></div>
+              </div>
+              <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;margin-bottom:16px;overflow:hidden;">
+                <div style="display:flex;align-items:center;justify-content:space-between;padding:13px 16px;border-bottom:1px solid var(--border);"><span style="font-size:14px;color:var(--foreground);">Пользовательское соглашение</span><span style="color:var(--muted-foreground);font-size:14px;">›</span></div>
+                <div style="display:flex;align-items:center;justify-content:space-between;padding:13px 16px;"><span style="font-size:14px;color:var(--foreground);">Политика конфиденциальности</span><span style="color:var(--muted-foreground);font-size:14px;">›</span></div>
+              </div>
+              <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;overflow:hidden;">
+                <div style="display:flex;align-items:center;justify-content:space-between;padding:13px 16px;border-bottom:1px solid var(--border);"><span style="font-size:14px;color:var(--destructive);font-weight:600;">Удалить локальные данные</span></div>
+                <div style="display:flex;align-items:center;justify-content:space-between;padding:13px 16px;"><span style="font-size:14px;color:var(--destructive);font-weight:600;">Удалить аккаунт</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= INTERACTIONS ================= -->
+  <section id="sec-interactions" style="padding:56px 32px 8px;max-width:1560px;margin:0 auto;">
+    <div style="margin-bottom:24px;">
+      <div style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:var(--gold-500);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">Interactions · ST / M37 / M38 / D15 / D16 · §49</div>
+      <h2 style="font-size:24px;font-weight:700;letter-spacing:-0.01em;color:var(--foreground);margin:0 0 4px;">Push-уведомления, context menu, multi-select, undo, command palette</h2>
+      <p style="font-size:14px;color:var(--muted-foreground);margin:0;max-width:760px;">Каждый тип уведомления отключается отдельно (§49); destructive-действия визуально отделены от частых.</p>
+    </div>
+
+    <div style="display:flex;gap:32px;flex-wrap:wrap;align-items:flex-start;margin-bottom:40px;">
+      <!-- Push notifications -->
+      <div style="display:flex;flex-direction:column;align-items:center;">
+        <div style="font-family:var(--font-mono);font-size:11px;font-weight:600;color:var(--muted-foreground);margin-bottom:12px;">Push-уведомления (§49): напоминание · срок приближается · срок просрочен</div>
+        <div style="width:390px;border-radius:46px;background:var(--forest-900);padding:12px;box-shadow:var(--shadow-floating);">
+          <div style="width:100%;background:linear-gradient(160deg,#1a2a22,#0d1712);border-radius:36px;overflow:hidden;position:relative;display:flex;flex-direction:column;padding:56px 14px 40px;gap:10px;">
+            <div style="text-align:center;color:rgba(255,255,255,.85);font-size:40px;font-weight:300;margin-bottom:6px;">9:41</div>
+
+            <div style="background:rgba(255,255,255,.94);backdrop-filter:blur(20px);border-radius:18px;padding:12px 14px;">
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+                <x-import component-from-global-scope="DesignSystem_66188c.ServiceMark" service="shagi" size="20" shape="rounded" hint-size="20px,20px"></x-import>
+                <span style="font-size:12px;font-weight:700;color:#111;flex:1;">ШАГИ</span>
+                <span style="font-size:11px;color:#666;">сейчас</span>
+              </div>
+              <div style="font-size:14px;font-weight:700;color:#111;margin-bottom:2px;">Через 15 минут</div>
+              <div style="font-size:13px;color:#333;">«Подготовить презентацию» · 14:00</div>
+            </div>
+
+            <div style="background:rgba(255,255,255,.94);backdrop-filter:blur(20px);border-radius:18px;padding:12px 14px;">
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+                <x-import component-from-global-scope="DesignSystem_66188c.ServiceMark" service="shagi" size="20" shape="rounded" hint-size="20px,20px"></x-import>
+                <span style="font-size:12px;font-weight:700;color:#111;flex:1;">ШАГИ</span>
+                <span style="font-size:11px;color:#666;">5 мин назад</span>
+              </div>
+              <div style="font-size:14px;font-weight:700;color:var(--orange-500);margin-bottom:2px;">Срок приближается</div>
+              <div style="font-size:13px;color:#333;">«Оплатить аренду офиса» — до сегодня, 18:00</div>
+            </div>
+
+            <div style="background:rgba(255,255,255,.94);backdrop-filter:blur(20px);border-radius:18px;padding:12px 14px;">
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+                <x-import component-from-global-scope="DesignSystem_66188c.ServiceMark" service="shagi" size="20" shape="rounded" hint-size="20px,20px"></x-import>
+                <span style="font-size:12px;font-weight:700;color:#111;flex:1;">ШАГИ</span>
+                <span style="font-size:11px;color:#666;">вчера</span>
+              </div>
+              <div style="font-size:14px;font-weight:700;color:var(--red-500);margin-bottom:2px;">Просрочен срок</div>
+              <div style="font-size:13px;color:#333;">«Продлить страховку» — было до вчера</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Multi-select bar -->
+      <div style="display:flex;flex-direction:column;align-items:center;">
+        <div style="font-family:var(--font-mono);font-size:11px;font-weight:600;color:var(--muted-foreground);margin-bottom:12px;">[R1][M][37] Multi-select</div>
+        <div style="width:390px;height:844px;border-radius:46px;background:var(--forest-900);padding:12px;box-shadow:var(--shadow-floating);">
+          <div style="width:100%;height:100%;background:var(--background);border-radius:36px;overflow:hidden;position:relative;display:flex;flex-direction:column;">
+            <div style="display:flex;justify-content:space-between;padding:18px 24px 0;font-size:13px;font-weight:600;color:var(--foreground);flex-shrink:0;"><span>9:41</span><span style="opacity:.5;">••••</span></div>
+            <div style="padding:16px 24px 4px;flex-shrink:0;"><div style="font-size:22px;font-weight:700;color:var(--foreground);">Суббота, 29 августа</div></div>
+            <div style="flex:1;overflow:hidden;">
+              <div style="display:flex;align-items:center;gap:12px;padding:11px 24px;border-bottom:1px solid var(--border);background:var(--sage-100);"><div style="width:22px;height:22px;border-radius:50%;background:var(--forest-800);color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0;">✓</div><div style="flex:1;font-size:15px;color:var(--foreground);">Купить хлеб</div></div>
+              <div style="display:flex;align-items:center;gap:12px;padding:11px 24px;border-bottom:1px solid var(--border);background:var(--sage-100);"><div style="width:22px;height:22px;border-radius:50%;background:var(--forest-800);color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0;">✓</div><div style="flex:1;font-size:15px;color:var(--foreground);">Полить цветы</div></div>
+              <div style="display:flex;align-items:center;gap:12px;padding:11px 24px;border-bottom:1px solid var(--border);"><div style="width:22px;height:22px;border-radius:50%;border:2px solid var(--border);flex-shrink:0;"></div><div style="flex:1;font-size:15px;color:var(--foreground);">Разобрать почту</div></div>
+              <div style="display:flex;align-items:center;gap:12px;padding:11px 24px;border-bottom:1px solid var(--border);background:var(--sage-100);"><div style="width:22px;height:22px;border-radius:50%;background:var(--forest-800);color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0;">✓</div><div style="flex:1;font-size:15px;color:var(--foreground);">Забрать посылку</div></div>
+              <div style="display:flex;align-items:center;gap:12px;padding:11px 24px;"><div style="width:22px;height:22px;border-radius:50%;border:2px solid var(--border);flex-shrink:0;"></div><div style="flex:1;font-size:15px;color:var(--foreground);">Позвонить в банк</div></div>
+            </div>
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 20px 30px;border-top:1px solid var(--border);background:var(--card);flex-shrink:0;">
+              <span style="font-size:13px;font-weight:700;color:var(--foreground);">Выбрано: 3</span>
+              <div style="display:flex;gap:16px;color:var(--forest-800);">
+                <x-import component-from-global-scope="DesignSystem_66188c.Icon" name="meeting" size="20" hint-size="20px,20px"></x-import>
+                <x-import component-from-global-scope="DesignSystem_66188c.Icon" name="archive" size="20" hint-size="20px,20px"></x-import>
+                <x-import component-from-global-scope="DesignSystem_66188c.Icon" name="format" size="20" hint-size="20px,20px"></x-import>
+                <span style="color:var(--destructive);"><x-import component-from-global-scope="DesignSystem_66188c.Icon" name="delete" size="20" hint-size="20px,20px"></x-import></span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Undo toast -->
+      <div style="display:flex;flex-direction:column;align-items:center;">
+        <div style="font-family:var(--font-mono);font-size:11px;font-weight:600;color:var(--muted-foreground);margin-bottom:12px;">ST · Completion + Undo toast (§58)</div>
+        <div style="width:390px;height:844px;border-radius:46px;background:var(--forest-900);padding:12px;box-shadow:var(--shadow-floating);">
+          <div style="width:100%;height:100%;background:var(--background);border-radius:36px;overflow:hidden;position:relative;display:flex;flex-direction:column;">
+            <div style="display:flex;justify-content:space-between;padding:18px 24px 0;font-size:13px;font-weight:600;color:var(--foreground);flex-shrink:0;"><span>9:41</span><span style="opacity:.5;">••••</span></div>
+            <div style="padding:16px 24px 4px;flex-shrink:0;"><div style="font-size:22px;font-weight:700;color:var(--foreground);">Суббота, 29 августа</div></div>
+            <div style="flex:1;overflow:hidden;">
+              <div style="display:flex;align-items:center;gap:12px;padding:11px 24px;border-bottom:1px solid var(--border);opacity:.45;"><div style="width:22px;height:22px;border-radius:50%;background:var(--forest-800);color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0;">✓</div><div style="flex:1;font-size:15px;color:var(--foreground);text-decoration:line-through;">Купить хлеб</div></div>
+              <div style="display:flex;align-items:center;gap:12px;padding:11px 24px;"><div style="width:22px;height:22px;border-radius:50%;border:2px solid var(--border);flex-shrink:0;"></div><div style="flex:1;font-size:15px;color:var(--foreground);">Полить цветы</div></div>
+            </div>
+            <div style="padding:0 20px 30px;flex-shrink:0;">
+              <div style="display:flex;align-items:center;justify-content:space-between;background:var(--forest-900);color:#fff;border-radius:16px;padding:14px 18px;box-shadow:var(--shadow-floating);">
+                <span style="font-size:14px;font-weight:500;">Задача выполнена</span>
+                <span style="font-size:14px;font-weight:700;color:var(--gold-400);">Отменить</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:32px;">
+      <!-- Desktop context menu -->
+      <div>
+        <div style="font-family:var(--font-mono);font-size:11px;font-weight:600;color:var(--muted-foreground);margin-bottom:12px;">[R1][D] Context menu — частые действия выше редких, destructive отделено, «Когда будет время» на месте</div>
+        <div style="width:900px;height:600px;overflow:hidden;border-radius:16px;box-shadow:var(--shadow-floating);border:1px solid var(--border);box-sizing:border-box;">
+          <div style="width:100%;height:28px;background:var(--card);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:6px;padding:0 14px;"><span style="width:10px;height:10px;border-radius:50%;background:var(--border);"></span><span style="width:10px;height:10px;border-radius:50%;background:var(--border);"></span><span style="width:10px;height:10px;border-radius:50%;background:var(--border);"></span></div>
+          <div style="position:relative;height:572px;box-sizing:border-box;overflow:hidden;background:var(--background);padding:24px 32px;">
+            <div style="max-width:520px;">
+              <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted-foreground);margin-bottom:6px;">Сегодня</div>
+              <div style="display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:10px;background:var(--sage-100);"><div style="width:20px;height:20px;border-radius:50%;border:2px solid var(--border);flex-shrink:0;"></div><div style="font-size:14px;font-weight:600;color:var(--foreground);">Отправить квартальный отчёт</div><span style="font-size:12px;color:var(--muted-foreground);margin-left:auto;">14:00 · 45 мин</span></div>
+              <div style="display:flex;align-items:center;gap:12px;padding:10px 12px;"><div style="width:20px;height:20px;border-radius:50%;border:2px solid var(--border);flex-shrink:0;"></div><div style="font-size:14px;color:var(--foreground);">Купить хлеб</div></div>
+            </div>
+            <div style="position:absolute;top:64px;left:340px;width:260px;background:var(--card);border:1px solid var(--border);border-radius:14px;box-shadow:var(--shadow-floating);padding:6px;">
+              <div style="padding:9px 12px;border-radius:8px;font-size:13px;font-weight:600;color:var(--foreground);">Выполнить</div>
+              <div style="padding:9px 12px;border-radius:8px;font-size:13px;font-weight:600;color:var(--foreground);">В Главное сегодня</div>
+              <div style="padding:9px 12px;border-radius:8px;font-size:13px;color:var(--foreground);">Перепланировать</div>
+              <div style="padding:9px 12px;border-radius:8px;font-size:13px;color:var(--foreground);">Когда будет время</div>
+              <div style="height:1px;background:var(--border);margin:6px 4px;"></div>
+              <div style="padding:9px 12px;border-radius:8px;font-size:13px;color:var(--muted-foreground);">Изменить проект</div>
+              <div style="padding:9px 12px;border-radius:8px;font-size:13px;color:var(--muted-foreground);">Приоритет</div>
+              <div style="padding:9px 12px;border-radius:8px;font-size:13px;color:var(--muted-foreground);">Метки</div>
+              <div style="height:1px;background:var(--border);margin:6px 4px;"></div>
+              <div style="padding:9px 12px;border-radius:8px;font-size:13px;font-weight:600;color:var(--destructive);">Удалить</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Command palette -->
+      <div>
+        <div style="font-family:var(--font-mono);font-size:11px;font-weight:600;color:var(--muted-foreground);margin-bottom:12px;">[R1][D][15] Command Palette · Cmd/Ctrl + K</div>
+        <div style="width:900px;height:600px;overflow:hidden;border-radius:16px;box-shadow:var(--shadow-floating);border:1px solid var(--border);box-sizing:border-box;">
+          <div style="width:100%;height:28px;background:var(--card);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:6px;padding:0 14px;"><span style="width:10px;height:10px;border-radius:50%;background:var(--border);"></span><span style="width:10px;height:10px;border-radius:50%;background:var(--border);"></span><span style="width:10px;height:10px;border-radius:50%;background:var(--border);"></span></div>
+          <div style="height:572px;box-sizing:border-box;overflow:hidden;background:rgba(20,32,24,.45);display:flex;align-items:flex-start;justify-content:center;padding-top:56px;">
+            <div style="width:520px;background:var(--card);border-radius:16px;box-shadow:var(--shadow-floating);overflow:hidden;">
+              <div style="padding:14px 18px;border-bottom:1px solid var(--border);font-size:15px;color:var(--foreground);">Перенести на завтра</div>
+              <div style="padding:8px;">
+                <div style="display:flex;align-items:center;justify-content:space-between;padding:9px 12px;border-radius:8px;background:var(--sage-100);"><span style="font-size:13px;font-weight:600;color:var(--foreground);">Переместить задачу → Завтра</span><span style="font-size:11px;color:var(--muted-foreground);font-family:var(--font-mono);">↵</span></div>
+                <div style="display:flex;align-items:center;justify-content:space-between;padding:9px 12px;"><span style="font-size:13px;color:var(--muted-foreground);">Перейти в Сегодня</span></div>
+                <div style="display:flex;align-items:center;justify-content:space-between;padding:9px 12px;"><span style="font-size:13px;color:var(--muted-foreground);">Новая задача</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= DESKTOP ================= -->
+  <section id="sec-desktop" style="padding:56px 32px 80px;max-width:1560px;margin:0 auto;">
+    <div style="margin-bottom:24px;">
+      <div style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:var(--gold-500);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">Desktop · R1 CORE</div>
+      <h2 style="font-size:24px;font-weight:700;letter-spacing:-0.01em;color:var(--foreground);margin:0 0 4px;">D01, D09, D19 · Sidebar + list + inspector</h2>
+      <p style="font-size:14px;color:var(--muted-foreground);margin:0;max-width:760px;">Открытие задачи не выбрасывает пользователя из списка. Sidebar не конкурирует с content.</p>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:32px;">
+
+      <!-- D01 Today Default -->
+      <div>
+        <div style="font-family:var(--font-mono);font-size:11px;font-weight:600;color:var(--muted-foreground);margin-bottom:12px;">[R1][D][01] Today / Default</div>
+        <div style="width:1240px;height:760px;box-sizing:border-box;overflow:hidden;border-radius:16px;box-shadow:var(--shadow-floating);border:1px solid var(--border);">
+          <div style="width:100%;height:28px;background:var(--card);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:6px;padding:0 14px;"><span style="width:10px;height:10px;border-radius:50%;background:var(--border);"></span><span style="width:10px;height:10px;border-radius:50%;background:var(--border);"></span><span style="width:10px;height:10px;border-radius:50%;background:var(--border);"></span></div>
+          <div style="display:flex;height:732px;">
+            <div style="width:240px;flex-shrink:0;background:var(--sidebar);color:var(--sidebar-foreground);padding:20px 14px;display:flex;flex-direction:column;gap:2px;">
+              <div style="display:flex;align-items:center;gap:10px;padding:0 8px 20px;"><x-import component-from-global-scope="DesignSystem_66188c.ServiceMark" service="shagi" size="26" hint-size="26px,26px"></x-import><span style="font-weight:700;letter-spacing:.08em;font-size:14px;">ШАГИ</span></div>
+              <div style="padding:9px 10px;border-radius:10px;background:var(--sidebar-active);color:var(--sidebar-active-foreground);font-size:14px;font-weight:600;">Сегодня</div>
+              <div style="padding:9px 10px;border-radius:10px;font-size:14px;color:var(--sidebar-foreground);">План</div>
+              <div style="padding:9px 10px;border-radius:10px;font-size:14px;color:var(--sidebar-foreground);">Входящие</div>
+              <div style="height:1px;background:var(--sidebar-border);margin:10px 8px;"></div>
+              <div style="padding:9px 10px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--sidebar-muted);">Проекты</div>
+              <div style="padding:8px 10px 8px 22px;font-size:14px;color:var(--sidebar-foreground);">Работа</div>
+              <div style="padding:8px 10px 8px 22px;font-size:14px;color:var(--sidebar-foreground);">Дом</div>
+              <div style="padding:8px 10px 8px 22px;font-size:14px;color:var(--sidebar-foreground);">Личное</div>
+              <div style="height:1px;background:var(--sidebar-border);margin:10px 8px;"></div>
+              <div style="padding:9px 10px;font-size:14px;color:var(--sidebar-foreground);">Избранное / Фильтры</div>
+              <div style="padding:9px 10px;font-size:14px;color:var(--sidebar-foreground);">Метки</div>
+              <div style="height:1px;background:var(--sidebar-border);margin:10px 8px;"></div>
+              <div style="padding:9px 10px;font-size:14px;color:var(--sidebar-muted);">Завершённые</div>
+            </div>
+            <div style="flex:1;background:var(--background);padding:28px 36px;overflow:hidden;">
+              <div style="max-width:560px;">
+                <div style="font-size:26px;font-weight:700;color:var(--foreground);margin-bottom:16px;">Суббота, 29 августа</div>
+                <x-import component-from-global-scope="DesignSystem_66188c.Input" placeholder="Что нужно сделать?" hint-size="100%,46px"></x-import>
+                <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--gold-500);margin:20px 0 6px;">Главное</div>
+                <div style="display:flex;align-items:center;gap:12px;padding:9px 4px;border-bottom:1px solid var(--border);"><div style="width:20px;height:20px;border-radius:50%;border:2px solid var(--gold-500);flex-shrink:0;"></div><div style="font-size:14px;font-weight:600;color:var(--foreground);">Отправить квартальный отчёт</div><span style="font-size:12px;color:var(--muted-foreground);margin-left:auto;">14:00 · 45 мин</span></div>
+                <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted-foreground);margin:16px 0 6px;">Сегодня</div>
+                <div style="display:flex;align-items:center;gap:12px;padding:9px 4px;border-bottom:1px solid var(--border);"><div style="width:20px;height:20px;border-radius:50%;border:2px solid var(--border);flex-shrink:0;"></div><div style="font-size:14px;color:var(--foreground);">Купить хлеб</div></div>
+                <div style="display:flex;align-items:center;gap:12px;padding:9px 4px;"><div style="width:20px;height:20px;border-radius:50%;border:2px solid var(--border);flex-shrink:0;"></div><div style="font-size:14px;color:var(--foreground);">Полить цветы</div></div>
+              </div>
+            </div>
+            <div style="width:400px;flex-shrink:0;background:var(--card);border-left:1px solid var(--border);padding:24px;overflow:hidden;">
+              <div style="font-size:11px;font-weight:700;color:var(--muted-foreground);text-transform:uppercase;letter-spacing:.05em;margin-bottom:14px;">Задача</div>
+              <div style="display:flex;gap:12px;margin-bottom:14px;"><div style="width:22px;height:22px;border-radius:50%;border:2px solid var(--forest-800);flex-shrink:0;margin-top:2px;"></div><div style="font-size:16px;font-weight:600;color:var(--foreground);">Отправить квартальный отчёт</div></div>
+              <div style="display:flex;flex-direction:column;gap:0;background:var(--background);border:1px solid var(--border);border-radius:12px;overflow:hidden;">
+                <div style="display:flex;justify-content:space-between;padding:9px 12px;border-bottom:1px solid var(--border);"><span style="font-size:13px;color:var(--muted-foreground);">Когда делать</span><span style="font-size:13px;font-weight:600;color:var(--foreground);">Сб, 29 авг · 14:00</span></div>
+                <div style="display:flex;justify-content:space-between;padding:9px 12px;border-bottom:1px solid var(--border);"><span style="font-size:13px;color:var(--muted-foreground);">Длительность</span><span style="font-size:13px;font-weight:600;color:var(--foreground);">45 мин</span></div>
+                <div style="display:flex;justify-content:space-between;padding:9px 12px;"><span style="font-size:13px;color:var(--muted-foreground);">Срок</span><span style="font-size:13px;font-weight:700;color:var(--orange-500);">до 2 сен</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- D09 Board -->
+      <div>
+        <div style="font-family:var(--font-mono);font-size:11px;font-weight:600;color:var(--muted-foreground);margin-bottom:12px;">[R1][D][09] Project / Board</div>
+        <div style="width:1240px;height:560px;box-sizing:border-box;overflow:hidden;border-radius:16px;box-shadow:var(--shadow-floating);border:1px solid var(--border);">
+          <div style="width:100%;height:28px;background:var(--card);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:6px;padding:0 14px;"><span style="width:10px;height:10px;border-radius:50%;background:var(--border);"></span><span style="width:10px;height:10px;border-radius:50%;background:var(--border);"></span><span style="width:10px;height:10px;border-radius:50%;background:var(--border);"></span></div>
+          <div style="display:flex;height:532px;">
+            <div style="width:240px;flex-shrink:0;background:var(--sidebar);"></div>
+            <div style="flex:1;background:var(--background);padding:24px 28px;overflow:hidden;">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;"><div style="font-size:22px;font-weight:700;color:var(--foreground);">Работа</div><x-import component-from-global-scope="DesignSystem_66188c.SegmentedControl" options="{{ viewOptions }}" value="board" hint-size="150px,40px"></x-import></div>
+              <div style="display:flex;gap:16px;overflow:hidden;">
+                <div style="width:220px;flex-shrink:0;"><div style="font-size:12px;font-weight:700;color:var(--muted-foreground);margin-bottom:10px;">ИДЕИ · 1</div><div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px;font-size:13px;color:var(--foreground);box-shadow:var(--shadow-xs);">Редизайн лендинга</div></div>
+                <div style="width:220px;flex-shrink:0;"><div style="font-size:12px;font-weight:700;color:var(--muted-foreground);margin-bottom:10px;">СДЕЛАТЬ · 2</div><div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px;font-size:13px;color:var(--foreground);box-shadow:var(--shadow-xs);margin-bottom:10px;">Написать ТЗ</div><div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px;font-size:13px;color:var(--foreground);box-shadow:var(--shadow-xs);">Собрать команду</div></div>
+                <div style="width:220px;flex-shrink:0;"><div style="font-size:12px;font-weight:700;color:var(--muted-foreground);margin-bottom:10px;">В РАБОТЕ · 1</div><div style="background:var(--card);border:1.5px solid var(--gold-500);border-radius:12px;padding:12px;font-size:13px;color:var(--foreground);box-shadow:var(--shadow-xs);">Подготовить презентацию</div></div>
+                <div style="width:220px;flex-shrink:0;"><div style="font-size:12px;font-weight:700;color:var(--muted-foreground);margin-bottom:10px;">ФИНАЛ · 0</div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- D19 Settings -->
+      <div>
+        <div style="font-family:var(--font-mono);font-size:11px;font-weight:600;color:var(--muted-foreground);margin-bottom:12px;">[R1][D][19] Settings</div>
+        <div style="width:1240px;height:560px;box-sizing:border-box;overflow:hidden;border-radius:16px;box-shadow:var(--shadow-floating);border:1px solid var(--border);">
+          <div style="width:100%;height:28px;background:var(--card);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:6px;padding:0 14px;"><span style="width:10px;height:10px;border-radius:50%;background:var(--border);"></span><span style="width:10px;height:10px;border-radius:50%;background:var(--border);"></span><span style="width:10px;height:10px;border-radius:50%;background:var(--border);"></span></div>
+          <div style="display:flex;height:532px;">
+            <div style="width:240px;flex-shrink:0;background:var(--sidebar);"></div>
+            <div style="width:220px;flex-shrink:0;background:var(--card);border-right:1px solid var(--border);padding:24px 16px;">
+              <div style="font-size:11px;font-weight:700;color:var(--muted-foreground);text-transform:uppercase;letter-spacing:.05em;padding:0 8px 10px;">Настройки</div>
+              <div style="padding:9px 10px;border-radius:10px;font-size:14px;color:var(--muted-foreground);">Аккаунт</div>
+              <div style="padding:9px 10px;border-radius:10px;font-size:14px;color:var(--muted-foreground);">Синхронизация</div>
+              <div style="padding:9px 10px;border-radius:10px;background:var(--sage-100);font-size:14px;font-weight:600;color:var(--forest-800);">Данные и конфиденциальность</div>
+              <div style="padding:9px 10px;border-radius:10px;font-size:14px;color:var(--muted-foreground);">Внешний вид</div>
+              <div style="padding:9px 10px;border-radius:10px;font-size:14px;color:var(--muted-foreground);">Уведомления</div>
+            </div>
+            <div style="flex:1;background:var(--background);padding:28px 40px;overflow:hidden;">
+              <div style="max-width:520px;">
+                <div style="font-size:22px;font-weight:700;color:var(--foreground);margin-bottom:20px;">Данные и конфиденциальность</div>
+                <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;overflow:hidden;">
+                  <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid var(--border);"><span style="font-size:14px;color:var(--foreground);">Хранение</span><x-import component-from-global-scope="DesignSystem_66188c.Badge" variant="confirmed" hint-size="auto,22px">Синхронизируется с аккаунтом</x-import></div>
+                  <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid var(--border);"><span style="font-size:14px;color:var(--foreground);">Экспорт данных</span><x-import component-from-global-scope="DesignSystem_66188c.Button" variant="secondary" size="sm" hint-size="auto,36px">Экспортировать</x-import></div>
+                  <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 18px;"><span style="font-size:14px;color:var(--foreground);">Пользовательское соглашение · Политика конфиденциальности</span><span style="color:var(--muted-foreground);">›</span></div>
+                </div>
+                <div style="margin-top:24px;display:flex;gap:10px;">
+                  <x-import component-from-global-scope="DesignSystem_66188c.Button" variant="destructive" size="sm" hint-size="auto,36px">Удалить локальные данные</x-import>
+                  <x-import component-from-global-scope="DesignSystem_66188c.Button" variant="destructive" size="sm" hint-size="auto,36px">Удалить аккаунт</x-import>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = { theme: 'light' };
+  renderVals() {
+    const theme = this.state.theme;
+    return {
+      theme,
+      themeOptions: [
+        { value: 'light', label: 'Light' },
+        { value: 'dark', label: 'Dark' },
+        { value: 'paper', label: '\u0411\u0443\u043c\u0430\u0433\u0430' },
+        { value: 'graphite', label: '\u0413\u0440\u0430\u0444\u0438\u0442' },
+        { value: 'ink', label: '\u0427\u0435\u0440\u043d\u0438\u043b\u0430' },
+      ],
+      setTheme: (v) => this.setState({ theme: v }),
+      viewOptions: [{ value: 'list', label: '\u0421\u043f\u0438\u0441\u043e\u043a' }, { value: 'board', label: '\u0414\u043e\u0441\u043a\u0430' }],
+      redIconStyle: { color: 'var(--red-500)' },
+      flex1: { flex: 1 },
+    };
+  }
+}
+</script>
+</body>
+</html>

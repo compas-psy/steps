@@ -1,0 +1,207 @@
+{
+  "package": "ШАГИ_AGENT_PACKAGE_FINAL",
+  "status": "FINAL / DESIGN V2",
+  "file_count": 40,
+  "files": [
+    {
+      "path": "00_START_HERE_AGENT.md",
+      "size": 2638,
+      "sha256": "91158b34c1b668e48f56ede7b2ecd650a0604f60b4add4fd7e6a07651632d34d"
+    },
+    {
+      "path": "DESIGN/design-system/_adherence.oxlintrc.json",
+      "size": 12205,
+      "sha256": "3c6daafbecb0d2cf64444428970eed60544c6d336879e9edee5fc9e5bf676eae"
+    },
+    {
+      "path": "DESIGN/design-system/_ds_bundle.js",
+      "size": 80587,
+      "sha256": "447f8dee2fecb72593bdb656ff43daa6690b28723c8a0d797240869ea8c9b17d"
+    },
+    {
+      "path": "DESIGN/design-system/_ds_manifest.json",
+      "size": 18174,
+      "sha256": "f24d9820c04080b7e55522b40d6f91796389ffd63a8cf771c9796ef346ad862d"
+    },
+    {
+      "path": "DESIGN/design-system/readme.md",
+      "size": 15834,
+      "sha256": "a8ac941a9f03ab2309ab76f21cc7ebb6e9bd509bbdf9867715ae8b6e40bd1a05"
+    },
+    {
+      "path": "DESIGN/design-system/styles.css",
+      "size": 363,
+      "sha256": "ee44a6f2df7f87ef43e993ff1865b8ab6435d12c9c07e5863d23910c60285790"
+    },
+    {
+      "path": "DESIGN/design-system/tokens/base.css",
+      "size": 1112,
+      "sha256": "4e13b9db9afe85018d20734fbbaf2319f3eaaf06c9250cc34e0de6fd03e7e5de"
+    },
+    {
+      "path": "DESIGN/design-system/tokens/colors.css",
+      "size": 2314,
+      "sha256": "9fc0460e21df6f180957fd14634272d76e97ed807160957207f232a6420d5c79"
+    },
+    {
+      "path": "DESIGN/design-system/tokens/fonts.css",
+      "size": 324,
+      "sha256": "19b27417577a0d0e8dac27a8b5149fa801c6fb955a201ba781c6bff5eb641905"
+    },
+    {
+      "path": "DESIGN/design-system/tokens/radius.css",
+      "size": 829,
+      "sha256": "9d3b73dd8d3fa7d01f19788266e7372ebc8cc4956ed1863163d97ea6ae0ed05c"
+    },
+    {
+      "path": "DESIGN/design-system/tokens/services.css",
+      "size": 1235,
+      "sha256": "21d5e6b6502ff94966e06e720172b722686effc8f0462fce98ff51bee6453bf0"
+    },
+    {
+      "path": "DESIGN/design-system/tokens/shadows.css",
+      "size": 712,
+      "sha256": "98760cb0fb031cfa80d6bbb51ae96fd35497fbb24b3d97b576fc9154caa6653d"
+    },
+    {
+      "path": "DESIGN/design-system/tokens/typography.css",
+      "size": 2377,
+      "sha256": "d58d6c2c42a4c600dddc0613d8dfcff3430f992d63f711ce23e1f0bc745c3481"
+    },
+    {
+      "path": "DESIGN/source_unpacked/DESIGN_README.md",
+      "size": 1640,
+      "sha256": "7d0cf0afdcf782ce1aa29f8fd1088ca195e8435302393dd84e8f81cb26f08bef"
+    },
+    {
+      "path": "DESIGN/source_unpacked/design-reference-01.png",
+      "size": 59214,
+      "sha256": "b6c7a94e0d5bdebfc0424a9288413a84829d14d47faa585b0f5a9f707f08605b"
+    },
+    {
+      "path": "DESIGN/source_unpacked/design-reference-02.png",
+      "size": 52072,
+      "sha256": "0b1bd535875c88f020429bf4303e29a1bcbf976aaee1e88fa5cf92a6a01f8e05"
+    },
+    {
+      "path": "DESIGN/source_unpacked/yandex-logo.png",
+      "size": 60854,
+      "sha256": "532731153a583c9297b61cc4304bf1a151b60565d01cb721f7048a4787f67ab6"
+    },
+    {
+      "path": "DESIGN/source_unpacked/ВЕКТОР - CJM.dc.html",
+      "size": 43387,
+      "sha256": "cc1d916519a252f6ec5728007de27310aed4f431b0109dfbca6743a8a3dd34d8"
+    },
+    {
+      "path": "DESIGN/source_unpacked/ШАГИ - R1 Design.dc.html",
+      "size": 108944,
+      "sha256": "3946318fe9a775aedcc93aba934a08cf31887bdd6821b91f33049a709f71a17f"
+    },
+    {
+      "path": "DESIGN/ШАГИ-handoff_design_v2.zip",
+      "size": 298624,
+      "sha256": "356459c1ac81a6ac246a7e0d6b1193ca698f2152364b3601219cccb6511e164c"
+    },
+    {
+      "path": "MASTER_TZ.md",
+      "size": 172956,
+      "sha256": "7eab727dd67fb5c76a37288fea5f7c624490f22adfc84d7f819bff22909c171e"
+    },
+    {
+      "path": "SOURCE/PRODUCT_SPEC_v4.0_FINAL.md",
+      "size": 97669,
+      "sha256": "d1d3f37e2795f911cbcd4b1b67b351ba0c89a5fd2ca96a9da802f9584d2d9134"
+    },
+    {
+      "path": "SPEC/00_MASTER_IMPLEMENTATION_TZ.md",
+      "size": 15210,
+      "sha256": "570661209ff4022662043a2b2ef9395fa51c777da685759a442fd1aad4a81d9d"
+    },
+    {
+      "path": "SPEC/01_PRODUCT_BEHAVIOR_R1.md",
+      "size": 30247,
+      "sha256": "77c05ba165402d69c1315e20c979deb8ee280593c10a0357d49a40cd5ae0fa38"
+    },
+    {
+      "path": "SPEC/02_DATA_MODEL_SYNC.md",
+      "size": 12001,
+      "sha256": "3037e1700aa9a8726dbd12e49d0d670cfba371081a0b81eec6b2662f8eb86c91"
+    },
+    {
+      "path": "SPEC/03_BACKEND_API.md",
+      "size": 15165,
+      "sha256": "c2078cea87458f6656080fb8fc33335ac715875320a6070d1fe0afe2ac2b9320"
+    },
+    {
+      "path": "SPEC/04_UI_DESIGN_SYSTEM.md",
+      "size": 14951,
+      "sha256": "aad98420ae25414e6fa048f85010ac296471f9b351a7e77498483092c4f49eb3"
+    },
+    {
+      "path": "SPEC/05_SECURITY_PRIVACY_LEGAL.md",
+      "size": 9016,
+      "sha256": "0742e16d61106c7d5a81a97babba6c3b0b5e0e4cbb8dfc3f6688eef38ef4f6f8"
+    },
+    {
+      "path": "SPEC/06_TESTING_ACCEPTANCE.md",
+      "size": 8605,
+      "sha256": "044259a40c92ba4793094eabf94e4e92f49a5532187cc169ff62e750e0fb4cf9"
+    },
+    {
+      "path": "SPEC/07_RELEASES_FUTURE.md",
+      "size": 5641,
+      "sha256": "cf8173214d9550e241ca760f41b30f4e5d1f45c482a2c6542e3f30c52c583edf"
+    },
+    {
+      "path": "SPEC/08_DEVOPS_CICD_OPERATIONS.md",
+      "size": 4097,
+      "sha256": "27e3eb32698b43e7ff6fe193b06d7932958e9c6e843cffaebf1b59f7031b0c44"
+    },
+    {
+      "path": "SPEC/09_IMPLEMENTATION_PLAN.md",
+      "size": 3465,
+      "sha256": "84bec849d0a84405e00bae861d5a8072e1a845d1cdeec6628277309beed8cb67"
+    },
+    {
+      "path": "SPEC/10_FINAL_REVIEW_LOG.md",
+      "size": 22626,
+      "sha256": "49df198c156dbcde166bdbd487ce3d83190439225b5a4835ecf19108e128dac4"
+    },
+    {
+      "path": "SPEC/11_REFERENCE_BASE.md",
+      "size": 4213,
+      "sha256": "c805aad233842333d91ecf0907c4d4d1a508faa7007c0342e231efb0a7a739d6"
+    },
+    {
+      "path": "SPEC/12_SCREEN_STATE_MATRIX.md",
+      "size": 8390,
+      "sha256": "befc4fdf658fcfde8a6bbdc17a77546a2cf71b30cf3e6f33be5901980c01b2e3"
+    },
+    {
+      "path": "SPEC/INDEX.md",
+      "size": 5708,
+      "sha256": "afce1d90665bb33c1a5ca7ea42a001feac84b7f903ef2e96aec8457bd617e093"
+    },
+    {
+      "path": "VALIDATION/13_FINAL_VALIDATION_REPORT.md",
+      "size": 5731,
+      "sha256": "04ef7b52734bc5cca8b052035090895e380b7347b5ffb38577af62bba7aab74b"
+    },
+    {
+      "path": "VALIDATION/14_DESIGN_V2_DELTA.md",
+      "size": 6794,
+      "sha256": "b6323a8b67034c2d46e75904a4df5ec1fa5748210ce0b635ae2cbcd7d91ba22f"
+    },
+    {
+      "path": "VALIDATION/DESIGN_V2_DELTA.md",
+      "size": 6794,
+      "sha256": "b6323a8b67034c2d46e75904a4df5ec1fa5748210ce0b635ae2cbcd7d91ba22f"
+    },
+    {
+      "path": "VALIDATION/FINAL_VALIDATION_REPORT_DESIGN_V2.md",
+      "size": 5731,
+      "sha256": "04ef7b52734bc5cca8b052035090895e380b7347b5ffb38577af62bba7aab74b"
+    }
+  ]
+}
