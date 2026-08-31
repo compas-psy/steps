@@ -31,6 +31,9 @@ export * from './tombstone/index.js';
 // --- Порт SQL-драйвера (ADR-0005) ----------------------------------------------
 export * from './sqlite/index.js';
 
+// --- Адаптер IndexedDB (E02.3) --------------------------------------------------
+export * from './indexeddb/index.js';
+
 // --- Эталонная реализация в памяти (п.6) ---------------------------------------
 export * from './memory/index.js';
 
