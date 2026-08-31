@@ -7,14 +7,20 @@
   "type": "module",
   "types": "./src/index.ts",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./contract": "./src/contract/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
     "lint": "oxlint ."
   },
+  "dependencies": {
+    "@js-temporal/polyfill": "^0.5.1",
+    "@shagi/core": "workspace:*"
+  },
   "devDependencies": {
+    "@types/node": "^24.13.3",
     "typescript": "5.9.3",
     "vitest": "^4.1.11"
   }
