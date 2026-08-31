@@ -1,0 +1,62 @@
+/**
+ * `TaskCheckbox` — та же техника оверлея, что `Checkbox.css`/`Radio.css`:
+ * настоящий `<input>` лежит абсолютно позиционированным и прозрачным
+ * (`opacity: 0`, не `display:none`) поверх видимого квадрата, фокус-кольцо
+ * `base.css` целится в сам `input`. `--focus` — золотой контур поверх
+ * обычной рамки (§11 «Focus»), не замена цвета, а дополнительный слой.
+ */
+
+.shagi-task-checkbox {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+  width: var(--space-5);
+  height: var(--space-5);
+}
+.shagi-task-checkbox--disabled {
+  opacity: 0.5;
+}
+
+.shagi-task-checkbox__input {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.shagi-task-checkbox__input:disabled {
+  cursor: not-allowed;
+}
+
+.shagi-task-checkbox__box {
+  position: absolute;
+  inset: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--card);
+  color: var(--primary-foreground);
+  transition:
+    background-color var(--motion-duration-fast) var(--motion-easing-standard),
+    border-color var(--motion-duration-fast) var(--motion-easing-standard),
+    box-shadow var(--motion-duration-fast) var(--motion-easing-standard);
+}
+
+.shagi-task-checkbox__input:checked ~ .shagi-task-checkbox__box {
+  background: var(--primary);
+  border-color: var(--primary);
+}
+
+.shagi-task-checkbox--focus .shagi-task-checkbox__box {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 55%, transparent);
+}
+
+.shagi-task-checkbox__check {
+  opacity: 0;
+  transition: opacity var(--motion-duration-fast) var(--motion-easing-standard);
+}
+.shagi-task-checkbox__input:checked ~ .shagi-task-checkbox__box .shagi-task-checkbox__check {
+  opacity: 1;
+}

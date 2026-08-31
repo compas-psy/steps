@@ -1,0 +1,21 @@
+/**
+ * `SubtaskRow` — компактный вариант `TaskRow.css`: отступ слева под
+ * родительскую задачу, уменьшенный чекбокс и текст на ступень вниз по
+ * типографической шкале (§6).
+ */
+
+.shagi-subtask-row {
+  padding-left: var(--space-8);
+  padding-top: var(--space-2);
+  padding-bottom: var(--space-2);
+}
+
+.shagi-subtask-row .shagi-task-checkbox {
+  width: var(--space-4);
+  height: var(--space-4);
+}
+
+.shagi-subtask-row .shagi-task-row__title {
+  font-size: var(--text-body-secondary);
+  line-height: var(--lh-body-secondary);
+}

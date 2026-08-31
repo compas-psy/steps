@@ -1,0 +1,28 @@
+/**
+ * `TaskMetadata` — горизонтальный ряд из `small-meta`-текста, приглушённого
+ * цвета (`--muted-foreground`), с переносом на новую строку при нехватке
+ * ширины (мобильная плотная строка задачи, §8 «Responsive»).
+ */
+
+.shagi-task-metadata {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-3);
+  font-family: var(--font-sans);
+  font-size: var(--text-small-meta);
+  line-height: var(--lh-small-meta);
+  font-weight: var(--fw-medium);
+  color: var(--muted-foreground);
+}
+
+.shagi-task-metadata__item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.shagi-task-metadata__item-icon {
+  display: inline-flex;
+  flex-shrink: 0;
+}

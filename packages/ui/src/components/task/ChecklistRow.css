@@ -1,0 +1,32 @@
+/**
+ * `ChecklistRow` — компактнее `TaskRow`: без второй строки метаданных,
+ * зачёркивание текста при `--checked` (структурный сигнал в дополнение к
+ * приглушённому цвету, §11 «state never color-only»).
+ */
+
+.shagi-checklist-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-1) 0;
+}
+
+.shagi-checklist-row--disabled {
+  opacity: 0.6;
+}
+
+.shagi-checklist-row__checkbox {
+  min-width: 0;
+}
+
+.shagi-checklist-row--checked .shagi-checkbox__label {
+  color: var(--muted-foreground);
+  text-decoration: line-through;
+}
+
+.shagi-checklist-row__trailing {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+}

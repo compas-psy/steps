@@ -1,0 +1,167 @@
+/**
+ * `TaskRow` (пакет работ E03.4, §11 «Task states»). Каждый модификатор
+ * состояния комментируется у соответствующего структурного сигнала в
+ * `TaskRow.tsx` — здесь только цветовые/геометрические значения, все через
+ * `var()`. `--selected` форсирует заливку вложенного `TaskCheckbox` через
+ * потомковый селектор — выбор для массового действия не то же самое, что
+ * `checked` (завершение), но должен выглядеть как отмеченный чекбокс
+ * (пример конспекта «selected: заливка checkbox»).
+ */
+
+.shagi-task-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  background: transparent;
+  transition:
+    background-color var(--motion-duration-fast) var(--motion-easing-standard),
+    box-shadow var(--motion-duration-fast) var(--motion-easing-standard),
+    opacity var(--motion-duration-fast) var(--motion-easing-standard);
+}
+
+@media (hover: hover) {
+  .shagi-task-row--normal:hover {
+    background: var(--sage-50);
+  }
+}
+
+.shagi-task-row--disabled {
+  opacity: 0.6;
+}
+
+.shagi-task-row__drag-handle {
+  display: inline-flex;
+  flex-shrink: 0;
+  color: var(--muted-foreground);
+}
+
+.shagi-task-row__focus-marker {
+  flex-shrink: 0;
+}
+
+.shagi-task-row__checkbox {
+  flex-shrink: 0;
+}
+
+.shagi-task-row__content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+  flex: 1;
+}
+
+.shagi-task-row__title-line {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.shagi-task-row__title {
+  font-family: var(--font-sans);
+  font-size: var(--text-body-primary);
+  line-height: var(--lh-body-primary);
+  font-weight: var(--fw-medium);
+  color: var(--foreground);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shagi-task-row__state-icon {
+  display: inline-flex;
+  flex-shrink: 0;
+}
+
+.shagi-task-row__meta-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-3);
+}
+
+.shagi-task-row__status-label {
+  font-family: var(--font-sans);
+  font-size: var(--text-small-meta);
+  line-height: var(--lh-small-meta);
+  font-weight: var(--fw-medium);
+}
+
+.shagi-task-row__trailing {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+}
+
+/* ── Focus — золотой контур строки, точку рисует FocusMarker ── */
+.shagi-task-row--focus {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 55%, transparent);
+}
+
+/* ── MissedPlan — нейтральное «не по плану», без тревожного тона ── */
+.shagi-task-row--missedPlan {
+  background: var(--orange-soft);
+}
+.shagi-task-row--missedPlan .shagi-task-row__state-icon {
+  color: var(--orange-500);
+}
+.shagi-task-row--missedPlan .shagi-task-row__status-label {
+  color: var(--orange-500);
+}
+
+/* ── DeadlineSoon — приближающийся срок, предупреждающий тон ── */
+.shagi-task-row--deadlineSoon {
+  background: var(--amber-soft);
+}
+.shagi-task-row--deadlineSoon .shagi-task-row__state-icon {
+  color: var(--amber-500);
+}
+.shagi-task-row--deadlineSoon .shagi-task-row__status-label {
+  color: var(--amber-500);
+}
+
+/* ── DeadlineMissed — усиленное «просрочен срок», отдельно от MissedPlan ── */
+.shagi-task-row--deadlineMissed {
+  background: var(--red-soft);
+}
+.shagi-task-row--deadlineMissed .shagi-task-row__state-icon {
+  color: var(--red-500);
+}
+.shagi-task-row--deadlineMissed .shagi-task-row__status-label {
+  color: var(--red-500);
+  font-weight: var(--fw-semibold);
+}
+
+/* ── Recurring — нейтральная иконка повтора рядом с заголовком ── */
+.shagi-task-row--recurring .shagi-task-row__state-icon {
+  color: var(--muted-foreground);
+}
+
+/* ── Completed — зачёркнутый приглушённый заголовок, не только цвет ── */
+.shagi-task-row--completed .shagi-task-row__title {
+  color: var(--muted-foreground);
+  text-decoration: line-through;
+}
+
+/* ── Selected — фон + принудительная заливка чекбокса (пример конспекта) ── */
+.shagi-task-row--selected {
+  background: var(--sage-100);
+}
+.shagi-task-row--selected .shagi-task-checkbox__box {
+  background: var(--primary);
+  border-color: var(--primary);
+}
+.shagi-task-row--selected .shagi-task-checkbox__check {
+  opacity: 1;
+}
+
+/* ── Dragging — приподнятая тень + видимый drag-handle, не только прозрачность ── */
+.shagi-task-row--dragging {
+  background: var(--card);
+  box-shadow: var(--shadow-floating);
+  opacity: 0.94;
+}

@@ -1,0 +1,16 @@
+/**
+ * `FocusMarker` — точка `--accent` (gold) с золотым нимбом (`box-shadow`
+ * halo, тот же приём `color-mix`, что фокус-кольцо `base.css`). Статична —
+ * список задач и без того держит спокойный тон (ТЗ §18: «без... геймификации»),
+ * пульсирующей анимации здесь нет.
+ */
+
+.shagi-focus-marker {
+  display: inline-flex;
+  flex-shrink: 0;
+  width: var(--space-2);
+  height: var(--space-2);
+  border-radius: var(--radius-full);
+  background: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 30%, transparent);
+}

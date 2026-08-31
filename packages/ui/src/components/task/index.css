@@ -1,0 +1,16 @@
+/**
+ * Барель стилей подкаталога `task/` (пакет работ E03.4). Не подключён из
+ * `../index.css` намеренно — задание запрещает трогать общие барели
+ * (сведение на приёмке, см. комментарий в `index.ts` этого каталога).
+ * Компоненты сами подключают свой CSS побочным импортом (`import
+ * './TaskRow.css'` и т.п.), так что тесты и любой прямой импорт компонента
+ * получают стили независимо от того, подключён ли этот файл откуда-то ещё.
+ */
+
+@import './TaskCheckbox.css';
+@import './FocusMarker.css';
+@import './TaskMetadata.css';
+@import './TaskRow.css';
+@import './SubtaskRow.css';
+@import './ChecklistRow.css';
+@import './TaskDetail.css';
