@@ -18,7 +18,7 @@
  */
 
 export type ScreenId =
-  'launch' | 'welcome' | 'signIn' | 'firstTask' | 'nlpOnboarding' | 'todayEmpty';
+  'launch' | 'welcome' | 'signIn' | 'firstTask' | 'nlpOnboarding' | 'todayEmpty' | 'inbox';
 
 /**
  * `localMode` — пользователь выбрал «Начать локально» (M02 Welcome) без

@@ -1,0 +1,19 @@
+{
+  "pageTitle": "Входящие",
+  "back.label": "Закрыть Входящие",
+  "empty.description": "Новые задачи появятся здесь, когда вы отправите их во Входящие — почтой, из виджета или без явного места.",
+  "card.ariaLabel": "Разбор задачи «{title}»",
+  "actions.today": "Сегодня",
+  "actions.date": "Дата",
+  "actions.project": "Проект",
+  "actions.delete": "Удалить",
+  "actions.skip": "Пропустить",
+  "projectPicker.ariaLabel": "Проекты",
+  "projectPicker.empty": "Проектов пока нет",
+  "dateDialog.title": "Выбор даты",
+  "dateDialog.gridLabel": "Выбор запланированной даты",
+  "dateDialog.prevMonth": "Предыдущий месяц",
+  "dateDialog.nextMonth": "Следующий месяц",
+  "errors.actionFailed": "Не удалось выполнить действие. Попробуйте ещё раз.",
+  "errors.dismiss": "Закрыть"
+}

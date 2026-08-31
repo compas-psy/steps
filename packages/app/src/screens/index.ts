@@ -19,6 +19,7 @@ import type { ComponentType } from 'react';
 
 import type { ScreenId } from '../state/store.js';
 import { FirstTask } from './FirstTask.js';
+import { Inbox } from './Inbox.js';
 import { Launch } from './Launch.js';
 import { NlpOnboarding } from './NlpOnboarding.js';
 import { SignIn } from './SignIn.js';
@@ -26,6 +27,7 @@ import { Today } from './Today.js';
 import { Welcome } from './Welcome.js';
 
 export { FirstTask } from './FirstTask.js';
+export { Inbox } from './Inbox.js';
 export { Launch } from './Launch.js';
 export { NlpOnboarding } from './NlpOnboarding.js';
 export { SignIn } from './SignIn.js';
@@ -39,4 +41,5 @@ export const SCREENS: Partial<Record<ScreenId, ComponentType>> = {
   firstTask: FirstTask,
   nlpOnboarding: NlpOnboarding,
   todayEmpty: Today,
+  inbox: Inbox,
 };

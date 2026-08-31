@@ -31,5 +31,6 @@
   "selection.exit": "Готово",
   "bulk.selectedCount": "Выбрано: {count}",
   "bulk.today": "Сегодня",
-  "bulk.tomorrow": "Завтра"
+  "bulk.tomorrow": "Завтра",
+  "inboxBadge.label": "Входящие: {count}"
 }

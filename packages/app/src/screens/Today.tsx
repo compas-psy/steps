@@ -187,6 +187,33 @@
  * пользователя в режиме выбора для повторной попытки на проваленных, а
  * список уже показывает, что именно не применилось (проваленная задача
  * осталась в «Не по плану», не переехала).
+ *
+ * --- Бейдж Входящих (эпик E07, точечная правка) ----------------------------
+ *
+ * Вход во Входящие — НЕ bottom nav (его в дереве пакетов ещё нет ни в одном
+ * пакете) и не отдельный маршрут с постоянной панелью, а бейдж-счётчик в
+ * заголовке Today (`.ultraplan/research/02-ui.md` §4,
+ * `docs/spec/SPEC/04_UI_DESIGN_SYSTEM.md`: "Inbox entry: Today header
+ * badge, ..."). `inboxCount` читается ОДНИМ дополнительным запросом
+ * (`storage.tasks.listByCaptureStateAndStatus('inbox', 'active').length`) в
+ * том же `useEffect`, что уже грузит `selectTodayTasks` — не отдельный
+ * эффект и не запрос на каждый рендер (задание). Он не участвует в
+ * `refreshGroups` (перезапросе после команд Today): ни одно действие этого
+ * экрана не меняет `captureState` — все шесть групп Today по построению
+ * `selectTodayTasks` уже `processed` (Inbox — только `capture_state=inbox`,
+ * `01§2`), так что список Входящих не может измениться под действиями
+ * этого экрана, повторный запрос был бы лишним.
+ *
+ * Ноль — бейдж (и кнопка целиком) СКРЫТ, не «0»: по духу пустого состояния
+ * (Inbox Zero) — нулевой счётчик не несёт действия ("иди разбирай нечего"),
+ * показывать его как число было бы шумом, а не сигналом (решение этого
+ * пакета работ, задание разрешало оставить голую иконку без числа — здесь
+ * выбрано скрыть целиком, раз действию всё равно нечего показать).
+ *
+ * Клик — `controller.goTo('inbox')` (`useAppController`, готовый хук
+ * `state/context.tsx`). Экран Входящие (`Inbox.tsx`, этот же пакет работ)
+ * возвращается назад через `controller.goTo('todayEmpty')` — см. его
+ * заголовок за объяснением имени `'todayEmpty'`.
  */
 import { useEffect, useState, type ReactElement } from 'react';
 import { Temporal } from '@js-temporal/polyfill';
@@ -228,7 +255,7 @@ import {
   type TaskRowState,
 } from '@shagi/ui';
 
-import { useStorage } from '../state/context.js';
+import { useAppController, useStorage } from '../state/context.js';
 
 /** Precedence `01§6` — порядок, в котором группы проверяются и рендерятся. */
 const GROUP_ORDER: readonly TodayGroup[] = [
@@ -701,7 +728,12 @@ function focusAssignmentPatch(group: TodayGroup): UpdateTaskPatch {
 
 export function Today(): ReactElement {
   const storage = useStorage();
+  const controller = useAppController();
   const [groups, setGroups] = useState<TodayGroups | null>(null);
+  /** Счётчик активных Входящих для бейджа заголовка — см. заголовок файла,
+   * блок «Бейдж Входящих». `null` только до первого разрешения эффекта
+   * ниже (тот же смысл, что `groups === null` для остальной страницы). */
+  const [inboxCount, setInboxCount] = useState<number | null>(null);
   const [openMenuTaskId, setOpenMenuTaskId] = useState<Uuid | null>(null);
   const [collapsedOverride, setCollapsedOverride] = useState<Partial<Record<TodayGroup, boolean>>>(
     {},
@@ -722,8 +754,17 @@ export function Today(): ReactElement {
   useEffect(() => {
     let cancelled = false;
     const now = Temporal.Now.plainDateTimeISO();
-    void selectTodayTasks(storage, now).then((result) => {
-      if (!cancelled) setGroups(result);
+    // Оба запроса — в одном эффекте (задание, см. заголовок файла блок
+    // «Бейдж Входящих»): бейдж грузится "вместе с остальным", не отдельным
+    // лишним запросом.
+    void Promise.all([
+      selectTodayTasks(storage, now),
+      storage.tasks.listByCaptureStateAndStatus('inbox', 'active'),
+    ]).then(([result, inboxTasks]) => {
+      if (!cancelled) {
+        setGroups(result);
+        setInboxCount(inboxTasks.length);
+      }
     });
     return () => {
       cancelled = true;
@@ -889,6 +930,15 @@ export function Today(): ReactElement {
     <div>
       <h1>{t('today', 'pageTitle')}</h1>
       <p>{formatDate(today, { weekday: 'long' })}</p>
+      {/* Бейдж Входящих — скрыт при нуле (см. заголовок файла, блок
+       * «Бейдж Входящих»), не рендерится, пока `inboxCount` не разрешился
+       * (`null`) — та же семантика "ещё не знаем", что `groups === null`. */}
+      {inboxCount !== null && inboxCount > 0 && (
+        <button type="button" onClick={() => controller.goTo('inbox')}>
+          <Icon name="archive" size={20} />
+          {t('today', 'inboxBadge.label', { count: inboxCount })}
+        </button>
+      )}
 
       {errorMessage !== null && (
         <Toast

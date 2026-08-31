@@ -118,6 +118,31 @@ function renderTodayCapturingStorage(tasks: readonly Task[]): () => StoragePort 
   };
 }
 
+/** Тот же приём, что `renderTodayCapturingStorage`, плюс наружу отдаётся сам
+ * `controller` — тесты бейджа Входящих (см. заголовок `Today.tsx`, блок
+ * «Бейдж Входящих») проверяют переход экрана по клику, `renderTodayCapturingStorage`
+ * этого не отдаёт и оставлена нетронутой (задание — точечная правка). */
+function renderTodayWithController(tasks: readonly Task[]): {
+  getStorage: () => StoragePort;
+  controller: ReturnType<typeof createAppController>;
+} {
+  const controller = createAppController({ screen: 'todayEmpty' });
+  let capturedStorage: StoragePort | undefined;
+  render(
+    <AppProvider host={testHost()} controller={controller}>
+      <SeedThenTodayCapturing tasks={tasks} onStorage={(storage) => (capturedStorage = storage)} />
+    </AppProvider>,
+  );
+  return {
+    getStorage: () => {
+      if (capturedStorage === undefined)
+        throw new Error('storage не захвачен — компонент не смонтировался');
+      return capturedStorage;
+    },
+    controller,
+  };
+}
+
 const NOW = Temporal.Now.plainDateTimeISO();
 const TODAY = NOW.toPlainDate();
 const YESTERDAY = TODAY.subtract({ days: 1 });
@@ -757,5 +782,56 @@ describe('Today — M08 свёртываемые группы', () => {
     const toggle = await screen.findByRole('button', { name: t('today', 'groups.today') });
     expect(toggle).toHaveAttribute('aria-expanded', 'true');
     expect(screen.getByText('Ровно 1')).toBeInTheDocument();
+  });
+});
+
+describe('Today — бейдж Входящих (вход в Inbox, см. заголовок файла)', () => {
+  it('показывает счётчик активных inbox-задач рядом с заголовком', async () => {
+    const inboxTasks = [
+      makeTask({ title: 'Во входящих 1', captureState: 'inbox' }),
+      makeTask({ title: 'Во входящих 2', captureState: 'inbox' }),
+    ];
+    renderTodayWithController(inboxTasks);
+
+    expect(
+      await screen.findByRole('button', { name: t('today', 'inboxBadge.label', { count: 2 }) }),
+    ).toBeInTheDocument();
+  });
+
+  it('processed-задачи не считаются в бейдже, только capture_state=inbox', async () => {
+    const tasks = [
+      makeTask({ title: 'Обычная', plannedDate: TODAY }),
+      makeTask({ title: 'Во входящих', captureState: 'inbox' }),
+    ];
+    renderTodayWithController(tasks);
+
+    await waitFor(() => expect(screen.getByText('Обычная')).toBeInTheDocument());
+    expect(
+      screen.getByRole('button', { name: t('today', 'inboxBadge.label', { count: 1 }) }),
+    ).toBeInTheDocument();
+  });
+
+  it('бейдж скрыт (не показывает «0»), когда Входящие пусты', async () => {
+    renderTodayWithController([]);
+    await waitFor(() => expect(screen.getByText(t('common', 'today.doneAll'))).toBeInTheDocument());
+    expect(screen.queryByText('0')).not.toBeInTheDocument();
+    for (const count of [0, 1, 2, 3]) {
+      expect(
+        screen.queryByRole('button', { name: t('today', 'inboxBadge.label', { count }) }),
+      ).not.toBeInTheDocument();
+    }
+  });
+
+  it('клик по бейджу переводит на экран Входящие', async () => {
+    const user = userEvent.setup();
+    const inboxTask = makeTask({ title: 'Во входящих', captureState: 'inbox' });
+    const { controller } = renderTodayWithController([inboxTask]);
+
+    const badge = await screen.findByRole('button', {
+      name: t('today', 'inboxBadge.label', { count: 1 }),
+    });
+    await user.click(badge);
+
+    expect(controller.getState().screen).toBe('inbox');
   });
 });
