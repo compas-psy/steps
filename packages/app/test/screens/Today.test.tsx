@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactElement } from 'react';
 
 import { render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { Temporal } from '@js-temporal/polyfill';
 import { createUnavailablePlatform } from '@shagi/platform';
 import { t } from '@shagi/i18n';
@@ -64,6 +65,57 @@ function renderToday(tasks: readonly Task[] = []): void {
       <SeedThenToday tasks={tasks} />
     </AppProvider>,
   );
+}
+
+/**
+ * Тот же приём захвата `storage`, что `FirstTask.test.tsx` (`Harness`):
+ * сеет задачи и монтирует `Today` на одном и том же инстансе `StoragePort`,
+ * который получает сам экран (`useStorage()`, один на дерево `AppProvider`),
+ * и параллельно отдаёт этот инстанс наружу — тесты действий проверяют
+ * реальный эффект команды в хранилище, а не только то, что экран
+ * перерисовался.
+ */
+function SeedThenTodayCapturing({
+  tasks,
+  onStorage,
+}: {
+  tasks: readonly Task[];
+  onStorage: (storage: StoragePort) => void;
+}): ReactElement | null {
+  const storage = useStorage();
+  const [seeded, setSeeded] = useState(false);
+
+  useEffect(() => {
+    onStorage(storage);
+  }, [storage, onStorage]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void seedTasks(storage, tasks).then(() => {
+      if (!cancelled) setSeeded(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `tasks` фиксирован на монтирование теста, не меняется между рендерами
+  }, [storage]);
+
+  return seeded ? <Today /> : null;
+}
+
+function renderTodayCapturingStorage(tasks: readonly Task[]): () => StoragePort {
+  const controller = createAppController({ screen: 'todayEmpty' });
+  let capturedStorage: StoragePort | undefined;
+  render(
+    <AppProvider host={testHost()} controller={controller}>
+      <SeedThenTodayCapturing tasks={tasks} onStorage={(storage) => (capturedStorage = storage)} />
+    </AppProvider>,
+  );
+  return () => {
+    if (capturedStorage === undefined)
+      throw new Error('storage не захвачен — компонент не смонтировался');
+    return capturedStorage;
+  };
 }
 
 const NOW = Temporal.Now.plainDateTimeISO();
@@ -187,5 +239,183 @@ describe('Today (M06 Empty / M07 Normal)', () => {
     renderToday([future]);
     await waitFor(() => expect(screen.getByText(t('common', 'today.doneAll'))).toBeInTheDocument());
     expect(screen.queryByText('Будущая задача')).not.toBeInTheDocument();
+  });
+});
+
+describe('Today — действия (Complete/Reschedule/Change deadline)', () => {
+  it('чекбокс строки реально завершает задачу через completeTaskCommand — задача пропадает из списка', async () => {
+    const user = userEvent.setup();
+    const task = makeTask({ title: 'Обычная сегодняшняя', plannedDate: TODAY });
+    const getStorage = renderTodayCapturingStorage([task]);
+
+    await waitFor(() => expect(screen.getByText('Обычная сегодняшняя')).toBeInTheDocument());
+
+    await user.click(screen.getByRole('checkbox', { name: 'Обычная сегодняшняя' }));
+
+    await waitFor(() => expect(screen.getByText(t('common', 'today.doneAll'))).toBeInTheDocument());
+    expect(screen.queryByText('Обычная сегодняшняя')).not.toBeInTheDocument();
+
+    const stored = await getStorage().tasks.findById(task.id);
+    expect(stored?.status).toBe('completed');
+    expect(stored?.completionKind).toBe('done');
+  });
+
+  it('меню «Не по плану» → «Сегодня» реально переносит plannedDate и задачу — в группу «Сегодня»', async () => {
+    const user = userEvent.setup();
+    const task = makeTask({ title: 'Забытый план', plannedDate: YESTERDAY });
+    const getStorage = renderTodayCapturingStorage([task]);
+
+    await waitFor(() =>
+      expect(
+        within(
+          groupHeading(t('today', 'groups.missedPlan')).closest('section') as HTMLElement,
+        ).getByText('Забытый план'),
+      ).toBeInTheDocument(),
+    );
+
+    await user.click(
+      screen.getByRole('button', {
+        name: t('today', 'menu.triggerLabel', { title: 'Забытый план' }),
+      }),
+    );
+    await user.click(screen.getByRole('menuitem', { name: t('today', 'actions.rescheduleToday') }));
+
+    await waitFor(() =>
+      expect(queryGroupHeading(t('today', 'groups.missedPlan'))).not.toBeInTheDocument(),
+    );
+    expect(
+      within(groupHeading(t('today', 'groups.today')).closest('section') as HTMLElement).getByText(
+        'Забытый план',
+      ),
+    ).toBeInTheDocument();
+
+    const stored = await getStorage().tasks.findById(task.id);
+    expect(stored?.plannedDate).toEqual(TODAY);
+  });
+
+  it('меню «Не по плану» → «Завтра» переносит plannedDate на завтра — задача уходит с Today вовсе', async () => {
+    const user = userEvent.setup();
+    const task = makeTask({ title: 'Забытый план 2', plannedDate: YESTERDAY });
+    const getStorage = renderTodayCapturingStorage([task]);
+
+    await waitFor(() =>
+      expect(
+        within(
+          groupHeading(t('today', 'groups.missedPlan')).closest('section') as HTMLElement,
+        ).getByText('Забытый план 2'),
+      ).toBeInTheDocument(),
+    );
+
+    await user.click(
+      screen.getByRole('button', {
+        name: t('today', 'menu.triggerLabel', { title: 'Забытый план 2' }),
+      }),
+    );
+    await user.click(
+      screen.getByRole('menuitem', { name: t('today', 'actions.rescheduleTomorrow') }),
+    );
+
+    await waitFor(() => expect(screen.getByText(t('common', 'today.doneAll'))).toBeInTheDocument());
+    expect(screen.queryByText('Забытый план 2')).not.toBeInTheDocument();
+
+    const stored = await getStorage().tasks.findById(task.id);
+    expect(stored?.plannedDate).toEqual(TOMORROW);
+  });
+
+  it('меню «Просрочен срок» → «Изменить срок» открывает DatePicker и реально меняет deadlineDate', async () => {
+    const user = userEvent.setup();
+    const task = makeTask({ title: 'Просроченный дедлайн 2', deadlineDate: YESTERDAY });
+    const getStorage = renderTodayCapturingStorage([task]);
+
+    await waitFor(() =>
+      expect(
+        within(
+          groupHeading(t('today', 'groups.missedDeadline')).closest('section') as HTMLElement,
+        ).getByText('Просроченный дедлайн 2'),
+      ).toBeInTheDocument(),
+    );
+
+    await user.click(
+      screen.getByRole('button', {
+        name: t('today', 'menu.triggerLabel', { title: 'Просроченный дедлайн 2' }),
+      }),
+    );
+    await user.click(screen.getByRole('menuitem', { name: t('today', 'actions.changeDeadline') }));
+
+    // Открывшийся `DatePicker` (внутри `Modal`) по умолчанию показывает
+    // ТЕКУЩИЙ месяц (см. заголовок `Today.tsx`) — сегодняшняя ячейка всегда
+    // в нём есть, `aria-current="date"` находит её без листания месяцев.
+    const todayCell = await screen.findByRole('gridcell', { current: 'date' });
+    await user.click(todayCell);
+
+    // Дедлайн больше не просрочен (`effectiveDeadlineDateTime` для
+    // date-only дедлайна — конец суток) и задача без `plannedDate`/
+    // `focusDate` не входит ни в одну группу Today — список пустеет.
+    await waitFor(() => expect(screen.getByText(t('common', 'today.doneAll'))).toBeInTheDocument());
+    expect(screen.queryByText('Просроченный дедлайн 2')).not.toBeInTheDocument();
+
+    const stored = await getStorage().tasks.findById(task.id);
+    expect(stored?.deadlineDate).toEqual(TODAY);
+  });
+
+  it('провалившаяся команда (`not_found`) показывает ошибку и не трогает список молча', async () => {
+    const user = userEvent.setup();
+    const task = makeTask({ title: 'Удалённая где-то параллельно', plannedDate: TODAY });
+    const getStorage = renderTodayCapturingStorage([task]);
+
+    await waitFor(() =>
+      expect(screen.getByText('Удалённая где-то параллельно')).toBeInTheDocument(),
+    );
+
+    // Симулирует конкурентную мутацию: задача tombstone'ится в хранилище
+    // мимо экрана (другая вкладка/устройство) между рендером и кликом —
+    // `completeTaskCommand` находит её удалённой и вернёт `not_found`, а
+    // не тихо притворится успехом.
+    await getStorage().runTransaction(async (tx) => {
+      const current = await tx.tasks.findById(task.id);
+      if (current === null) throw new Error('задача не найдена в тесте');
+      await tx.applyMutation({
+        writes: [{ entity: 'task', value: { ...current, deletedAt: Temporal.Now.instant() } }],
+        outbox: [makeOutboxEntry('task', task.id)],
+      });
+    });
+
+    await user.click(screen.getByRole('checkbox', { name: 'Удалённая где-то параллельно' }));
+
+    await waitFor(() =>
+      expect(screen.getByText(t('today', 'errors.actionFailed'))).toBeInTheDocument(),
+    );
+    expect(screen.getByRole('alert')).toBeInTheDocument();
+  });
+});
+
+describe('Today — M08 свёртываемые группы', () => {
+  it('группа с 21 задачей (>20) стартует свёрнутой — заголовок кликабелен и разворачивает список', async () => {
+    const user = userEvent.setup();
+    const tasks = Array.from({ length: 21 }, (_, index) =>
+      makeTask({ title: `Задача ${String(index + 1)}`, plannedDate: TODAY }),
+    );
+    renderTodayCapturingStorage(tasks);
+
+    const toggle = await screen.findByRole('button', { name: t('today', 'groups.today') });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByText('Задача 1')).not.toBeInTheDocument();
+
+    await user.click(toggle);
+
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByText('Задача 1')).toBeInTheDocument();
+    expect(screen.getByText('Задача 21')).toBeInTheDocument();
+  });
+
+  it('группа с 20 задачами (не больше порога) стартует развёрнутой', async () => {
+    const tasks = Array.from({ length: 20 }, (_, index) =>
+      makeTask({ title: `Ровно ${String(index + 1)}`, plannedDate: TODAY }),
+    );
+    renderTodayCapturingStorage(tasks);
+
+    const toggle = await screen.findByRole('button', { name: t('today', 'groups.today') });
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByText('Ровно 1')).toBeInTheDocument();
   });
 });

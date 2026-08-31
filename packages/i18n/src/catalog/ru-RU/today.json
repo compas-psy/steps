@@ -6,5 +6,17 @@
   "groups.focus": "Главное",
   "groups.timed": "По времени",
   "groups.today": "Сегодня",
-  "groups.later": "Когда будет время"
+  "groups.later": "Когда будет время",
+  "actions.complete": "Выполнить",
+  "actions.rescheduleToday": "Сегодня",
+  "actions.rescheduleTomorrow": "Завтра",
+  "actions.changeDeadline": "Изменить срок",
+  "menu.triggerLabel": "Меню задачи «{title}»",
+  "menu.ariaLabel": "Действия с задачей «{title}»",
+  "deadlineDialog.title": "Изменить срок",
+  "deadlineDialog.gridLabel": "Выбор новой даты дедлайна",
+  "deadlineDialog.prevMonth": "Предыдущий месяц",
+  "deadlineDialog.nextMonth": "Следующий месяц",
+  "errors.actionFailed": "Не удалось выполнить действие. Попробуйте ещё раз.",
+  "errors.dismiss": "Закрыть"
 }
