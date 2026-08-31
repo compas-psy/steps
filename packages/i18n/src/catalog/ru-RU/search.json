@@ -17,5 +17,6 @@
   "filters.missedDeadline": "Просрочен срок",
   "filters.recurring": "Повторяющиеся",
   "filters.empty.title": "Пусто.",
-  "filters.empty.description": "Активных задач с таким условием сейчас нет."
+  "filters.empty.description": "Активных задач с таким условием сейчас нет.",
+  "completed.entry.button": "Завершённые"
 }

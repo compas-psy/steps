@@ -21,10 +21,14 @@
  *
  * `plan` (M14 Agenda / M15 selected) — эпик E12, пакет работ E12.2: см.
  * заголовок `state/store.ts`, блок про `'plan'`, и заголовок `Plan.tsx`.
+ *
+ * `completed` (M36 «Completed») — эпик E12, ПОСЛЕДНИЙ пакет работ E12.4: см.
+ * заголовок `state/store.ts`, блок про `'completed'`, и заголовок `Completed.tsx`.
  */
 import type { ComponentType } from 'react';
 
 import type { ScreenId } from '../state/store.js';
+import { Completed } from './Completed.js';
 import { FirstTask } from './FirstTask.js';
 import { Inbox } from './Inbox.js';
 import { Launch } from './Launch.js';
@@ -38,6 +42,7 @@ import { TaskDetail } from './TaskDetail.js';
 import { Today } from './Today.js';
 import { Welcome } from './Welcome.js';
 
+export { Completed } from './Completed.js';
 export { FirstTask } from './FirstTask.js';
 export { Inbox } from './Inbox.js';
 export { Launch } from './Launch.js';
@@ -64,4 +69,5 @@ export const SCREENS: Partial<Record<ScreenId, ComponentType>> = {
   taskDetail: TaskDetail,
   search: Search,
   plan: Plan,
+  completed: Completed,
 };

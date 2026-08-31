@@ -224,6 +224,17 @@
  * фильтр" между сессиями (перезагрузка страницы/новый заход) — не строится:
  * `activeFilter` — обычный `useState`, обнуляется при размонтировании
  * экрана, как и `query`.
+ *
+ * --- E12.4: точка входа в «Завершённые» (M36) ------------------------------
+ *
+ * Кнопка `completed.entry.*` — новая строка, добавленная ПОСЛЕДНИМ пакетом
+ * работ эпика E12 (`screens/Completed.tsx`, читай его заголовок за полным
+ * разбором, ПОЧЕМУ именно этот экран несёт точку входа: коротко — D17
+ * десктопной половины матрицы дословно связывает «Search» и «Completed»
+ * одной строкой контракта, тот же жанр решения, что уже принят здесь для
+ * системных фильтров E12.3). Видна в ТОМ ЖЕ `isEmptyQuery`-блоке, что
+ * фильтры — обе вещи про «просмотр без текстового запроса», не текстовый
+ * поиск; переход — обычный `controller.goTo('completed')`.
  */
 import { useEffect, useMemo, useState, type ReactElement } from 'react';
 
@@ -247,7 +258,7 @@ import {
   type SearchCandidate,
 } from '@shagi/storage';
 import type { StoragePort } from '@shagi/storage';
-import { EmptyState, Filter, Icon, Input, Label, ProjectRow, TaskRow } from '@shagi/ui';
+import { Button, EmptyState, Filter, Icon, Input, Label, ProjectRow, TaskRow } from '@shagi/ui';
 
 import { useAppController, useStorage } from '../state/context.js';
 
@@ -474,6 +485,14 @@ export function Search(): ReactElement {
             </Filter>
           ))}
         </div>
+      )}
+
+      {/* Точка входа в M36 «Завершённые» — см. заголовок файла, блок
+       * «E12.4». Тот же `isEmptyQuery`-блок, что фильтры выше. */}
+      {isEmptyQuery && (
+        <Button variant="secondary" onClick={() => controller.goTo('completed')}>
+          {t('search', 'completed.entry.button')}
+        </Button>
       )}
 
       {isEmptyQuery && activeFilter === null && (

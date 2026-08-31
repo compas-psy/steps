@@ -11,6 +11,7 @@
  * (движок — `message-format.ts`).
  */
 import ruCommon from './catalog/ru-RU/common.json' with { type: 'json' };
+import ruCompleted from './catalog/ru-RU/completed.json' with { type: 'json' };
 import ruInbox from './catalog/ru-RU/inbox.json' with { type: 'json' };
 import ruOnboarding from './catalog/ru-RU/onboarding.json' with { type: 'json' };
 import ruPlan from './catalog/ru-RU/plan.json' with { type: 'json' };
@@ -32,6 +33,7 @@ import ruToday from './catalog/ru-RU/today.json' with { type: 'json' };
 /** R1 обязателен и полон (SPEC/00 §13.1) — единственная база, из которой выводятся типы ключей. */
 export const CATALOG_RU_RU = {
   common: ruCommon,
+  completed: ruCompleted,
   inbox: ruInbox,
   onboarding: ruOnboarding,
   plan: ruPlan,

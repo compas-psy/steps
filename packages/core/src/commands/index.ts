@@ -262,3 +262,18 @@ export {
   type DeleteSeriesInput,
   type DeleteSeriesResult,
 } from './delete-series.js';
+
+// --- Восстановление завершённых задач (`01§11.10`/`01§11.11`) — E12.4 ---------
+// Экран «Завершённые» (M36, `12_SCREEN_STATE_MATRIX.md`) — последний
+// недостающий кусок волны 1. См. заголовок `restore-task.ts` за полным
+// разбором формы команды.
+export {
+  describeRestoreSituation,
+  restoreTaskCommand,
+  type RestoreArchivedProjectChoice,
+  type RestoreHierarchyChoice,
+  type RestoreSituationResult,
+  type RestoreTaskDeps,
+  type RestoreTaskInput,
+  type RestoreTaskResult,
+} from './restore-task.js';

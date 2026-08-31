@@ -1,0 +1,22 @@
+{
+  "pageTitle": "Завершённые",
+  "back.label": "Назад",
+  "empty.title": "Завершённых задач пока нет.",
+  "empty.description": "Здесь появятся задачи, которые вы отметите выполненными.",
+  "errors.dismiss": "Скрыть",
+  "errors.restoreFailed": "Не удалось восстановить задачу.",
+  "dialog.loading": "Загрузка…",
+  "dialog.restore": "Восстановить",
+  "dialog.recurringBlocked.description": "У этой серии уже есть следующее повторение — обычное восстановление недоступно.",
+  "dialog.recurringBlocked.createCopy": "Создать отдельную копию",
+  "dialog.deletedParentAutoTopLevel": "Родительская задача удалена — подзадача станет отдельной верхнеуровневой задачей.",
+  "dialog.deletedProjectAutoInbox": "Проект задачи удалён — задача вернётся во Входящие.",
+  "dialog.hierarchyChoice.groupLabel": "Как восстановить родительскую и подзадачу",
+  "dialog.hierarchyChoice.prompt": "Родительская задача тоже завершена. Как восстановить?",
+  "dialog.hierarchyChoice.restorePair": "Восстановить родительскую и подзадачу",
+  "dialog.hierarchyChoice.separateTask": "Создать отдельную задачу",
+  "dialog.archivedProjectChoice.groupLabel": "Проект задачи в архиве",
+  "dialog.archivedProjectChoice.prompt": "Проект этой задачи в архиве. Как восстановить?",
+  "dialog.archivedProjectChoice.restoreProject": "Восстановить проект и задачу",
+  "dialog.archivedProjectChoice.restoreToInbox": "Восстановить во Входящие"
+}

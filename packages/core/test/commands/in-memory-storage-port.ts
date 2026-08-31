@@ -65,6 +65,15 @@ export class InMemoryCommandStoragePort implements CommandStoragePort {
         ),
       );
     },
+    // `listBySeries` — добавлен пакетом работ E12.4 (`restoreTaskCommand`,
+    // `01§11.10`) — тот же фильтр по одному общему `Map`, что `listDirectSubtasks`.
+    listBySeries: (seriesId: Uuid, status: TaskStatus): Promise<readonly Task[]> => {
+      return Promise.resolve(
+        [...this.byId.values()].filter(
+          (task) => task.seriesId === seriesId && task.status === status && task.deletedAt === null,
+        ),
+      );
+    },
   };
 
   readonly checklistItems: CommandChecklistItemReader = {

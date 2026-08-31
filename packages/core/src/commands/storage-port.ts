@@ -52,11 +52,20 @@ export type NonEmptyArray<T> = readonly [T, ...T[]];
  * `TaskRepository.listDirectSubtasks` (`packages/storage`), метод уже
  * существует там (индекс `tasks(parent_task_id, status, rank)`) — здесь
  * лишь объявлен структурный срез, ничего нового в хранилище не требуется.
+ *
+ * `listBySeries` — добавлен пакетом работ E12.4 для `restoreTaskCommand`
+ * (`01§11.10` "Restore old recurrence": "no next active occurrence exists"
+ * — команде нужно САМОЙ это проверить, не доверяясь вызывающему коду).
+ * Тем же приёмом, что `listDirectSubtasks` выше — сигнатура скопирована
+ * буквально с реального `TaskRepository.listBySeries` (`packages/storage`,
+ * индекс `tasks(series_id, status)`, метод уже существует и уже покрыт
+ * контрактными тестами хранилища), ничего нового в хранилище не требуется.
  */
 export interface CommandTaskReader {
   findById(id: Uuid): Promise<Task | null>;
   loadValidationContext(id: Uuid | null, parentTaskId: Uuid | null): Promise<TaskValidationContext>;
   listDirectSubtasks(parentTaskId: Uuid, status: TaskStatus): Promise<readonly Task[]>;
+  listBySeries(seriesId: Uuid, status: TaskStatus): Promise<readonly Task[]>;
 }
 
 /**
