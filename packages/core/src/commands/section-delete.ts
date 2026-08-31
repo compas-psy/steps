@@ -1,81 +1,156 @@
+import type { Temporal } from '@js-temporal/polyfill';
+
+import { generateUuidV7 } from '../identity/index.js';
+import type { Section } from '../entities/section.js';
+import type { SyncOutboxEntry } from '../entities/sync-outbox.js';
+import type { Uuid } from '../values.js';
+import { updateTaskCommand } from './update-task.js';
+import type { CommandStoragePort } from './storage-port.js';
+import type { TaskCommandDeps } from './types.js';
+import type { CommandProjectTaskReader } from './project-port.js';
+import {
+  buildPatchJson,
+  diffChangedFields,
+  pickClocks,
+  tickClocks,
+} from './project-section-clock.js';
+import type {
+  CommandSectionDomainMutation,
+  CommandSectionEntityWrite,
+  CommandSectionStoragePort,
+} from './section-port.js';
+import { SECTION_MUTABLE_FIELDS } from './section-port.js';
+
 /**
- * `deleteSectionCommand` — **заблокировано**, не реализовано в этом пакете
- * работ. Задокументированная находка отчёта пакета работ E09, раздел
- * «Section» задания: не гадать и не изобретать архитектурное соглашение в
- * одиночку, оставить явный TODO.
+ * `deleteSectionCommand` (`01§12` "Delete section": "Tasks move to `Без
+ * раздела`; Undo restores section/ranks").
  *
- * Спека (`01§12` "Delete section"): "Tasks move to `Без раздела`; Undo
- * restores section/ranks." и (`01§12` "Sections"): "User-created empty
- * Section remains visible; synthetic `Без раздела` is hidden only when
- * empty." Дословный текст описывает `Без раздела` как нечто, что ведёт себя
- * как обычная Section в UI (Board использует её как колонку — `01§13`:
- * "Board: sections columns; `Без раздела` first only if non-empty"), но:
+ * Решение владельца по находке пакета работ E09.1 (см. историю этого
+ * файла): «Без раздела» — Вариант 1, не отдельная запись в базе, а то же
+ * самое `sectionId: null`, которым Task уже везде в дереве обозначает
+ * "нет секции" (`TaskProjectPlacement`, `entities/task.ts`). Значит "tasks
+ * move to `Без раздела`" буквально значит: у всех задач секции —
+ * `sectionId: null`, через уже готовый `updateTaskCommand` (не
+ * переизобретает запись Task заново, тот же приём, что уже применяет
+ * `project-delete.ts` для пути «Переместить задачи во Входящие»).
  *
- *  - `entities/section.ts`/`02§2` schema (`sections: id, project_id, title,
- *    rank, clocks, deleted_at`) не резервирует никакого поля-маркера
- *    ("is_synthetic", "is_default" и т.п.) и не описывает зарезервированный
- *    UUID для этой строки;
- *  - `TaskProjectPlacement` (`entities/task.ts`) типизирует "нет секции"
- *    как `sectionId: null` — ровно то же самое значение, которым Task
- *    сегодня адресует "без секции" везде (`createTaskCommand`,
- *    `updateTaskCommand`, `TaskRepository.listByProjectSection(projectId,
- *    sectionId: Uuid | null, ...)` — сигнатура прямо принимает `null` как
- *    первоклассное значение, не как "нет данных");
- *  - `grep -rn "Без раздела\|synthetic.*section\|default.*section"` по
- *    `packages/core/src` и `packages/storage/src` (после чтения обоих
- *    деревьев целиком в рамках этого пакета работ) не находит ни единого
- *    существующего соглашения — ни константы, ни зарезервированного id, ни
- *    комментария, поднимающего этот вопрос где-либо ещё;
- *  - `.ultraplan/open-questions.md` (утверждённые владельцем решения по
- *    недосказанностям ТЗ, не пересматриваются без владельца) тоже не
- *    касается этого конкретного вопроса.
+ * Оба статуса задачи (`active`+`completed`) — секция может исчезнуть у
+ * пользователя, который уже завершил часть задач внутри неё; спека не
+ * оговаривает "только активные" для Section, в отличие от отмены
+ * напоминаний при архивации Project, где оговорка явная ("active tasks in
+ * that Project").
  *
- * Из этого следуют минимум два несовместимых прочтения, каждое из которых
- * меняет форму данных, а не только эту одну команду:
+ * `rank` задачи НЕ пересчитывается при переносе — то же решение, что уже
+ * принято в `project-delete.ts` для пути «Переместить задачи во Входящие»
+ * (не изобретать здесь другое правило ради одной секции): задача просто
+ * попадает в общий список "без секции" с тем рангом, который уже был.
+ * Если в "Без раздела" уже есть задачи, ранги могут совпасть/перемешаться
+ * по порядку — тот же задокументированный компромисс, тот же корень
+ * причины (нет general-purpose "перевставить с новым рангом при слиянии
+ * списков" примитива нигде в дереве пакетов).
  *
- *  1. `Без раздела` — **не персистентная Section-запись вовсе**, а чисто
- *     синтетический UI-конструкт: "секция" с `sectionId: null` — тогда
- *     "Tasks move to `Без раздела`" значит буквально `sectionId: null`, тем
- *     же самым способом, каким Task уже сегодня адресует "нет секции" везде
- *     в дереве. В этом прочтении `deleteSectionCommand` мог бы быть
- *     реализован прямо сейчас, без изменений схемы — просто патчить
- *     `sectionId: null` каждой задаче секции через уже готовый
- *     `updateTaskCommand` (по аналогии с "Переместить задачи во Входящие"
- *     в `project-delete.ts`), затем tombstone саму Section.
- *  2. `Без раздела` — **реальная персистентная Section-запись** с
- *     зарезервированным идентификатором (по одной на Project, заводится
- *     автоматически при создании Project, никогда не даёт пользователю
- *     переименовать/удалить/переупорядочить относительно себя) — тогда
- *     нужен новый маркер в схеме/типе `Section` (например, поле
- *     `isDefault: boolean` или well-known UUIDv5, детерминированный от
- *     `projectId`), которого сегодня в `entities/section.ts` нет.
- *     "First only if non-empty" (`01§13`, порядок колонок Board) читается
- *     естественнее при этом прочтении: колонка существует как обычная
- *     Section с фиксированной позицией в выдаче, а не как специальный
- *     UI-элемент, который надо вставлять перед результатом обычного
- *     `sections(project_id, rank)`-запроса.
- *
- * Прочтение №1 не требует правки типов/схемы и укладывается в территорию
- * этого пакета работ; прочтение №2 требует правки `entities/section.ts`
- * и/или `packages/storage` — оба файла в списке "НЕ трогай" этого пакета
- * работ, и это архитектурное решение, затрагивающее схему данных на годы
- * вперёд, а не деталь одной команды. Задание прямо запрещает гадать здесь:
- * "это архитектурное решение... ты не можешь его изобрести в одиночку без
- * подтверждения". Экспорт по имени `deleteSectionCommand` намеренно
- * НЕ существует (даже как стаб, замолчавший бы вопрос своей одной формой
- * ответа) — вызывающий код, который попытается его импортировать, получит
- * ошибку компиляции, а не молчаливо неверное предположение о схеме.
- *
- * Что нужно решить владельцу до реализации:
- *  - какое из прочтений выше (или третье) верно;
- *  - если №2 — точная форма маркера в `Section`/схеме и кто мигрирует уже
- *    существующие Project без такой строки.
- *
- * `section-delete.test.ts` фиксирует этот блокер как явный, видимый в
- * тестовом прогоне артефакт (не просто комментарий, который легко не
- * заметить), а не реализует поведение.
+ * «Undo restores section/ranks» — эта команда сама Undo не строит (UI-
+ * забота, тот же жанр, что уже 6-секундный Undo для Label, `01§13`, чужая
+ * функциональность): `affectedTaskIds` в результате — материал, которого
+ * будущему UI-пакету работ достаточно, чтобы восстановить секцию (снять
+ * `deletedAt` через `updateSectionCommand`-подобный путь — сам rank/title
+ * секции не менялся этой командой, восстанавливать нечего кроме
+ * видимости) и вернуть `sectionId` каждой из этих задач обратно (ранги
+ * задач тоже не менялись — восстанавливать нечего и там).
  */
-export const DELETE_SECTION_COMMAND_BLOCKED_REASON =
-  'deleteSectionCommand заблокирован: соглашение о синтетической секции ' +
-  '«Без раздела» не зафиксировано нигде в дереве пакетов — см. JSDoc ' +
-  'этого файла, раздел «Что нужно решить владельцу».';
+export interface DeleteSectionInput {
+  readonly id: Uuid;
+}
+
+export interface DeleteSectionDeps {
+  readonly storage: CommandSectionStoragePort;
+  readonly tasks: CommandProjectTaskReader;
+  readonly taskCommandStorage: CommandStoragePort;
+  readonly now: Temporal.Instant;
+  readonly deviceId: Uuid;
+  readonly generateOpId?: () => Uuid;
+}
+
+export type DeleteSectionResult =
+  | {
+      readonly status: 'ok';
+      readonly section: Section;
+      readonly affectedTaskIds: readonly Uuid[];
+      readonly taskFailures: readonly Uuid[];
+    }
+  | { readonly status: 'not_found' };
+
+function buildTaskCommandDeps(deps: DeleteSectionDeps): TaskCommandDeps {
+  return {
+    storage: deps.taskCommandStorage,
+    now: deps.now,
+    deviceId: deps.deviceId,
+    ...(deps.generateOpId !== undefined ? { generateOpId: deps.generateOpId } : {}),
+  };
+}
+
+async function tombstoneSection(
+  current: Section,
+  deps: Pick<DeleteSectionDeps, 'storage' | 'now' | 'deviceId' | 'generateOpId'>,
+): Promise<Section> {
+  const generateOpId = deps.generateOpId ?? generateUuidV7;
+  const hlc = { physical: deps.now, logical: 0, deviceId: deps.deviceId };
+
+  const nextSection: Section = { ...current, deletedAt: deps.now };
+  const changedFields = diffChangedFields(current, nextSection, SECTION_MUTABLE_FIELDS);
+  const finalSection: Section = {
+    ...nextSection,
+    clocks: tickClocks(current.clocks, changedFields, hlc),
+  };
+
+  const outboxEntry: SyncOutboxEntry = {
+    opId: generateOpId(),
+    deviceId: deps.deviceId,
+    entityType: 'section',
+    entityId: finalSection.id,
+    patchJson: buildPatchJson(finalSection, changedFields),
+    fieldClocksJson: pickClocks(finalSection.clocks, changedFields),
+    baseRevision: 0n,
+    createdAt: deps.now,
+    retryCount: 0,
+  };
+  const write: CommandSectionEntityWrite = { entity: 'section', value: finalSection };
+  const mutation: CommandSectionDomainMutation = { writes: [write], outbox: [outboxEntry] };
+  await deps.storage.runTransaction(async (tx) => {
+    await tx.applyMutation(mutation);
+  });
+
+  return finalSection;
+}
+
+export async function deleteSectionCommand(
+  input: DeleteSectionInput,
+  deps: DeleteSectionDeps,
+): Promise<DeleteSectionResult> {
+  const current = await deps.storage.sections.findById(input.id);
+  if (current === null || current.deletedAt !== null) {
+    return { status: 'not_found' };
+  }
+
+  const [activeTasks, completedTasks] = await Promise.all([
+    deps.tasks.listByProjectSection(current.projectId, current.id, 'active'),
+    deps.tasks.listByProjectSection(current.projectId, current.id, 'completed'),
+  ]);
+  const sectionTasks = [...activeTasks, ...completedTasks];
+
+  const taskDeps = buildTaskCommandDeps(deps);
+  const affectedTaskIds: Uuid[] = [];
+  const taskFailures: Uuid[] = [];
+  for (const task of sectionTasks) {
+    const result = await updateTaskCommand({ id: task.id, patch: { sectionId: null } }, taskDeps);
+    if (result.status === 'ok') {
+      affectedTaskIds.push(task.id);
+    } else {
+      taskFailures.push(task.id);
+    }
+  }
+
+  const finalSection = await tombstoneSection(current, deps);
+
+  return { status: 'ok', section: finalSection, affectedTaskIds, taskFailures };
+}

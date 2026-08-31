@@ -127,8 +127,12 @@ export {
   type UpdateSectionPatch,
 } from './section-update.js';
 
-// --- Section: удаление ЗАБЛОКИРОВАНО — см. JSDoc `section-delete.ts` ---------
-// `deleteSectionCommand` не реализован и не экспортируется: соглашение о
-// синтетической секции «Без раздела» не зафиксировано нигде в дереве
-// пакетов (архитектурный блокер, не гадать — задание пакета работ E09).
-export { DELETE_SECTION_COMMAND_BLOCKED_REASON } from './section-delete.js';
+// --- Section: удаление (`01§12` "Delete section") -----------------------------
+// Разблокировано решением владельца (см. историю `section-delete.ts`):
+// «Без раздела» — Вариант 1, sectionId:null, не отдельная запись.
+export {
+  deleteSectionCommand,
+  type DeleteSectionDeps,
+  type DeleteSectionInput,
+  type DeleteSectionResult,
+} from './section-delete.js';
