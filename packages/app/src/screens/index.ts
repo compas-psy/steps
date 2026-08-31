@@ -25,6 +25,7 @@ import { NlpOnboarding } from './NlpOnboarding.js';
 import { ProjectDetail } from './ProjectDetail.js';
 import { Projects } from './Projects.js';
 import { SignIn } from './SignIn.js';
+import { TaskDetail } from './TaskDetail.js';
 import { Today } from './Today.js';
 import { Welcome } from './Welcome.js';
 
@@ -35,6 +36,7 @@ export { NlpOnboarding } from './NlpOnboarding.js';
 export { ProjectDetail } from './ProjectDetail.js';
 export { Projects } from './Projects.js';
 export { SignIn } from './SignIn.js';
+export { TaskDetail } from './TaskDetail.js';
 export { Today } from './Today.js';
 export { Welcome } from './Welcome.js';
 
@@ -48,4 +50,5 @@ export const SCREENS: Partial<Record<ScreenId, ComponentType>> = {
   inbox: Inbox,
   projects: Projects,
   projectDetail: ProjectDetail,
+  taskDetail: TaskDetail,
 };

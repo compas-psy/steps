@@ -21,6 +21,7 @@ import ruOnboarding from './catalog/ru-RU/onboarding.json' with { type: 'json' }
 import ruProjectDetail from './catalog/ru-RU/projectDetail.json' with { type: 'json' };
 import ruProjects from './catalog/ru-RU/projects.json' with { type: 'json' };
 import ruShell from './catalog/ru-RU/shell.json' with { type: 'json' };
+import ruTaskDetail from './catalog/ru-RU/taskDetail.json' with { type: 'json' };
 import ruTasks from './catalog/ru-RU/tasks.json' with { type: 'json' };
 import ruTime from './catalog/ru-RU/time.json' with { type: 'json' };
 import ruToday from './catalog/ru-RU/today.json' with { type: 'json' };
@@ -33,6 +34,7 @@ export const CATALOG_RU_RU = {
   projectDetail: ruProjectDetail,
   projects: ruProjects,
   shell: ruShell,
+  taskDetail: ruTaskDetail,
   tasks: ruTasks,
   time: ruTime,
   today: ruToday,

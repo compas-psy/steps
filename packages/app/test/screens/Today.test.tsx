@@ -835,3 +835,62 @@ describe('Today — бейдж Входящих (вход в Inbox, см. заг
     expect(controller.getState().screen).toBe('inbox');
   });
 });
+
+describe('Today — клик по строке открывает Task Detail (E10.2)', () => {
+  it('клик по заголовку задачи открывает taskDetail с selectedTaskId/returnScreen=todayEmpty', async () => {
+    const user = userEvent.setup();
+    const task = makeTask({ title: 'Открыть детали', plannedDate: TODAY });
+    const { controller } = renderTodayWithController([task]);
+
+    await waitFor(() => expect(screen.getByText('Открыть детали')).toBeInTheDocument());
+    await user.click(screen.getByText('Открыть детали'));
+
+    expect(controller.getState()).toEqual(
+      expect.objectContaining({
+        screen: 'taskDetail',
+        selectedTaskId: task.id,
+        returnScreen: 'todayEmpty',
+      }),
+    );
+  });
+
+  it('адверсариальная проверка: клик по чекбоксу строки завершает задачу, но НЕ открывает Task Detail', async () => {
+    const user = userEvent.setup();
+    const task = makeTask({ title: 'Не открывать по чекбоксу', plannedDate: TODAY });
+    const { controller, getStorage } = renderTodayWithController([task]);
+
+    await waitFor(() => expect(screen.getByText('Не открывать по чекбоксу')).toBeInTheDocument());
+    await user.click(screen.getByRole('checkbox', { name: 'Не открывать по чекбоксу' }));
+
+    // Эффект чекбокса реально произошёл (иначе тест ничего не доказывал бы —
+    // мог бы «пройти» и от полностью нерабочего чекбокса).
+    await waitFor(async () => {
+      const stored = await getStorage().tasks.findById(task.id);
+      expect(stored?.status).toBe('completed');
+    });
+    // ...и при этом экран НЕ переключился на taskDetail.
+    expect(controller.getState().screen).not.toBe('taskDetail');
+    expect(controller.getState().selectedTaskId).toBeNull();
+  });
+
+  it('адверсариальная проверка: клик по кнопке меню строки открывает меню, но НЕ открывает Task Detail', async () => {
+    const user = userEvent.setup();
+    const task = makeTask({ title: 'Меню не открывает деталь', plannedDate: TODAY });
+    const { controller } = renderTodayWithController([task]);
+
+    await waitFor(() => expect(screen.getByText('Меню не открывает деталь')).toBeInTheDocument());
+    await user.click(
+      screen.getByRole('button', {
+        name: t('today', 'menu.triggerLabel', { title: 'Меню не открывает деталь' }),
+      }),
+    );
+
+    // Меню реально открылось (иначе тест ничего не доказывал бы).
+    expect(
+      screen.getByRole('menuitem', { name: t('today', 'actions.complete') }),
+    ).toBeInTheDocument();
+    // ...и при этом экран НЕ переключился на taskDetail.
+    expect(controller.getState().screen).not.toBe('taskDetail');
+    expect(controller.getState().selectedTaskId).toBeNull();
+  });
+});

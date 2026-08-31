@@ -11,6 +11,8 @@ describe('AppController', () => {
       screen: 'launch',
       localMode: false,
       selectedProjectId: null,
+      selectedTaskId: null,
+      returnScreen: null,
     });
   });
 
@@ -34,6 +36,8 @@ describe('AppController', () => {
       screen: 'firstTask',
       localMode: true,
       selectedProjectId: null,
+      selectedTaskId: null,
+      returnScreen: null,
     });
   });
 
@@ -54,6 +58,8 @@ describe('AppController', () => {
       screen: 'signIn',
       localMode: false,
       selectedProjectId: null,
+      selectedTaskId: null,
+      returnScreen: null,
     });
   });
 
@@ -69,9 +75,65 @@ describe('AppController', () => {
       screen: 'projectDetail',
       localMode: false,
       selectedProjectId: projectId,
+      selectedTaskId: null,
+      returnScreen: null,
     });
     expect(listener).toHaveBeenCalledWith(
       expect.objectContaining({ screen: 'projectDetail', selectedProjectId: projectId }),
     );
+  });
+
+  it('openTask переходит на taskDetail, запоминает задачу и экран-источник для возврата', () => {
+    const controller = createAppController({ screen: 'inbox' });
+    const listener = vi.fn();
+    controller.subscribe(listener);
+    const taskId = generateUuidV7();
+
+    controller.openTask(taskId);
+
+    expect(controller.getState()).toEqual({
+      screen: 'taskDetail',
+      localMode: false,
+      selectedProjectId: null,
+      selectedTaskId: taskId,
+      returnScreen: 'inbox',
+    });
+    expect(listener).toHaveBeenCalledWith(
+      expect.objectContaining({
+        screen: 'taskDetail',
+        selectedTaskId: taskId,
+        returnScreen: 'inbox',
+      }),
+    );
+  });
+
+  it('closeTask возвращает на returnScreen и сбрасывает selectedTaskId/returnScreen', () => {
+    const controller = createAppController({ screen: 'projectDetail' });
+    const taskId = generateUuidV7();
+    controller.openTask(taskId);
+
+    controller.closeTask();
+
+    expect(controller.getState()).toEqual({
+      screen: 'projectDetail',
+      localMode: false,
+      selectedProjectId: null,
+      selectedTaskId: null,
+      returnScreen: null,
+    });
+  });
+
+  it('closeTask без returnScreen (защитная ветка) откатывается на todayEmpty', () => {
+    const controller = createAppController({ screen: 'taskDetail', returnScreen: null });
+
+    controller.closeTask();
+
+    expect(controller.getState()).toEqual({
+      screen: 'todayEmpty',
+      localMode: false,
+      selectedProjectId: null,
+      selectedTaskId: null,
+      returnScreen: null,
+    });
   });
 });

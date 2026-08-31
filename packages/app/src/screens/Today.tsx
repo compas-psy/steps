@@ -214,6 +214,30 @@
  * `state/context.tsx`). Экран Входящие (`Inbox.tsx`, этот же пакет работ)
  * возвращается назад через `controller.goTo('todayEmpty')` — см. его
  * заголовок за объяснением имени `'todayEmpty'`.
+ *
+ * --- Открытие Task Detail по клику на строку (эпик E10.2) ------------------
+ *
+ * Клик по строке задачи → `controller.openTask(task.id)` (M24/M25,
+ * `packages/app/src/screens/TaskDetail.tsx`). `TaskRow` уже принимает
+ * произвольный `onClick` через `...rest: HTMLAttributes<HTMLDivElement>` —
+ * передан напрямую компоненту, отдельная оборачивающая `<div>` не нужна.
+ *
+ * Чекбокс и кнопка меню строки — уже интерактивные элементы, их клик не
+ * должен ТАКЖЕ открывать Task Detail (задание, адверсариальная проверка в
+ * тесте `Today.test.tsx`, блок «клик по строке открывает Task Detail»):
+ *  - меню (`IconButton` + `TaskMenu`, обёрнуты в свой `<div
+ *    style={{position:'relative'}}>` — этот код уже пишет сам экран) —
+ *    настоящий `event.stopPropagation()` на этой обёртке, тот же приём, что
+ *    `Label.tsx` (`@shagi/ui`) уже применяет для своей кнопки `onRemove`;
+ *  - чекбокс — `TaskCheckbox` (`@shagi/ui`) рендерит `<input>` изнутри
+ *    `TaskRow`, не давая вызывающему коду прокинуть туда `onClick`
+ *    (`TaskRowProps` не имеет такого слота, в отличие от `trailing`) —
+ *    `stopPropagation` там физически некуда воткнуть. `isInteractiveRowClick`
+ *    ниже — функционально тот же результат (ровно ОДНО действие на клик:
+ *    либо открытие, либо переключение чекбокса/меню, никогда оба разом),
+ *    только через проверку `event.target` на ближайший нативный `input`/
+ *    `button` вместо стопа распространения у источника, которого у этого
+ *    экрана нет доступа поменять.
  */
 import { useEffect, useState, type ReactElement } from 'react';
 import { Temporal } from '@js-temporal/polyfill';
@@ -318,6 +342,15 @@ function groupRowState(group: TodayGroup): TaskRowState {
 
 function isEveryGroupEmpty(groups: TodayGroups): boolean {
   return GROUP_ORDER.every((group) => groups[group].length === 0);
+}
+
+/** См. заголовок файла, блок «Открытие Task Detail по клику на строку» —
+ * чекбокс строки не даёт вызывающему коду точку для `stopPropagation`,
+ * поэтому клик по строке проверяет свою цель: ближайший нативный
+ * `input`/`button` — уже интерактивный элемент строки (чекбокс/кнопка
+ * меню/пункт меню), открытие Task Detail в этом случае не выполняется. */
+function isInteractiveRowClick(target: EventTarget | null): boolean {
+  return target instanceof HTMLElement && target.closest('input, button') !== null;
 }
 
 // --- Календарь `DatePicker` — конвертация Temporal ↔ простых чисел ------------
@@ -512,6 +545,8 @@ interface TodayTaskRowProps {
   readonly onToggleMenu: () => void;
   readonly onCloseMenu: () => void;
   readonly handlers: RowActionHandlers;
+  /** Открытие Task Detail по клику на строку — см. заголовок файла. */
+  readonly onOpen: (task: Task) => void;
   readonly selectionOverride?: RowSelectionOverride | undefined;
 }
 
@@ -530,6 +565,7 @@ function TodayTaskRow({
   onToggleMenu,
   onCloseMenu,
   handlers,
+  onOpen,
   selectionOverride,
 }: TodayTaskRowProps): ReactElement {
   const { frequent, rare } = buildTaskMenuActions(group, task, handlers);
@@ -554,17 +590,22 @@ function TodayTaskRow({
       checked={checked}
       state={state}
       onCheckedChange={onCheckedChange}
+      onClick={(event) => {
+        if (isInteractiveRowClick(event.target)) return;
+        onOpen(task);
+      }}
       {...(group === 'timed' && task.plannedTime !== null
         ? { statusLabel: formatTime(task.plannedTime) }
         : {})}
       trailing={
-        // Обёртка нужна только чтобы дать `TaskMenu` (`position: absolute`,
-        // см. `Menu.css`) позиционированного предка — тот же паттерн, что
-        // `.dev-menu-anchor` в песочнице `packages/ui`; здесь без
-        // отдельного CSS-класса (`packages/app` его не заводит), одно
-        // ключевое слово, не «сырой px»/hex — гейт адгезии дизайн-системы
-        // его не ловит и не должен.
-        <div style={{ position: 'relative' }}>
+        // Обёртка нужна и чтобы дать `TaskMenu` (`position: absolute`,
+        // см. `Menu.css`) позиционированного предка (тот же паттерн, что
+        // `.dev-menu-anchor` в песочнице `packages/ui`), и чтобы остановить
+        // всплытие клика по меню до обработчика открытия Task Detail на
+        // самой строке (см. заголовок файла, блок «Открытие Task Detail») —
+        // без отдельного CSS-класса, одно ключевое слово, не «сырой px»/hex,
+        // гейт адгезии дизайн-системы его не ловит и не должен.
+        <div style={{ position: 'relative' }} onClick={(event) => event.stopPropagation()}>
           <IconButton
             icon="more"
             label={t('today', 'menu.triggerLabel', { title: task.title })}
@@ -606,6 +647,8 @@ interface TodayGroupSectionProps {
   readonly onToggleMenu: (id: Uuid) => void;
   readonly onCloseMenu: () => void;
   readonly handlers: RowActionHandlers;
+  /** См. заголовок файла, блок «Открытие Task Detail по клику на строку». */
+  readonly onOpen: (task: Task) => void;
   readonly selection?: MissedPlanSelectionControls | undefined;
 }
 
@@ -625,6 +668,7 @@ function TodayGroupSection({
   onToggleMenu,
   onCloseMenu,
   handlers,
+  onOpen,
   selection,
 }: TodayGroupSectionProps): ReactElement {
   const listId = `today-group-${group}-list`;
@@ -673,6 +717,7 @@ function TodayGroupSection({
               onToggleMenu={() => onToggleMenu(task.id)}
               onCloseMenu={onCloseMenu}
               handlers={handlers}
+              onOpen={onOpen}
               selectionOverride={
                 selection !== undefined && selection.active
                   ? {
@@ -974,6 +1019,7 @@ export function Today(): ReactElement {
               onToggleMenu={(id) => setOpenMenuTaskId((current) => (current === id ? null : id))}
               onCloseMenu={() => setOpenMenuTaskId(null)}
               handlers={handlers}
+              onOpen={(task) => controller.openTask(task.id)}
               // Мультивыбор — только «Не по плану» (`01§6`, см. заголовок
               // файла блок «M09»); остальные пять групп получают `undefined`
               // и рендерятся без кнопки «Выбрать»/панели массовых действий.

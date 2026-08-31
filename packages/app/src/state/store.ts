@@ -25,6 +25,19 @@
  * `goTo`, а отдельный метод `openProject` (по образцу `continueLocally` —
  * тоже переход, меняющий больше одного поля состояния разом одной
  * атомарной операцией, не два последовательных вызова `goTo`+сеттер).
+ *
+ * `'taskDetail'` (M24 Simple / M25 Full, пакет работ E10.2) — ВТОРОЙ
+ * параметризованный экран, но с отличием от `'projectDetail'`: у Task
+ * Detail нет фиксированного «откуда открыли» (Projects всегда открывает
+ * `projectDetail`, а `taskDetail` открывают Today, Inbox и сам
+ * `projectDetail` — три разных источника). Поэтому вместо жёстко зашитого
+ * `goTo('projects')` внутри самого экрана (как у `ProjectDetail.tsx`, кнопка
+ * «Назад») здесь `returnScreen` — экран-источник, запомненный В МОМЕНТ
+ * перехода (`openTask`, `this.#state.screen` ДО перезаписи), а `closeTask`
+ * возвращает именно на него. `Готово` в Task Detail закрывает экран, не
+ * сохраняет (`01§17`, дословно: "`Готово` closes, not saves") — сохранение
+ * уже случилось автосейвом по ходу редактирования полей, кнопка только
+ * навигация, поэтому `closeTask` не принимает и не проверяет никаких данных.
  */
 import type { Uuid } from '@shagi/core';
 
@@ -37,7 +50,8 @@ export type ScreenId =
   | 'todayEmpty'
   | 'inbox'
   | 'projects'
-  | 'projectDetail';
+  | 'projectDetail'
+  | 'taskDetail';
 
 /**
  * `localMode` — пользователь выбрал «Начать локально» (M02 Welcome) без
@@ -52,6 +66,12 @@ export interface AppState {
   /** Проект, открытый на экране `projectDetail` (см. блок про `openProject`
    * выше) — `null` вне этого экрана и до первого перехода. */
   readonly selectedProjectId: Uuid | null;
+  /** Задача, открытая на экране `taskDetail` (см. блок про `'taskDetail'`
+   * выше) — `null` вне этого экрана и до первого перехода. */
+  readonly selectedTaskId: Uuid | null;
+  /** Экран, на который вернёт «Готово» в Task Detail — см. блок про
+   * `'taskDetail'` выше. `null` вне этого экрана и до первого перехода. */
+  readonly returnScreen: ScreenId | null;
 }
 
 export type AppStateListener = (state: AppState) => void;
@@ -60,6 +80,8 @@ const INITIAL_STATE: AppState = {
   screen: 'launch',
   localMode: false,
   selectedProjectId: null,
+  selectedTaskId: null,
+  returnScreen: null,
 };
 
 /**
@@ -100,6 +122,30 @@ export class AppController {
    * проекта M17/M18/M19 — см. блок про `'projectDetail'` в заголовке файла. */
   openProject = (projectId: Uuid): void => {
     this.#setState({ screen: 'projectDetail', selectedProjectId: projectId });
+  };
+
+  /** Клик по строке/карточке задачи (Today/Inbox/ProjectDetail) → Task
+   * Detail (M24/M25, пакет работ E10.2) — запоминает и задачу, и текущий
+   * экран как `returnScreen` (см. заголовок файла, блок «'taskDetail'»). */
+  openTask = (taskId: Uuid): void => {
+    this.#setState({
+      screen: 'taskDetail',
+      selectedTaskId: taskId,
+      returnScreen: this.#state.screen,
+    });
+  };
+
+  /** «Готово» на Task Detail — ТОЛЬКО навигация (`01§17`: "closes, not
+   * saves"), возвращает на `returnScreen`. Фоллбэк на `'todayEmpty'` —
+   * оборонительная ветка (см. заголовок файла): по продуктовым путям
+   * `returnScreen` всегда задан, потому что `openTask` — единственный
+   * способ попасть на `taskDetail`. */
+  closeTask = (): void => {
+    this.#setState({
+      screen: this.#state.returnScreen ?? 'todayEmpty',
+      selectedTaskId: null,
+      returnScreen: null,
+    });
   };
 }
 

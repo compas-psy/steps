@@ -282,3 +282,56 @@ describe('Inbox — действия карточки', () => {
     expect(screen.getByText('Удалённая параллельно')).toBeInTheDocument();
   });
 });
+
+describe('Inbox — клик по карточке открывает Task Detail (E10.2)', () => {
+  it('клик по заголовку карточки открывает taskDetail с selectedTaskId/returnScreen=inbox', async () => {
+    const user = userEvent.setup();
+    const task = makeTask({ title: 'Открыть из Входящих', captureState: 'inbox' });
+    const { controller } = renderInboxCapturingStorage([task]);
+
+    await waitFor(() => expect(screen.getByText('Открыть из Входящих')).toBeInTheDocument());
+    await user.click(screen.getByText('Открыть из Входящих'));
+
+    expect(controller.getState()).toEqual(
+      expect.objectContaining({
+        screen: 'taskDetail',
+        selectedTaskId: task.id,
+        returnScreen: 'inbox',
+      }),
+    );
+  });
+
+  it('адверсариальная проверка: клик по кнопке «Сегодня» разбирает задачу, но НЕ открывает Task Detail', async () => {
+    const user = userEvent.setup();
+    const task = makeTask({ title: 'Кнопка не открывает деталь', captureState: 'inbox' });
+    const { controller, getStorage } = renderInboxCapturingStorage([task]);
+
+    await waitFor(() => expect(screen.getByText('Кнопка не открывает деталь')).toBeInTheDocument());
+    await user.click(screen.getByRole('button', { name: t('inbox', 'actions.today') }));
+
+    // Эффект кнопки реально произошёл (иначе тест ничего не доказывал бы).
+    await waitFor(async () => {
+      const stored = await getStorage().tasks.findById(task.id);
+      expect(stored?.captureState).toBe('processed');
+    });
+    // ...и при этом экран НЕ переключился на taskDetail.
+    expect(controller.getState().screen).not.toBe('taskDetail');
+    expect(controller.getState().selectedTaskId).toBeNull();
+  });
+
+  it('адверсариальная проверка: клик по кнопке «Пропустить» двигает очередь, но НЕ открывает Task Detail', async () => {
+    const user = userEvent.setup();
+    const first = makeTask({ title: 'Первая карточка', captureState: 'inbox' });
+    const second = makeTask({ title: 'Вторая карточка', captureState: 'inbox' });
+    const { controller } = renderInboxCapturingStorage([first, second]);
+
+    await waitFor(() => expect(screen.getByText('Первая карточка')).toBeInTheDocument());
+    await user.click(screen.getByRole('button', { name: t('inbox', 'actions.skip') }));
+
+    // Эффект «Пропустить» реально произошёл — фокус ушёл к следующей карточке.
+    await waitFor(() => expect(screen.getByText('Вторая карточка')).toBeInTheDocument());
+    // ...и при этом экран НЕ переключился на taskDetail.
+    expect(controller.getState().screen).not.toBe('taskDetail');
+    expect(controller.getState().selectedTaskId).toBeNull();
+  });
+});

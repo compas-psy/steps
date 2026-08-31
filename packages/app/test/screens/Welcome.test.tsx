@@ -29,6 +29,8 @@ describe('Welcome (M02)', () => {
       screen: 'firstTask',
       localMode: true,
       selectedProjectId: null,
+      selectedTaskId: null,
+      returnScreen: null,
     });
   });
 
@@ -47,6 +49,8 @@ describe('Welcome (M02)', () => {
       screen: 'signIn',
       localMode: false,
       selectedProjectId: null,
+      selectedTaskId: null,
+      returnScreen: null,
     });
   });
 });

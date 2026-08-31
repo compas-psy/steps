@@ -65,6 +65,8 @@ describe('SignIn (M03)', () => {
       screen: 'firstTask',
       localMode: true,
       selectedProjectId: null,
+      selectedTaskId: null,
+      returnScreen: null,
     });
   });
 });

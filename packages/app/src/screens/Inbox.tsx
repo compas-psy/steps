@@ -148,6 +148,18 @@
  * решение, что уже принято и явно задокументировано для `getDeviceId` —
  * узкое дублирование сейчас, а не рефакторинг в общий модуль вне рамок
  * этого пакета работ.
+ *
+ * --- Открытие Task Detail по клику на карточку (эпик E10.2) ----------------
+ *
+ * Клик по `<section>` карточки → `controller.openTask(current.id)` (M24/M25,
+ * `packages/app/src/screens/TaskDetail.tsx`). В отличие от `Today.tsx`
+ * (`TaskRow`, чужой непрозрачный чекбокс — там нужна проверка цели клика,
+ * см. заголовок `Today.tsx`), здесь ВСЕ интерактивные элементы карточки —
+ * `Button`/`IconButton`, целиком собранные этим же файлом: настоящий
+ * `event.stopPropagation()` на каждой из пяти кнопок карточки (Сегодня/
+ * Дата/Проект/Удалить/Пропустить) и на обёртке меню проектов — тот же
+ * приём, что `Label.tsx` (`@shagi/ui`) уже применяет для своей кнопки
+ * `onRemove`.
  */
 import { useEffect, useState, type ReactElement } from 'react';
 import { Temporal } from '@js-temporal/polyfill';
@@ -407,26 +419,36 @@ export function Inbox(): ReactElement {
       )}
 
       {!isLoading && current !== null && (
-        <section aria-label={t('inbox', 'card.ariaLabel', { title: current.title })}>
+        <section
+          aria-label={t('inbox', 'card.ariaLabel', { title: current.title })}
+          onClick={() => controller.openTask(current.id)}
+        >
           <p>{current.title}</p>
 
-          <Button variant="secondary" onClick={() => handleToday(current)}>
+          <Button
+            variant="secondary"
+            onClick={(event) => {
+              event.stopPropagation();
+              handleToday(current);
+            }}
+          >
             {t('inbox', 'actions.today')}
           </Button>
 
           <Button
             variant="secondary"
-            onClick={() =>
+            onClick={(event) => {
+              event.stopPropagation();
               setDatePicker({
                 task: current,
                 visibleMonth: toCalendarMonth(Temporal.Now.plainDateISO()),
-              })
-            }
+              });
+            }}
           >
             {t('inbox', 'actions.date')}
           </Button>
 
-          <div style={{ position: 'relative' }}>
+          <div style={{ position: 'relative' }} onClick={(event) => event.stopPropagation()}>
             <Button variant="secondary" onClick={() => setProjectMenuOpen((open) => !open)}>
               {t('inbox', 'actions.project')}
             </Button>
@@ -438,11 +460,23 @@ export function Inbox(): ReactElement {
             />
           </div>
 
-          <Button variant="destructive" onClick={() => handleDelete(current)}>
+          <Button
+            variant="destructive"
+            onClick={(event) => {
+              event.stopPropagation();
+              handleDelete(current);
+            }}
+          >
             {t('inbox', 'actions.delete')}
           </Button>
 
-          <Button variant="ghost" onClick={handleSkip}>
+          <Button
+            variant="ghost"
+            onClick={(event) => {
+              event.stopPropagation();
+              handleSkip();
+            }}
+          >
             {t('inbox', 'actions.skip')}
           </Button>
         </section>

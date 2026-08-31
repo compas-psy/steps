@@ -392,3 +392,98 @@ describe('ProjectDetail — навигация', () => {
     await waitFor(() => expect(screen.getByText('Ремонт кухни')).toBeInTheDocument());
   });
 });
+
+describe('ProjectDetail — клик по строке/карточке открывает Task Detail (E10.2)', () => {
+  it('List: клик по заголовку строки открывает taskDetail с selectedTaskId/returnScreen=projectDetail', async () => {
+    const user = userEvent.setup();
+    const project = makeProject({ title: 'Проект Н' });
+    const task = makeTask({ title: 'Открыть строку', projectId: project.id });
+    const { controller } = renderProjectDetail(project, [], [task]);
+
+    await waitFor(() => expect(screen.getByText('Открыть строку')).toBeInTheDocument());
+    await user.click(screen.getByText('Открыть строку'));
+
+    expect(controller.getState()).toEqual(
+      expect.objectContaining({
+        screen: 'taskDetail',
+        selectedTaskId: task.id,
+        returnScreen: 'projectDetail',
+      }),
+    );
+  });
+
+  it('адверсариальная проверка (List): клик по чекбоксу строки завершает задачу, но НЕ открывает Task Detail', async () => {
+    const user = userEvent.setup();
+    const project = makeProject({ title: 'Проект О' });
+    const task = makeTask({ title: 'Не открывать по чекбоксу', projectId: project.id });
+    const { controller, getStorage } = renderProjectDetail(project, [], [task]);
+
+    await waitFor(() => expect(screen.getByText('Не открывать по чекбоксу')).toBeInTheDocument());
+    await user.click(screen.getByRole('checkbox', { name: 'Не открывать по чекбоксу' }));
+
+    await waitFor(async () => {
+      const stored = await getStorage().tasks.findById(task.id);
+      expect(stored?.status).toBe('completed');
+    });
+    expect(controller.getState().screen).not.toBe('taskDetail');
+    expect(controller.getState().selectedTaskId).toBeNull();
+  });
+
+  it('адверсариальная проверка (List): клик по кнопке меню строки открывает меню, но НЕ открывает Task Detail', async () => {
+    const user = userEvent.setup();
+    const project = makeProject({ title: 'Проект П' });
+    const task = makeTask({ title: 'Меню не открывает деталь', projectId: project.id });
+    const { controller } = renderProjectDetail(project, [], [task]);
+
+    await waitFor(() => expect(screen.getByText('Меню не открывает деталь')).toBeInTheDocument());
+    await user.click(
+      screen.getByRole('button', {
+        name: t('projectDetail', 'menu.triggerLabel', { title: 'Меню не открывает деталь' }),
+      }),
+    );
+
+    expect(
+      screen.getByRole('menuitem', { name: t('projectDetail', 'actions.complete') }),
+    ).toBeInTheDocument();
+    expect(controller.getState().screen).not.toBe('taskDetail');
+    expect(controller.getState().selectedTaskId).toBeNull();
+  });
+
+  it('Board: клик по карточке открывает taskDetail', async () => {
+    const user = userEvent.setup();
+    const project = { ...makeProject({ title: 'Проект Р' }), defaultView: 'board' as const };
+    const task = makeTask({ title: 'Открыть карточку', projectId: project.id });
+    const { controller } = renderProjectDetail(project, [], [task]);
+
+    await waitFor(() => expect(screen.getByText('Открыть карточку')).toBeInTheDocument());
+    await user.click(screen.getByText('Открыть карточку'));
+
+    expect(controller.getState()).toEqual(
+      expect.objectContaining({
+        screen: 'taskDetail',
+        selectedTaskId: task.id,
+        returnScreen: 'projectDetail',
+      }),
+    );
+  });
+
+  it('адверсариальная проверка (Board): клик по кнопке меню карточки открывает меню, но НЕ открывает Task Detail', async () => {
+    const user = userEvent.setup();
+    const project = { ...makeProject({ title: 'Проект С' }), defaultView: 'board' as const };
+    const task = makeTask({ title: 'Меню карточки', projectId: project.id });
+    const { controller } = renderProjectDetail(project, [], [task]);
+
+    await waitFor(() => expect(screen.getByText('Меню карточки')).toBeInTheDocument());
+    await user.click(
+      screen.getByRole('button', {
+        name: t('projectDetail', 'menu.triggerLabel', { title: 'Меню карточки' }),
+      }),
+    );
+
+    expect(
+      screen.getByRole('menuitem', { name: t('projectDetail', 'actions.complete') }),
+    ).toBeInTheDocument();
+    expect(controller.getState().screen).not.toBe('taskDetail');
+    expect(controller.getState().selectedTaskId).toBeNull();
+  });
+});

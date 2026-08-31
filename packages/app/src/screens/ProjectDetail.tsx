@@ -37,13 +37,30 @@
  * смонтированными всегда; `EmptyState`, когда виден, — заметный баннер
  * над ними, указывающий на первое доступное поле ввода.
  *
+ * --- Открытие Task Detail по клику на строку/карточку (эпик E10.2) --------
+ *
+ * Task Detail (`TaskDetail.tsx`) появился этим пакетом работ — обёртки
+ * строки/карточки (`TaskListRow`/`TaskBoardCard` ниже) получили ровно одну
+ * точечную правку: `onClick={() => controller.openTask(task.id)}` на их
+ * внешний контейнер (`TaskListRow` — уже существующий `<div data-testid=
+ * task-row-...>`, использовавшийся только под drag-обвязку; `TaskBoardCard`
+ * — сам `BoardCard.onClick`, компонент уже проектировался под это, см. его
+ * заголовок в `@shagi/ui`). Чекбокс строки — `TaskRow`/`TaskCheckbox`
+ * (`@shagi/ui`) не даёт вызывающему коду проброс `onClick` на сам `<input>`
+ * (тот же разбор, что `Today.tsx`, заголовок, блок «Открытие Task Detail»),
+ * поэтому клик по строке в List проверяет свою цель — `isInteractiveRowClick`
+ * ниже, буквально та же функция, что уже введена в `Today.tsx` (узкое
+ * дублирование, а не импорт приватной функции соседнего экрана — тот же
+ * прецедент, что `getLocalIdentity`/`getDeviceId` в этом же файле).
+ * `TaskMenuTrigger` (и в List, и в Board) — свой собственный `<div
+ * style={{position:'relative'}}>`, уже написанный этим файлом, получил
+ * настоящий `event.stopPropagation()`, тот же приём, что `Label.tsx`
+ * (`@shagi/ui`) уже применяет для своей кнопки `onRemove`.
+ *
  * --- Не в объёме этого пакета работ (см. задание) ------------------------
  *
  * - Создание/переименование/удаление/reorder САМИХ секций через UI —
  *   командный слой готов (E09.1), интерфейса для него здесь нет.
- * - Открытие Task Detail по клику на саму задачу (не на чекбокс/меню) —
- *   E10, отдельный экран; строки/карточки этого экрана не кликабельны как
- *   целое.
  * - Запись переключения List/Board обратно в `project.defaultView` —
  *   переключатель ниже управляет только локальным видом экрана
  *   (`useState`), не мутирует проект.
@@ -260,6 +277,13 @@ function preventDefault(event: DragEvent): void {
   event.preventDefault();
 }
 
+/** См. заголовок файла, блок «Открытие Task Detail по клику на строку/
+ * карточку» — та же функция, что `Today.tsx` (узкое дублирование, тот же
+ * прецедент, что `getLocalIdentity`/`getDeviceId`). */
+function isInteractiveRowClick(target: EventTarget | null): boolean {
+  return target instanceof HTMLElement && target.closest('input, button') !== null;
+}
+
 /** Счётчик задач секции/колонки — вынесена на верхний уровень (не замыкает
  * ничего из компонента), oxlint `unicorn/consistent-function-scoping`. */
 function taskCountLabel(count: number): string {
@@ -312,6 +336,9 @@ interface TaskItemProps {
   readonly handlers: TaskActionHandlers;
   readonly onDragStart: (task: Task, sectionEntry: SectionEntry) => void;
   readonly onDropOnTask: (task: Task, sectionEntry: SectionEntry) => void;
+  /** См. заголовок файла, блок «Открытие Task Detail по клику на строку/
+   * карточку». */
+  readonly onOpen: (task: Task) => void;
 }
 
 function TaskMenuTrigger({
@@ -329,7 +356,7 @@ function TaskMenuTrigger({
 }): ReactElement {
   const { frequent, destructive } = buildTaskMenuActions(task, handlers);
   return (
-    <div style={{ position: 'relative' }}>
+    <div style={{ position: 'relative' }} onClick={(event) => event.stopPropagation()}>
       <IconButton
         icon="more"
         label={t('projectDetail', 'menu.triggerLabel', { title: task.title })}
@@ -357,6 +384,7 @@ function TaskListRow({
   handlers,
   onDragStart,
   onDropOnTask,
+  onOpen,
 }: TaskItemProps): ReactElement {
   return (
     <div
@@ -367,6 +395,10 @@ function TaskListRow({
       onDrop={(event) => {
         event.stopPropagation();
         onDropOnTask(task, sectionEntry);
+      }}
+      onClick={(event) => {
+        if (isInteractiveRowClick(event.target)) return;
+        onOpen(task);
       }}
     >
       <TaskRow
@@ -401,6 +433,7 @@ function TaskBoardCard({
   handlers,
   onDragStart,
   onDropOnTask,
+  onOpen,
 }: TaskItemProps): ReactElement {
   return (
     <div
@@ -413,7 +446,7 @@ function TaskBoardCard({
         onDropOnTask(task, sectionEntry);
       }}
     >
-      <BoardCard dragging={dragging}>
+      <BoardCard dragging={dragging} onClick={() => onOpen(task)}>
         {task.title}
         <TaskMenuTrigger
           task={task}
@@ -679,6 +712,7 @@ export function ProjectDetail(): ReactElement | null {
                   }}
                   onDragStart={handleDragStart}
                   onDropOnTask={handleDropOnTask}
+                  onOpen={(openedTask) => controller.openTask(openedTask.id)}
                 />
               ))}
               <InlineAddForm
@@ -718,6 +752,7 @@ export function ProjectDetail(): ReactElement | null {
                   }}
                   onDragStart={handleDragStart}
                   onDropOnTask={handleDropOnTask}
+                  onOpen={(openedTask) => controller.openTask(openedTask.id)}
                 />
               ))}
               <InlineAddForm
