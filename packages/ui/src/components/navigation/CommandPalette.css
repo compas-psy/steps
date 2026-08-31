@@ -1,0 +1,143 @@
+/**
+ * `CommandPalette` (§10 «Navigation»). Оверлей — `position: fixed`, без
+ * портала (тот же выбор, что уже сделан для `Tooltip`-пузыря — фиксированное
+ * позиционирование не требует выхода из DOM-дерева, чтобы не быть обрезанным
+ * `overflow`-контейнером).
+ */
+
+.shagi-command-palette__backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: var(--space-12);
+  background: color-mix(in srgb, var(--ink-900) 45%, transparent);
+}
+
+.shagi-command-palette {
+  display: flex;
+  flex-direction: column;
+  width: min(var(--floating-panel-max-width), calc(100vw - var(--space-8)));
+  max-height: min(var(--floating-panel-max-height), calc(100vh - var(--space-12) * 2));
+  background: var(--popover);
+  color: var(--popover-foreground);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-floating);
+  overflow: hidden;
+}
+
+.shagi-command-palette__input-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.shagi-command-palette__search-icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  color: var(--muted-foreground);
+}
+
+.shagi-command-palette__input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  font-size: var(--text-body-primary);
+  line-height: var(--lh-body-primary);
+}
+.shagi-command-palette__input::placeholder {
+  color: var(--muted-foreground);
+}
+
+.shagi-command-palette__close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: var(--space-8);
+  height: var(--space-8);
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  transition: background-color var(--motion-duration-fast) var(--motion-easing-standard);
+}
+@media (hover: hover) {
+  .shagi-command-palette__close:hover {
+    background: var(--muted);
+  }
+}
+
+.shagi-command-palette__list {
+  list-style: none;
+  margin: 0;
+  padding: var(--space-2);
+  overflow-y: auto;
+}
+
+.shagi-command-palette__option {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--touch-target-min);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  color: var(--popover-foreground);
+  font-family: var(--font-sans);
+  font-size: var(--text-body-secondary);
+  line-height: var(--lh-body-secondary);
+  font-weight: var(--fw-medium);
+  cursor: pointer;
+}
+
+/* Подсвеченный пункт — не только цвет: заливка формирует видимый блок
+   (тот же приём, что у активного пункта `Sidebar`), плюс рамка кольца тем
+   же токеном, что использует клавиатурный фокус в остальном пакете. */
+.shagi-command-palette__option--active {
+  background: var(--sage-100);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ring) 35%, transparent);
+}
+
+.shagi-command-palette__option--disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.shagi-command-palette__option-icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  color: var(--muted-foreground);
+}
+
+.shagi-command-palette__option-label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shagi-command-palette__option-hint {
+  flex-shrink: 0;
+  color: var(--muted-foreground);
+  font-size: var(--text-caption);
+  line-height: var(--lh-caption);
+}
+
+.shagi-command-palette__empty {
+  padding: var(--space-6) var(--space-4);
+  color: var(--muted-foreground);
+  font-family: var(--font-sans);
+  font-size: var(--text-body-secondary);
+  line-height: var(--lh-body-secondary);
+  text-align: center;
+}

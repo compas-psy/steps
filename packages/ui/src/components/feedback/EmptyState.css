@@ -1,0 +1,48 @@
+/**
+ * `EmptyState` (§10 «Feedback», §18 «Copy, empty states, brand character» —
+ * тон спокойный, не геймифицированный: сдержанная типографика, без ярких
+ * акцентов, декоративная иконка не крупнее заголовка на порядок).
+ */
+
+.shagi-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-12) var(--space-6);
+  text-align: center;
+}
+
+.shagi-empty-state__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(var(--space-12) * 1.25);
+  height: calc(var(--space-12) * 1.25);
+  margin-bottom: var(--space-2);
+  border-radius: var(--radius-full);
+  background: var(--muted);
+  color: var(--muted-foreground);
+}
+
+.shagi-empty-state__title {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: var(--text-section-title);
+  line-height: var(--lh-section-title);
+  font-weight: var(--fw-semibold);
+  color: var(--foreground);
+}
+
+.shagi-empty-state__description {
+  margin: 0;
+  max-width: calc(var(--space-12) * 8);
+  font-family: var(--font-sans);
+  font-size: var(--text-body-secondary);
+  line-height: var(--lh-body-secondary);
+  color: var(--muted-foreground);
+}
+
+.shagi-empty-state__action {
+  margin-top: var(--space-3);
+}

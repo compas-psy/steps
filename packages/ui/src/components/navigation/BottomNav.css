@@ -1,0 +1,108 @@
+/**
+ * `BottomNav` (§9 «Navigation», §11 состояния: активный форест / обычный
+ * приглушённый). Центральная кнопка — форест-круг, приподнята
+ * `margin-top:-16px` буквально по формулировке `.ultraplan/research/02-ui.md`
+ * §4, здесь выражено токеном `--space-4` со знаком минус, а не сырым px.
+ */
+
+.shagi-bottom-nav {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-around;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-2) var(--space-3);
+  background: var(--card);
+  border-top: 1px solid var(--border);
+  box-shadow: var(--shadow-header);
+}
+
+.shagi-bottom-nav__item {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  flex: 1;
+  min-width: var(--touch-target-min);
+  min-height: var(--touch-target-min);
+  padding: var(--space-1) var(--space-2);
+  border: none;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  transition:
+    color var(--motion-duration-fast) var(--motion-easing-standard),
+    background-color var(--motion-duration-fast) var(--motion-easing-standard);
+}
+
+@media (hover: hover) {
+  .shagi-bottom-nav__item:hover {
+    background: var(--sage-100);
+  }
+}
+
+.shagi-bottom-nav__icon {
+  display: inline-flex;
+  position: relative;
+}
+
+/* Активный пункт — не только цвет: точка-индикатор над иконкой плюс более
+   жирная подпись (§11 «state never color-only»). */
+.shagi-bottom-nav__item--active {
+  color: var(--primary);
+}
+.shagi-bottom-nav__item--active .shagi-bottom-nav__icon::after {
+  content: '';
+  position: absolute;
+  top: calc(var(--space-1) * -1);
+  left: 50%;
+  transform: translateX(-50%);
+  width: var(--space-1);
+  height: var(--space-1);
+  border-radius: var(--radius-full);
+  background: currentColor;
+}
+.shagi-bottom-nav__item--active .shagi-bottom-nav__label {
+  font-weight: var(--fw-semibold);
+}
+
+.shagi-bottom-nav__label {
+  font-family: var(--font-sans);
+  font-size: var(--text-caption);
+  line-height: var(--lh-caption);
+  font-weight: var(--fw-medium);
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.shagi-bottom-nav__center {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: var(--space-12);
+  height: var(--space-12);
+  margin-top: calc(var(--space-4) * -1);
+  border: none;
+  border-radius: var(--radius-full);
+  background: var(--primary);
+  color: var(--primary-foreground);
+  box-shadow: var(--shadow-floating);
+  cursor: pointer;
+  transition:
+    background-color var(--motion-duration-fast) var(--motion-easing-standard),
+    transform var(--motion-duration-fast) var(--motion-easing-standard);
+}
+.shagi-bottom-nav__center:active:not(:disabled) {
+  transform: scale(var(--motion-scale-press));
+}
+.shagi-bottom-nav__center:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+@media (hover: hover) {
+  .shagi-bottom-nav__center:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--primary) 88%, var(--foreground));
+  }
+}

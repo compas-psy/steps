@@ -1,0 +1,61 @@
+/**
+ * `Breadcrumb` (§10 «Navigation»). Разделитель — `chevron` повёрнут на -90°
+ * (в реестре иконка «смотрит» вниз, см. `icons/contours.ts`), чтобы
+ * указывать направление пути слева направо.
+ */
+
+.shagi-breadcrumb__list {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.shagi-breadcrumb__item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.shagi-breadcrumb__link {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--touch-target-min);
+  padding: var(--space-1) var(--space-2);
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--muted-foreground);
+  font-family: var(--font-sans);
+  font-size: var(--text-body-secondary);
+  line-height: var(--lh-body-secondary);
+  font-weight: var(--fw-medium);
+  cursor: pointer;
+  transition: color var(--motion-duration-fast) var(--motion-easing-standard);
+}
+
+@media (hover: hover) {
+  .shagi-breadcrumb__link:hover {
+    color: var(--primary);
+    text-decoration: underline;
+  }
+}
+
+.shagi-breadcrumb__current {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--space-1) var(--space-2);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  font-size: var(--text-body-secondary);
+  line-height: var(--lh-body-secondary);
+  font-weight: var(--fw-semibold);
+}
+
+.shagi-breadcrumb__separator {
+  display: inline-flex;
+  color: var(--muted-foreground);
+  transform: rotate(-90deg);
+}

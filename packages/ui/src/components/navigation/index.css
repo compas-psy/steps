@@ -1,0 +1,14 @@
+/**
+ * Точка входа стилей навигационных компонентов (E03.2). Не подключена в
+ * `../index.css` пакета — интеграция в общий `@shagi/ui/components.css`
+ * сводится при приёмке пакета работ, тем же приёмом, что `src/icons/`
+ * (E03.0) остаётся не подключённым в публичный барель до своей интеграции
+ * (см. комментарий в `./index.ts`).
+ */
+
+@import './BottomNav.css';
+@import './Breadcrumb.css';
+@import './CommandPalette.css';
+@import './Sidebar.css';
+@import './Tabs.css';
+@import './TopBar.css';

@@ -1,0 +1,22 @@
+/**
+ * `Offline` (§10 «Feedback»). Иконка — не единственный носитель смысла:
+ * форма (пилюля с контрастной обводкой) отличает состояние от обычной
+ * декоративной иконки рядом с текстом, доступное имя всегда есть (`label`
+ * обязателен, см. `Offline.tsx`).
+ */
+
+.shagi-offline {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(var(--space-6) + var(--space-1));
+  height: calc(var(--space-6) + var(--space-1));
+  border-radius: var(--radius-full);
+  border: 1px solid var(--orange-500);
+  background: var(--orange-soft);
+  color: var(--orange-500);
+}
+
+.shagi-offline__icon {
+  display: inline-flex;
+}

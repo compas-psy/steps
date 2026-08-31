@@ -1,0 +1,64 @@
+/**
+ * `Popover` (§10 «Overlay»). Позиционирование — калька с `Tooltip.css`:
+ * `position: relative` на обёртке, `position: absolute` + смещение
+ * `var(--space-1)` от края якоря на панели. Никакой коллизионной логики с
+ * краями экрана — см. заголовок `Popover.tsx`.
+ */
+
+.shagi-popover {
+  position: relative;
+  display: inline-block;
+}
+
+.shagi-popover__panel {
+  position: absolute;
+  z-index: 50;
+  min-width: calc(var(--space-12) * 4);
+  max-width: calc(var(--space-12) * 8);
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--popover);
+  color: var(--popover-foreground);
+  font-family: var(--font-sans);
+  font-size: var(--text-body-secondary);
+  line-height: var(--lh-body-secondary);
+  box-shadow: var(--shadow-floating);
+  animation: shagi-popover-in var(--motion-duration-fast) var(--motion-easing-standard);
+}
+
+.shagi-popover__panel--top {
+  bottom: calc(100% + var(--space-1));
+  left: 50%;
+  transform: translateX(-50%);
+}
+.shagi-popover__panel--bottom {
+  top: calc(100% + var(--space-1));
+  left: 50%;
+  transform: translateX(-50%);
+}
+.shagi-popover__panel--left {
+  right: calc(100% + var(--space-1));
+  top: 50%;
+  transform: translateY(-50%);
+}
+.shagi-popover__panel--right {
+  left: calc(100% + var(--space-1));
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+@keyframes shagi-popover-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shagi-popover__panel {
+    animation-name: none;
+  }
+}

@@ -1,0 +1,95 @@
+/**
+ * `BottomSheet` (§10 «Overlay», §8 «Responsive» — мобильный внешний margin
+ * 16, `--layout-mobile-margin`; §7 «Motion»).
+ */
+
+.shagi-bottom-sheet-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: color-mix(in srgb, var(--ink-900) 45%, transparent);
+  animation: shagi-bottom-sheet-overlay-in var(--motion-duration-fast) var(--motion-easing-standard);
+}
+
+.shagi-bottom-sheet {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: var(--floating-panel-max-width);
+  max-height: min(88%, calc(100% - var(--space-12)));
+  overflow: hidden;
+  border-radius: var(--radius-2xl) var(--radius-2xl) 0 0;
+  background: var(--popover);
+  color: var(--popover-foreground);
+  box-shadow: var(--shadow-floating);
+  animation: shagi-bottom-sheet-in var(--motion-duration-base) var(--motion-easing-standard);
+}
+
+.shagi-bottom-sheet__grabber {
+  flex-shrink: 0;
+  width: var(--space-10);
+  height: var(--space-1);
+  margin: var(--space-3) auto 0;
+  border-radius: var(--radius-full);
+  background: var(--border);
+}
+
+.shagi-bottom-sheet__header {
+  flex-shrink: 0;
+  padding: var(--space-4) var(--layout-mobile-margin) 0;
+}
+
+.shagi-bottom-sheet__title {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: var(--text-section-title);
+  line-height: var(--lh-section-title);
+  font-weight: var(--fw-semibold);
+  color: var(--foreground);
+}
+
+.shagi-bottom-sheet__body {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-4) var(--layout-mobile-margin) var(--layout-mobile-margin);
+  font-family: var(--font-sans);
+  font-size: var(--text-body-primary);
+  line-height: var(--lh-body-primary);
+  color: var(--foreground);
+}
+
+.shagi-bottom-sheet__footer {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: 0 var(--layout-mobile-margin) var(--layout-mobile-margin);
+}
+
+@keyframes shagi-bottom-sheet-overlay-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes shagi-bottom-sheet-in {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shagi-bottom-sheet {
+    animation: shagi-bottom-sheet-overlay-in var(--motion-duration-fast)
+      var(--motion-easing-standard);
+  }
+}

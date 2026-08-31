@@ -92,6 +92,18 @@ export const TOKENS: readonly TokenDescriptor[] = [
   { name: '--fw-normal', kind: 'other', definedIn: 'src/tokens/typography.css', themed: false },
   { name: '--fw-semibold', kind: 'other', definedIn: 'src/tokens/typography.css', themed: false },
   { name: '--gold-400', kind: 'color', definedIn: 'src/tokens/colors.css', themed: false },
+  {
+    name: '--floating-panel-max-height',
+    kind: 'spacing',
+    definedIn: 'src/tokens/spacing.css',
+    themed: false,
+  },
+  {
+    name: '--floating-panel-max-width',
+    kind: 'spacing',
+    definedIn: 'src/tokens/spacing.css',
+    themed: false,
+  },
   { name: '--gold-500', kind: 'color', definedIn: 'src/tokens/colors.css', themed: false },
   { name: '--ink-500', kind: 'color', definedIn: 'src/tokens/colors.css', themed: false },
   { name: '--ink-900', kind: 'color', definedIn: 'src/tokens/colors.css', themed: false },
@@ -177,6 +189,12 @@ export const TOKENS: readonly TokenDescriptor[] = [
     themed: false,
   },
   { name: '--ls-page-title', kind: 'font', definedIn: 'src/tokens/typography.css', themed: false },
+  {
+    name: '--modal-max-width',
+    kind: 'spacing',
+    definedIn: 'src/tokens/spacing.css',
+    themed: false,
+  },
   {
     name: '--motion-duration-base',
     kind: 'motion',

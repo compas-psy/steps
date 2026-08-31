@@ -1,0 +1,53 @@
+/**
+ * `SyncState` (§10 «Feedback», §7 «Motion»). `syncing` крутит иконку —
+ * единственная бесконечная анимация пакета, поэтому длительность оборота
+ * взята из `--motion-duration-slow` (300ms) * 4, а не заведён отдельный
+ * «долгий» токен ради одного места; `prefers-reduced-motion` останавливает
+ * вращение целиком (§7 «removes translate/scale»), не просто ускоряет его —
+ * иконка остаётся видимой и статичной, а не исчезает.
+ */
+
+.shagi-sync-state {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(var(--space-6) + var(--space-1));
+  height: calc(var(--space-6) + var(--space-1));
+  border-radius: var(--radius-full);
+}
+
+.shagi-sync-state--idle {
+  color: var(--success-500);
+  background: var(--success-soft);
+}
+.shagi-sync-state--syncing {
+  color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+}
+.shagi-sync-state--error {
+  color: var(--destructive);
+  background: var(--red-soft);
+}
+
+.shagi-sync-state__icon {
+  display: inline-flex;
+}
+
+.shagi-sync-state--syncing .shagi-sync-state__icon {
+  animation: shagi-sync-state-spin calc(var(--motion-duration-slow) * 4) linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shagi-sync-state--syncing .shagi-sync-state__icon {
+    animation: none;
+  }
+}
+
+@keyframes shagi-sync-state-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}

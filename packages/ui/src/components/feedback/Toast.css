@@ -1,0 +1,76 @@
+/**
+ * `Toast` (§10 «Feedback», §7 «Motion»). Тон — не единственный носитель
+ * смысла: `icon` — соседний пропс (§11 «state never color-only»), рамка
+ * левого края дублирует вариант структурно, не только заливкой текста.
+ */
+
+.shagi-toast {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  max-width: calc(var(--space-12) * 8);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-lg);
+  border-left: 3px solid var(--border);
+  background: var(--card);
+  color: var(--card-foreground);
+  box-shadow: var(--shadow-floating);
+  font-family: var(--font-sans);
+  font-size: var(--text-body-secondary);
+  line-height: var(--lh-body-secondary);
+  animation: shagi-toast-in var(--motion-duration-base) var(--motion-easing-standard);
+}
+
+.shagi-toast--success {
+  border-left-color: var(--success-500);
+}
+.shagi-toast--error {
+  border-left-color: var(--destructive);
+}
+.shagi-toast--warning {
+  border-left-color: var(--orange-500);
+}
+
+.shagi-toast__icon {
+  display: inline-flex;
+  flex-shrink: 0;
+}
+.shagi-toast--success .shagi-toast__icon {
+  color: var(--success-500);
+}
+.shagi-toast--error .shagi-toast__icon {
+  color: var(--destructive);
+}
+.shagi-toast--warning .shagi-toast__icon {
+  color: var(--orange-500);
+}
+
+.shagi-toast__message {
+  flex: 1;
+}
+
+.shagi-toast__action {
+  flex-shrink: 0;
+  font-weight: var(--fw-semibold);
+}
+
+.shagi-toast__dismiss {
+  flex-shrink: 0;
+}
+
+@keyframes shagi-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(var(--space-2));
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shagi-toast {
+    animation-name: none;
+  }
+}

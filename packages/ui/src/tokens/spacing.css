@@ -42,4 +42,13 @@
   --inspector-width-max: 440px;
   --native-window-min-width: 980px;
   --native-window-min-height: 640px;
+
+  /* Плавающие оверлеи (E03.3) — CommandPalette/Popover-подобные диалоги
+     поверх контента: без явных токенов их ширину/высоту пришлось бы
+     задавать сырым px в компонентных .css, а гейт адгезии (`.oxlintrc.json`
+     этого пакета) сканирует только JS/TS-литералы и такое не ловит —
+     значение осталось бы непроверяемым магическим числом. */
+  --floating-panel-max-width: 560px;
+  --floating-panel-max-height: 480px;
+  --modal-max-width: 480px;
 }

@@ -1,0 +1,92 @@
+/**
+ * `Modal` (§10 «Overlay», §7 «Motion»: 150–300ms ease, no bounce/parallax,
+ * reduced-motion убирает translate/scale, оставляя fade <=100ms).
+ *
+ * Скрим — `color-mix()` поверх `--ink-900`, а не сырой `rgba()`: тот же
+ * приём, что и soft-тона `Badge.css`/`Chip.css` (`color-mix(in srgb, …)`),
+ * ни одного нового сырого значения не заведено.
+ */
+
+.shagi-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-6);
+  background: color-mix(in srgb, var(--ink-900) 45%, transparent);
+  animation: shagi-modal-overlay-in var(--motion-duration-fast) var(--motion-easing-standard);
+}
+
+.shagi-modal {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: var(--modal-max-width);
+  max-height: calc(100% - var(--space-12));
+  overflow: hidden;
+  border-radius: var(--radius-xl);
+  background: var(--popover);
+  color: var(--popover-foreground);
+  box-shadow: var(--shadow-floating);
+  animation: shagi-modal-in var(--motion-duration-base) var(--motion-easing-standard);
+}
+
+.shagi-modal__header {
+  flex-shrink: 0;
+  padding: var(--space-6) var(--space-6) 0;
+}
+
+.shagi-modal__title {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: var(--text-hero-title);
+  line-height: var(--lh-hero-title);
+  font-weight: var(--fw-semibold);
+  color: var(--foreground);
+}
+
+.shagi-modal__body {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-6);
+  font-family: var(--font-sans);
+  font-size: var(--text-body-primary);
+  line-height: var(--lh-body-primary);
+  color: var(--foreground);
+}
+
+.shagi-modal__footer {
+  flex-shrink: 0;
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-3);
+  padding: 0 var(--space-6) var(--space-6);
+}
+
+@keyframes shagi-modal-overlay-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes shagi-modal-in {
+  from {
+    opacity: 0;
+    transform: translateY(var(--space-2)) scale(var(--motion-scale-press));
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shagi-modal {
+    animation-name: shagi-modal-overlay-in;
+  }
+}

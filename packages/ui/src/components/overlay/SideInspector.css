@@ -1,0 +1,71 @@
+/**
+ * `SideInspector` (§10 «Overlay», §8 «Responsive»: «inspector 360–440»,
+ * `--inspector-width*`). Не оверлей — фрагмент десктопного флекс-лэйаута
+ * (`display:flex` родителя укладывает список + `SideInspector` рядом), нет
+ * `position:fixed`/скрима, в отличие от `Modal`/`BottomSheet`.
+ */
+
+.shagi-side-inspector {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  width: var(--inspector-width);
+  min-width: var(--inspector-width-min);
+  max-width: var(--inspector-width-max);
+  height: 100%;
+  overflow: hidden;
+  background: var(--card);
+  color: var(--card-foreground);
+  border-left: 1px solid var(--border);
+  animation: shagi-side-inspector-in var(--motion-duration-base) var(--motion-easing-standard);
+}
+
+.shagi-side-inspector__header {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-6) var(--space-6) 0;
+}
+
+.shagi-side-inspector__title {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: var(--text-caption);
+  line-height: var(--lh-caption);
+  font-weight: var(--fw-bold);
+  letter-spacing: var(--ls-caption);
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+
+.shagi-side-inspector__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex-shrink: 0;
+}
+
+.shagi-side-inspector__body {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-6);
+}
+
+@keyframes shagi-side-inspector-in {
+  from {
+    opacity: 0;
+    transform: translateX(var(--space-4));
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shagi-side-inspector {
+    animation-name: none;
+  }
+}

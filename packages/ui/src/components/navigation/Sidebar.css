@@ -1,0 +1,122 @@
+/**
+ * `Sidebar` (§9 «Navigation», §8 «Responsive» ширина 240–280). Постоянно
+ * тёмная форест-поверхность — токены `--sidebar*`, не общие `--card`/
+ * `--border`/`--muted` (см. заголовок `.tsx`).
+ */
+
+.shagi-sidebar {
+  display: flex;
+  flex-direction: column;
+  width: var(--sidebar-width);
+  max-width: var(--sidebar-width-max);
+  height: 100%;
+  padding: var(--space-4) var(--space-3);
+  background: var(--sidebar);
+  color: var(--sidebar-foreground);
+  overflow-y: auto;
+}
+
+.shagi-sidebar__header {
+  padding: 0 var(--space-2) var(--space-4);
+}
+
+.shagi-sidebar__sections {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  flex: 1;
+}
+
+.shagi-sidebar__section {
+  display: flex;
+  flex-direction: column;
+}
+
+.shagi-sidebar__divider {
+  background: var(--sidebar-border);
+  margin: var(--space-3) var(--space-2);
+  width: calc(100% - var(--space-4));
+}
+
+.shagi-sidebar__section-title {
+  padding: var(--space-2) var(--space-3) var(--space-1);
+  color: var(--sidebar-muted);
+  font-family: var(--font-sans);
+  font-size: var(--text-caption);
+  line-height: var(--lh-caption);
+  font-weight: var(--fw-bold);
+  text-transform: uppercase;
+  letter-spacing: var(--ls-caption);
+}
+
+.shagi-sidebar__list {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--space-1) / 2);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.shagi-sidebar__item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  min-height: var(--touch-target-min);
+  padding: var(--space-2) var(--space-3);
+  border: none;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--sidebar-foreground);
+  font-family: var(--font-sans);
+  font-size: var(--text-body-secondary);
+  line-height: var(--lh-body-secondary);
+  font-weight: var(--fw-medium);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--motion-duration-fast) var(--motion-easing-standard);
+}
+
+.shagi-sidebar__item:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+@media (hover: hover) {
+  .shagi-sidebar__item:hover:not(:disabled) {
+    background: var(--sidebar-hover);
+  }
+}
+
+/* Активный пункт — не только цвет: заливка формирует видимый блок вокруг
+   пункта, плюс более жирная подпись (§11 «state never color-only»). */
+.shagi-sidebar__item--active {
+  background: var(--sidebar-active);
+  color: var(--sidebar-active-foreground);
+  font-weight: var(--fw-semibold);
+}
+
+.shagi-sidebar__item--muted:not(.shagi-sidebar__item--active) {
+  color: var(--sidebar-muted);
+}
+
+.shagi-sidebar__item-icon {
+  display: inline-flex;
+  flex-shrink: 0;
+}
+
+.shagi-sidebar__item-label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shagi-sidebar__item-badge {
+  flex-shrink: 0;
+}
+
+.shagi-sidebar__footer {
+  padding: var(--space-3) var(--space-2) 0;
+}

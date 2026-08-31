@@ -1,0 +1,62 @@
+/**
+ * `UndoToast` — значения дословно из прототипа там, где они попадают в
+ * шкалу токенов: `border-radius:16px` → `--radius-lg` день в день,
+ * `box-shadow` → `--shadow-floating` день в день, форест/белый/голд — те же
+ * роли. Отступ прототипа `14px 18px` не лежит на шкале `--space-*`
+ * (4,8,12,16,20,24…) — взята ближайшая пара токенов
+ * (`--space-4`/`--space-5` = 16/20), не сырое число.
+ */
+
+.shagi-undo-toast {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  max-width: calc(var(--space-12) * 8);
+  padding: var(--space-4) var(--space-5);
+  border-radius: var(--radius-lg);
+  background: var(--forest-900);
+  color: var(--white);
+  box-shadow: var(--shadow-floating);
+  font-family: var(--font-sans);
+  animation: shagi-undo-toast-in var(--motion-duration-base) var(--motion-easing-standard);
+}
+
+.shagi-undo-toast__message {
+  font-size: var(--text-body-primary);
+  line-height: var(--lh-body-primary);
+  font-weight: var(--fw-medium);
+}
+
+.shagi-undo-toast__action {
+  flex-shrink: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--gold-400);
+  font-family: var(--font-sans);
+  font-size: var(--text-body-primary);
+  line-height: var(--lh-body-primary);
+  font-weight: var(--fw-bold);
+  cursor: pointer;
+}
+.shagi-undo-toast__action:hover {
+  text-decoration: underline;
+}
+
+@keyframes shagi-undo-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(var(--space-2));
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shagi-undo-toast {
+    animation-name: none;
+  }
+}

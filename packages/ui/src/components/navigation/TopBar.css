@@ -1,0 +1,39 @@
+/**
+ * `TopBar` (§10 «Navigation»). Тонкая нижняя тень вместо жёсткой рамки —
+ * тот же приём мягких зеленовато-тонированных теней, что и в `Card`/
+ * `Tooltip` (`--shadow-header` заведён в `tokens/shadow.css` именно под
+ * sticky-заголовки).
+ */
+
+.shagi-topbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: var(--space-12);
+  padding: var(--space-2) var(--space-4);
+  background: var(--card);
+  box-shadow: var(--shadow-header);
+}
+
+.shagi-topbar__leading {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.shagi-topbar__content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+}
+
+.shagi-topbar__actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex-shrink: 0;
+}
