@@ -74,4 +74,12 @@ describe('validateDomainMutation — единая точка входа (02§11.
     });
     expect(result.valid).toBe(true);
   });
+
+  it('диспетчеризует checklist_item-мутацию в validateChecklistItem', () => {
+    const result = validateDomainMutation({
+      entity: 'checklist_item',
+      data: { text: 'Купить молоко' },
+    });
+    expect(result.valid).toBe(true);
+  });
 });

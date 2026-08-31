@@ -63,6 +63,9 @@ export {
   type ReminderTaskDeadline,
 } from './reminder.js';
 
+// --- ChecklistItem: правило 39 (пакет работ E10) -------------------------------
+export { validateChecklistItem, type ChecklistItemValidationInput } from './checklist-item.js';
+
 // --- Задел на правила 29 (ownership), 30/31 (recurrence merge, эпик E11) ------
 export {
   validateOwnership,

@@ -1,3 +1,4 @@
+import { validateChecklistItem, type ChecklistItemValidationInput } from './checklist-item.js';
 import {
   validateExplicitReminder,
   type ExplicitReminderValidationInput,
@@ -49,6 +50,10 @@ export type DomainMutationInput =
       readonly entity: 'explicit_reminder';
       readonly data: ExplicitReminderValidationInput;
       readonly context: ReminderTaskDeadline;
+    }
+  | {
+      readonly entity: 'checklist_item';
+      readonly data: ChecklistItemValidationInput;
     };
 
 export function validateDomainMutation(input: DomainMutationInput): ValidationResult {
@@ -63,5 +68,7 @@ export function validateDomainMutation(input: DomainMutationInput): ValidationRe
       return validateLabel(input.data, input.context);
     case 'explicit_reminder':
       return validateExplicitReminder(input.data, input.context);
+    case 'checklist_item':
+      return validateChecklistItem(input.data);
   }
 }

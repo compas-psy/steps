@@ -17,7 +17,10 @@
  */
 
 // --- Порт хранения (инверсия зависимости, ADR-0003) --------------------------
+// Пакет работ E10 расширил порт до `checklistItems`/`listDirectSubtasks` —
+// см. комментарий `storage-port.ts` про причину общего порта Task+ChecklistItem.
 export type {
+  CommandChecklistItemReader,
   CommandDomainMutation,
   CommandEntityWrite,
   CommandStoragePort,
@@ -36,7 +39,10 @@ export { resolveTaskRank, type NewTaskRank } from './rank-input.js';
 export { createTaskCommand, type CreateTaskInput } from './create-task.js';
 export { updateTaskCommand, type UpdateTaskInput, type UpdateTaskPatch } from './update-task.js';
 export { completeTaskCommand, type CompleteTaskInput } from './complete-task.js';
-export { deleteTaskCommand, type DeleteTaskInput } from './delete-task.js';
+// `DeleteTaskResult` (не `TaskCommandResult`) — пакет работ E10 расширил
+// исход аддитивно (`affectedSubtaskIds`/`affectedChecklistItemIds`, каскад
+// `01§9`), см. комментарий `delete-task.ts`.
+export { deleteTaskCommand, type DeleteTaskInput, type DeleteTaskResult } from './delete-task.js';
 
 // --- Порт хранения Reminder (инверсия зависимости, ADR-0003) — E08 -----------
 export type {
@@ -136,3 +142,84 @@ export {
   type DeleteSectionInput,
   type DeleteSectionResult,
 } from './section-delete.js';
+
+// --- Порт+deps+результат ChecklistItem (`01§10`) — E10 ------------------------
+export {
+  CHECKLIST_ITEM_MUTABLE_FIELDS,
+  type ChecklistItemCommandDeps,
+  type ChecklistItemCommandResult,
+} from './checklist-item-port.js';
+
+// --- Команды ChecklistItem (`01§10`) — E10 -------------------------------------
+export {
+  createChecklistItemCommand,
+  type CreateChecklistItemInput,
+} from './checklist-item-create.js';
+export {
+  updateChecklistItemCommand,
+  type UpdateChecklistItemInput,
+  type UpdateChecklistItemPatch,
+} from './checklist-item-update.js';
+export {
+  deleteChecklistItemCommand,
+  type DeleteChecklistItemInput,
+} from './checklist-item-delete.js';
+
+// --- Порт+deps+результат Label (`01§13` "Label lifecycle") — E10 --------------
+export {
+  LABEL_MUTABLE_FIELDS,
+  type CommandLabelDomainMutation,
+  type CommandLabelEntityWrite,
+  type CommandLabelReader,
+  type CommandLabelStoragePort,
+  type CommandLabelWriteTransaction,
+  type LabelCommandDeps,
+  type LabelCommandResult,
+} from './label-port.js';
+
+// --- Команды Label — E10 --------------------------------------------------------
+export { createLabelCommand, type CreateLabelInput } from './label-create.js';
+export {
+  updateLabelCommand,
+  type UpdateLabelInput,
+  type UpdateLabelPatch,
+} from './label-update.js';
+export {
+  deleteLabelCommand,
+  type DeleteLabelDeps,
+  type DeleteLabelInput,
+  type DeleteLabelResult,
+} from './label-delete.js';
+
+// --- Порт TaskLabel (`02§8` OR-set) — E10 ---------------------------------------
+export type {
+  CommandTaskLabelDomainMutation,
+  CommandTaskLabelEntityWrite,
+  CommandTaskLabelReader,
+  CommandTaskLabelStoragePort,
+  CommandTaskLabelWriteTransaction,
+} from './task-label-port.js';
+
+// --- Команды TaskLabel — E10 -----------------------------------------------------
+export {
+  attachLabelToTaskCommand,
+  type AttachLabelDeps,
+  type AttachLabelInput,
+  type AttachLabelResult,
+} from './task-label-attach.js';
+export {
+  detachLabelFromTaskCommand,
+  type DetachLabelDeps,
+  type DetachLabelInput,
+  type DetachLabelResult,
+} from './task-label-detach.js';
+
+// --- Конверсия Checklist ↔ Subtask (`01§10`) — E10 ------------------------------
+export {
+  convertChecklistItemToSubtaskCommand,
+  convertSubtaskToChecklistItemCommand,
+  type ConvertChecklistItemToSubtaskInput,
+  type ConvertChecklistItemToSubtaskResult,
+  type ConvertSubtaskToChecklistItemInput,
+  type ConvertSubtaskToChecklistItemResult,
+} from './checklist-subtask-convert.js';

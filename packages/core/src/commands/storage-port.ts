@@ -1,4 +1,5 @@
-import type { Task } from '../entities/task.js';
+import type { ChecklistItem } from '../entities/checklist-item.js';
+import type { Task, TaskStatus } from '../entities/task.js';
 import type { SyncOutboxEntry } from '../entities/sync-outbox.js';
 import type { TaskValidationContext } from '../validation/task.js';
 import type { Uuid } from '../values.js';
@@ -43,22 +44,58 @@ export type NonEmptyArray<T> = readonly [T, ...T[]];
  * tombstone-запись, принимает вызывающая команда). `loadValidationContext`
  * — готовый `TaskValidationContext` (родитель + пять счётчиков лимитов)
  * одним вызовом, ровно то, что нужно перед `validateDomainMutation`.
+ *
+ * `listDirectSubtasks` — добавлен пакетом работ E10 для каскада
+ * `deleteTaskCommand` (`01§9` "Parent delete cascades direct subtasks/
+ * checklist/links"): сигнатура скопирована буквально с реального
+ * `TaskRepository.listDirectSubtasks` (`packages/storage`), метод уже
+ * существует там (индекс `tasks(parent_task_id, status, rank)`) — здесь
+ * лишь объявлен структурный срез, ничего нового в хранилище не требуется.
  */
 export interface CommandTaskReader {
   findById(id: Uuid): Promise<Task | null>;
   loadValidationContext(id: Uuid | null, parentTaskId: Uuid | null): Promise<TaskValidationContext>;
+  listDirectSubtasks(parentTaskId: Uuid, status: TaskStatus): Promise<readonly Task[]>;
 }
 
-/** Единственная форма записи, которую умеют команды этого пакета работ —
- * подмножество `EntityWrite` из `packages/storage`: там дискриминированное
- * объединение на 10 типов сущностей, здесь — только `task` (Project/Section/
- * Label/Recurrence вне охвата E01.4, см. задание, раздел «Границы»). Это
- * ПОДмножество union'а `EntityWrite`, что и делает `CommandDomainMutation`
- * присваиваемым в `DomainMutation` (не наоборот) — см. ADR-0003. */
-export interface CommandEntityWrite {
-  readonly entity: 'task';
-  readonly value: Task;
+/**
+ * Срез `ChecklistItemRepository` (`packages/storage/src/ports/
+ * checklist-item-repository.ts`) — добавлен пакетом работ E10. Живёт в этом
+ * же файле (не в отдельном `checklist-item-port.ts`), потому что
+ * `createChecklistItemCommand` обязан повторно провалидировать РОДИТЕЛЬСКУЮ
+ * Task на лимит 17 (правило 17, `validation/task.ts`) — а значит ему в любом
+ * случае нужен именно ЭТОТ `CommandTaskReader.loadValidationContext`, тот
+ * же порт, что уже используют `create/update/complete/deleteTaskCommand`.
+ * Заводить для checklist item отдельный, полностью независимый порт (как
+ * `reminder-port.ts`) означало бы дать `ChecklistItemCommandDeps` ДВА поля
+ * (`storage` под checklist item + `taskStorage` под Task) вместо одного —
+ * лишний уровень непрямоты там, где реальный `StoragePort`
+ * (`packages/storage`) и так уже одна общая точка входа на обе таблицы. У
+ * реального `ChecklistItemRepository` нет `findById` (только `listByTask`/
+ * `countActiveByTask`, см. комментарий файла) — поэтому у
+ * `updateChecklistItemCommand`/`deleteChecklistItemCommand` в качестве входа
+ * требуется `taskId` явно (см. эти файлы): без него неоткуда взять список,
+ * в котором искать нужный `id`.
+ */
+export interface CommandChecklistItemReader {
+  listByTask(taskId: Uuid): Promise<readonly ChecklistItem[]>;
+  countActiveByTask(taskId: Uuid): Promise<number>;
 }
+
+/** Единственные формы записи, которые умеют команды этого файла —
+ * подмножество `EntityWrite` из `packages/storage`: там дискриминированное
+ * объединение на 10 типов сущностей, здесь — `task` (E01.4) и, с пакета
+ * работ E10, `checklist_item` (см. комментарий `CommandChecklistItemReader`
+ * выше про причину общего порта). Project/Section/Label/Recurrence — вне
+ * охвата, у них свои узкие порты (`project-port.ts`/`section-port.ts`/
+ * `label-port.ts`/`task-label-port.ts`). Это ПОДмножество union'а
+ * `EntityWrite`, что и делает `CommandDomainMutation` присваиваемым в
+ * `DomainMutation` (не наоборот) — см. ADR-0003; сам ADR прямо
+ * предусматривает этот путь расширения ("расширит `CommandEntityWrite` до
+ * объединения... совместимо с этим ADR"). */
+export type CommandEntityWrite =
+  | { readonly entity: 'task'; readonly value: Task }
+  | { readonly entity: 'checklist_item'; readonly value: ChecklistItem };
 
 /** Структурный эквивалент `DomainMutation` (`packages/storage/src/ports/transaction.ts`)
  * — те же два поля, та же семантика (`writes` может быть пустым, `outbox`
@@ -78,6 +115,7 @@ export interface CommandDomainMutation {
  * completion, эпик E11). */
 export interface CommandStorageWriteTransaction {
   readonly tasks: CommandTaskReader;
+  readonly checklistItems: CommandChecklistItemReader;
   applyMutation(mutation: CommandDomainMutation): Promise<void>;
 }
 
@@ -90,5 +128,6 @@ export interface CommandStorageWriteTransaction {
  */
 export interface CommandStoragePort {
   readonly tasks: CommandTaskReader;
+  readonly checklistItems: CommandChecklistItemReader;
   runTransaction<T>(run: (tx: CommandStorageWriteTransaction) => Promise<T>): Promise<T>;
 }

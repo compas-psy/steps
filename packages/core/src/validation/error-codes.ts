@@ -83,4 +83,12 @@ export type ValidationErrorCode =
   | 'LABEL_TITLE_LENGTH_INVALID'
   /** Правило 24: метка не уникальна в scope пользователя (регистронезависимо
    * после Unicode-нормализации). */
-  | 'LABEL_NOT_UNIQUE';
+  | 'LABEL_NOT_UNIQUE'
+  // --- Правило 39 (пакет работ E10, checklist_items.text — конспект §2 не
+  // называет отдельный номер, см. `validation/checklist-item.ts`) ------------
+  /** Правило 39 (длина): текст пункта чек-листа 1..500 Unicode-символов
+   * после нормализации — тот же приём, что `TASK_TITLE_LENGTH_INVALID`. */
+  | 'CHECKLIST_ITEM_TEXT_LENGTH_INVALID'
+  /** Правило 39 (читаемость): после отбрасывания принятых service-токенов не
+   * осталось читаемого текста — тот же приём, что `TASK_TITLE_NOT_READABLE`. */
+  | 'CHECKLIST_ITEM_TEXT_NOT_READABLE';
