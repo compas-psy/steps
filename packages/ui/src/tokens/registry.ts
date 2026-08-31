@@ -55,6 +55,12 @@ export const TOKENS: readonly TokenDescriptor[] = [
   { name: '--background', kind: 'color', definedIn: 'src/tokens/colors.css', themed: true },
   { name: '--blue-500', kind: 'color', definedIn: 'src/tokens/colors.css', themed: true },
   { name: '--blue-soft', kind: 'color', definedIn: 'src/tokens/colors.css', themed: true },
+  {
+    name: '--board-column-width',
+    kind: 'spacing',
+    definedIn: 'src/tokens/spacing.css',
+    themed: false,
+  },
   { name: '--border', kind: 'color', definedIn: 'src/tokens/colors.css', themed: true },
   {
     name: '--breakpoint-desktop-min',

@@ -1,0 +1,102 @@
+/**
+ * `ProjectRow` (§10 «Organization», §11 «state never color-only»).
+ * Структура строки — по образцу `navigation/Sidebar.css`
+ * (`.shagi-sidebar__item`), но собственный класс-неймспейс: строка
+ * проекта живёт в content-области (список проектов), не в постоянно-тёмном
+ * `--sidebar*`-сёрфейсе.
+ */
+
+.shagi-project-row {
+  list-style: none;
+}
+
+.shagi-project-row--dragging {
+  opacity: 0.5;
+}
+
+.shagi-project-row__button {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  min-height: var(--touch-target-min);
+  padding: var(--space-2) var(--space-3);
+  border: none;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  font-size: var(--text-body-secondary);
+  line-height: var(--lh-body-secondary);
+  font-weight: var(--fw-medium);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--motion-duration-fast) var(--motion-easing-standard);
+}
+
+.shagi-project-row__button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+@media (hover: hover) {
+  .shagi-project-row__button:hover:not(:disabled) {
+    background: var(--muted);
+  }
+}
+
+.shagi-project-row__button:active:not(:disabled) {
+  transform: scale(var(--motion-scale-press));
+}
+
+/* Selected — не только цвет: заливка формирует видимый блок, подпись
+   жирнее (§11 «state never color-only», тот же приём, что
+   `Sidebar.item--active`). */
+.shagi-project-row__button--selected {
+  background: var(--sage-100);
+  font-weight: var(--fw-semibold);
+}
+
+.shagi-project-row__marker {
+  flex-shrink: 0;
+  width: calc(var(--space-1) * 1.5);
+  height: calc(var(--space-1) * 1.5);
+  border-radius: var(--radius-full);
+}
+
+.shagi-project-row__marker--forest {
+  background: var(--forest-500);
+}
+.shagi-project-row__marker--gold {
+  background: var(--gold-500);
+}
+.shagi-project-row__marker--blue {
+  background: var(--blue-500);
+}
+.shagi-project-row__marker--violet {
+  background: var(--violet-500);
+}
+.shagi-project-row__marker--orange {
+  background: var(--orange-500);
+}
+.shagi-project-row__marker--red {
+  background: var(--red-500);
+}
+.shagi-project-row__marker--neutral {
+  background: var(--muted-foreground);
+}
+
+.shagi-project-row__name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shagi-project-row__count {
+  flex-shrink: 0;
+  color: var(--muted-foreground);
+  font-size: var(--text-small-meta);
+  line-height: var(--lh-small-meta);
+  font-variant-numeric: tabular-nums;
+}

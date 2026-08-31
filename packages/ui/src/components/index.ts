@@ -1,15 +1,16 @@
 /**
  * Барель компонентов `@shagi/ui` (E03.1 «примитивы» + generic-компоненты
- * DS-бандла из `.ultraplan/research/02-ui.md` §2, плюс навигация из E03.2
- * и оверлеи/feedback из E03.3). Реэкспортируется из `../index.ts` —
- * публичный API пакета остаётся единой точкой `./src/index.ts` (глубокие
- * импорты запрещены, см. `.oxlintrc.json`, правило про
- * `no-restricted-imports`/единую точку входа).
+ * DS-бандла из `.ultraplan/research/02-ui.md` §2, плюс навигация из E03.2,
+ * оверлеи/feedback из E03.3 и задачные/планирование/организация/захват из
+ * E03.4–E03.7). Реэкспортируется из `../index.ts` — публичный API пакета
+ * остаётся единой точкой `./src/index.ts` (глубокие импорты запрещены, см.
+ * `.oxlintrc.json`, правило про `no-restricted-imports`/единую точку входа).
  *
- * Сведение подкаталоговых барелей (`navigation/`, `overlay/`, `feedback/`)
- * — на приёмке E03.2/E03.3: каждый пакет работ намеренно не трогал этот
- * файл, чтобы не столкнуться с параллельно идущим соседним пакетом работ
- * в том же родительском каталоге.
+ * Сведение подкаталоговых барелей (`navigation/`, `overlay/`, `feedback/`,
+ * `task/`, `planning/`, `organization/`, `capture/`) — на приёмке
+ * соответствующих пакетов работ: каждый пакет работ намеренно не трогал
+ * этот файл, чтобы не столкнуться с параллельно идущим соседним пакетом
+ * работ в том же родительском каталоге.
  */
 
 export { Badge, type BadgeProps, type BadgeVariant } from './Badge.js';
@@ -91,3 +92,64 @@ export { Offline, type OfflineProps } from './feedback/Offline.js';
 export { SyncState, type SyncStateProps, type SyncStateStatus } from './feedback/SyncState.js';
 export { Toast, type ToastProps, type ToastVariant } from './feedback/Toast.js';
 export { UndoToast, type UndoToastProps } from './feedback/UndoToast.js';
+
+// --- Задачи (E03.4) -------------------------------------------------------
+export { ChecklistRow, type ChecklistRowProps } from './task/ChecklistRow.js';
+export { FocusMarker, type FocusMarkerProps } from './task/FocusMarker.js';
+export { SubtaskRow, type SubtaskRowProps } from './task/SubtaskRow.js';
+export { TaskCheckbox, type TaskCheckboxProps } from './task/TaskCheckbox.js';
+export { TaskDetail, type TaskDetailProps } from './task/TaskDetail.js';
+export { TaskMenu, type TaskMenuItemData, type TaskMenuProps } from './task/TaskMenu.js';
+export {
+  TaskMetadata,
+  TaskMetadataItem,
+  type TaskMetadataItemProps,
+  type TaskMetadataProps,
+} from './task/TaskMetadata.js';
+export { TaskRow, type TaskRowProps, type TaskRowState } from './task/TaskRow.js';
+
+// --- Планирование (E03.5) --------------------------------------------------
+export { DateChip, type DateChipProps } from './planning/DateChip.js';
+export { TimeChip, type TimeChipProps } from './planning/TimeChip.js';
+export { DurationChip, type DurationChipProps } from './planning/DurationChip.js';
+export { DeadlineChip, type DeadlineChipProps } from './planning/DeadlineChip.js';
+export { ReminderChip, type ReminderChipProps } from './planning/ReminderChip.js';
+export { RecurrenceChip, type RecurrenceChipProps } from './planning/RecurrenceChip.js';
+export {
+  DatePicker,
+  type CalendarDate,
+  type CalendarMonth,
+  type DatePickerProps,
+} from './planning/DatePicker.js';
+export { TimePicker, type TimePickerProps, type TimeValue } from './planning/TimePicker.js';
+export {
+  TemporalConflict,
+  type TemporalConflictProps,
+  type TemporalConflictType,
+} from './planning/TemporalConflict.js';
+
+// --- Организация (E03.6) ---------------------------------------------------
+export { BoardCard, type BoardCardProps } from './organization/BoardCard.js';
+export { BoardColumn, type BoardColumnProps } from './organization/BoardColumn.js';
+export { Filter, type FilterProps } from './organization/Filter.js';
+export { Label, type LabelProps } from './organization/Label.js';
+export type { MarkerColor } from './organization/internal/markerColor.js';
+export { Priority, type PriorityLevel, type PriorityProps } from './organization/Priority.js';
+export { ProjectHeader, type ProjectHeaderProps } from './organization/ProjectHeader.js';
+export { ProjectRow, type ProjectRowProps } from './organization/ProjectRow.js';
+export { Section, type SectionProps } from './organization/Section.js';
+
+// --- Захват (E03.7) ---------------------------------------------------------
+export { Composer, type ComposerMode, type ComposerProps } from './capture/Composer.js';
+export { DraftIndicator, type DraftIndicatorProps } from './capture/DraftIndicator.js';
+export {
+  InheritedContextChip,
+  type InheritedContextChipProps,
+} from './capture/InheritedContextChip.js';
+export { NLPToken, type NLPTokenKind, type NLPTokenProps } from './capture/NLPToken.js';
+export {
+  ParsingPreview,
+  type ParsingPreviewProps,
+  type ParsingPreviewToken,
+} from './capture/ParsingPreview.js';
+export { QuickAdd, type QuickAddProps } from './capture/QuickAdd.js';

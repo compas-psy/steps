@@ -1,0 +1,10 @@
+/**
+ * `NLPToken` — визуальная адгезия целиком наследуется от `Chip.css`
+ * (тон/иконка/removable уже там). Единственная добавка здесь — усиление
+ * самого срочного `kind` весом текста, третьим независимым от тона/иконки
+ * каналом (§11 «state never color-only»), см. `NLPToken.tsx`.
+ */
+
+.shagi-nlp-token--deadline .shagi-chip__label {
+  font-weight: var(--fw-semibold);
+}

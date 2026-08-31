@@ -1,0 +1,21 @@
+/**
+ * `QuickAdd` (§10 «Capture»). Ряд «иконка+поле» / «кнопка отправки» —
+ * `align-items: flex-start`, а не `center`: `errorMessage` растёт под
+ * полем (`Input.css`), и кнопка должна остаться на уровне верхней
+ * строки поля, а не сместиться к вертикальному центру выросшего блока.
+ */
+
+.shagi-quick-add {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+.shagi-quick-add__field {
+  flex: 1;
+  min-width: 0;
+}
+
+.shagi-quick-add__submit {
+  flex-shrink: 0;
+}

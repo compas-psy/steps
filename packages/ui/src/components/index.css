@@ -51,3 +51,13 @@
 @import './feedback/SyncState.css';
 @import './feedback/Toast.css';
 @import './feedback/UndoToast.css';
+
+@import './task/index.css';
+
+@import './planning/DatePicker.css';
+@import './planning/TemporalConflict.css';
+@import './planning/TimePicker.css';
+
+@import './organization/index.css';
+
+@import './capture/index.css';

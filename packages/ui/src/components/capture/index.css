@@ -1,0 +1,15 @@
+/**
+ * Барель стилей подкаталога `capture/` (E03.7), по образцу
+ * `feedback/index.css`-эквивалента — здесь такого файла у соседей нет
+ * (`feedback/`/`navigation/` подключены напрямую построчно из
+ * `components/index.css`), но локальный барель облегчает интеграцию: на
+ * приёмке пакета работ оркестратору достаточно добавить один `@import
+ * './capture/index.css';` в `components/index.css`, вместо шести строк.
+ */
+
+@import './Composer.css';
+@import './DraftIndicator.css';
+@import './InheritedContextChip.css';
+@import './NLPToken.css';
+@import './ParsingPreview.css';
+@import './QuickAdd.css';

@@ -16,11 +16,7 @@ export { FocusMarker, type FocusMarkerProps } from './FocusMarker.js';
 export { SubtaskRow, type SubtaskRowProps } from './SubtaskRow.js';
 export { TaskCheckbox, type TaskCheckboxProps } from './TaskCheckbox.js';
 export { TaskDetail, type TaskDetailProps } from './TaskDetail.js';
-export {
-  TaskMenu,
-  type TaskMenuItemData,
-  type TaskMenuProps,
-} from './TaskMenu.js';
+export { TaskMenu, type TaskMenuItemData, type TaskMenuProps } from './TaskMenu.js';
 export {
   TaskMetadata,
   TaskMetadataItem,

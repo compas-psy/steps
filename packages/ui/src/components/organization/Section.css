@@ -1,0 +1,56 @@
+/**
+ * `Section` (§10 «Organization»). Типографика заголовка — та же капс-лок
+ * caption-пара, что `navigation/Sidebar.css`
+ * (`.shagi-sidebar__section-title`) и заголовки колонок доски в прототипе.
+ */
+
+.shagi-section {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  width: 100%;
+  padding: var(--space-2) var(--space-1);
+  border: none;
+  background: transparent;
+  font-family: var(--font-sans);
+  color: var(--muted-foreground);
+  text-align: left;
+}
+
+button.shagi-section {
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: background-color var(--motion-duration-fast) var(--motion-easing-standard);
+}
+@media (hover: hover) {
+  button.shagi-section:hover {
+    background: var(--muted);
+  }
+}
+
+.shagi-section__chevron {
+  display: inline-flex;
+  flex-shrink: 0;
+  transition: transform var(--motion-duration-fast) var(--motion-easing-standard);
+}
+/* Свёрнуто — шеврон повёрнут на 90° и указывает вправо (тот же приём «один
+   глиф, поворот у потребителя», что `navigation/Breadcrumb.css`). */
+.shagi-section__chevron--collapsed {
+  transform: rotate(-90deg);
+}
+
+.shagi-section__title {
+  font-size: var(--text-caption);
+  line-height: var(--lh-caption);
+  font-weight: var(--fw-bold);
+  text-transform: uppercase;
+  letter-spacing: var(--ls-caption);
+}
+
+.shagi-section__count {
+  color: var(--muted-foreground);
+  font-size: var(--text-caption);
+  line-height: var(--lh-caption);
+  font-weight: var(--fw-bold);
+  font-variant-numeric: tabular-nums;
+}

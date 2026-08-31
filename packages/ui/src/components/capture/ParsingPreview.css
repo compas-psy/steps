@@ -1,0 +1,38 @@
+/**
+ * `ParsingPreview` (§10 «Capture»). Мягкая поверхность (`--muted`), не
+ * `--card` — это подсказка под полем ввода, а не отдельная карточка со
+ * своей тенью (`--shadow-card` здесь визуально спорил бы с формой над
+ * ней, у которой уже есть собственная рамка/фокус-кольцо).
+ */
+
+.shagi-parsing-preview {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--muted);
+}
+
+.shagi-parsing-preview__title {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: var(--text-body-primary);
+  line-height: var(--lh-body-primary);
+  font-weight: var(--fw-medium);
+  color: var(--foreground);
+  overflow-wrap: break-word;
+}
+
+.shagi-parsing-preview__tokens {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.shagi-parsing-preview__empty {
+  font-family: var(--font-sans);
+  font-size: var(--text-body-secondary);
+  line-height: var(--lh-body-secondary);
+  color: var(--muted-foreground);
+}

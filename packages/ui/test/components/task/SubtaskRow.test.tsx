@@ -5,7 +5,13 @@ import { SubtaskRow } from '../../../src/components/task/index.js';
 
 describe('SubtaskRow', () => {
   it('рендерит заголовок и чекбокс подзадачи с доступным именем', () => {
-    render(<SubtaskRow title="Забронировать столик" checked={false} checkboxLabel="Забронировать столик" />);
+    render(
+      <SubtaskRow
+        title="Забронировать столик"
+        checked={false}
+        checkboxLabel="Забронировать столик"
+      />,
+    );
     expect(screen.getByText('Забронировать столик')).toBeInTheDocument();
     expect(screen.getByRole('checkbox', { name: 'Забронировать столик' })).toBeInTheDocument();
   });

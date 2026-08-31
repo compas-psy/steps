@@ -1,0 +1,17 @@
+/**
+ * `DraftIndicator` (§10 «Capture»). Точка — акцентный тон (`--accent`,
+ * золото ШАГОВ), не статусный blue/red/success: черновик не успех и не
+ * ошибка, отдельная семантика от `SyncState`.
+ */
+
+.shagi-draft-indicator {
+  display: inline-flex;
+  align-items: center;
+}
+
+.shagi-draft-indicator__dot {
+  width: var(--space-2);
+  height: var(--space-2);
+  border-radius: var(--radius-full);
+  background: var(--accent);
+}

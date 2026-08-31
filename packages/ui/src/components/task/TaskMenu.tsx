@@ -16,7 +16,12 @@
 import type { CSSProperties, ReactElement } from 'react';
 
 import type { IconName } from '../../icons/index.js';
-import { Menu, type MenuItemData, type MenuPlacement, type MenuSectionData } from '../overlay/Menu.js';
+import {
+  Menu,
+  type MenuItemData,
+  type MenuPlacement,
+  type MenuSectionData,
+} from '../overlay/Menu.js';
 
 export interface TaskMenuItemData {
   readonly key: string;

@@ -30,7 +30,14 @@ describe('ChecklistRow', () => {
   it('disabled недоступен для взаимодействия', async () => {
     const user = userEvent.setup();
     const onCheckedChange = vi.fn();
-    render(<ChecklistRow label="Недоступно" checked={false} disabled onCheckedChange={onCheckedChange} />);
+    render(
+      <ChecklistRow
+        label="Недоступно"
+        checked={false}
+        disabled
+        onCheckedChange={onCheckedChange}
+      />,
+    );
 
     const checkbox = screen.getByRole('checkbox', { name: 'Недоступно' });
     expect(checkbox).toBeDisabled();
@@ -39,7 +46,13 @@ describe('ChecklistRow', () => {
   });
 
   it('trailing-слот рендерится (например кнопка удаления пункта)', () => {
-    render(<ChecklistRow label="Пункт" checked={false} trailing={<button type="button">Удалить</button>} />);
+    render(
+      <ChecklistRow
+        label="Пункт"
+        checked={false}
+        trailing={<button type="button">Удалить</button>}
+      />,
+    );
     expect(screen.getByRole('button', { name: 'Удалить' })).toBeInTheDocument();
   });
 });

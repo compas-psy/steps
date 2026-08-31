@@ -1,0 +1,38 @@
+/**
+ * `Priority` (§10 «Organization», M32). Форма и токены — те же soft/500
+ * пары, что `../Badge.css`; сопоставление уровня и тона объяснено в
+ * заголовке `Priority.tsx`.
+ */
+
+.shagi-priority {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-full);
+  border: 1px solid transparent;
+  font-family: var(--font-sans);
+  font-size: var(--text-small-meta);
+  line-height: var(--lh-small-meta);
+  font-weight: var(--fw-semibold);
+  white-space: nowrap;
+}
+
+.shagi-priority--p1 {
+  background: var(--red-soft);
+  color: var(--red-500);
+  border-color: color-mix(in srgb, var(--red-500) 20%, transparent);
+}
+.shagi-priority--p2 {
+  background: var(--orange-soft);
+  color: var(--orange-500);
+  border-color: color-mix(in srgb, var(--orange-500) 20%, transparent);
+}
+.shagi-priority--p3 {
+  background: var(--blue-soft);
+  color: var(--blue-500);
+  border-color: color-mix(in srgb, var(--blue-500) 20%, transparent);
+}
+.shagi-priority--p4 {
+  background: var(--muted);
+  color: var(--muted-foreground);
+}

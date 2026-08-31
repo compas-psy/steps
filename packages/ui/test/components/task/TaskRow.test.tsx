@@ -90,9 +90,9 @@ describe('TaskRow', () => {
       const soon = render(
         <TaskRow title="B" checked={false} checkboxLabel="B" state="deadlineSoon" />,
       );
-      const missedIcon = missed.container
-        .querySelector('.shagi-task-row__state-icon svg')
-        ?.outerHTML;
+      const missedIcon = missed.container.querySelector(
+        '.shagi-task-row__state-icon svg',
+      )?.outerHTML;
       const soonIcon = soon.container.querySelector('.shagi-task-row__state-icon svg')?.outerHTML;
       expect(soonIcon).toBeTruthy();
       expect(soonIcon).not.toBe(missedIcon);
@@ -127,7 +127,9 @@ describe('TaskRow', () => {
       // здесь проверяется, что структура (класс модификатора над заголовком)
       // на месте; сама раскраска CSS не рендерится в тестовом окружении
       // (vitest не подключает `.css` при `css: false` по умолчанию).
-      expect(container.querySelector('.shagi-task-row--completed .shagi-task-row__title')).toBeInTheDocument();
+      expect(
+        container.querySelector('.shagi-task-row--completed .shagi-task-row__title'),
+      ).toBeInTheDocument();
       expect(screen.getByRole('checkbox', { name: 'Задача' })).toBeChecked();
     });
 

@@ -51,4 +51,16 @@
   --floating-panel-max-width: 560px;
   --floating-panel-max-height: 480px;
   --modal-max-width: 480px;
+
+  /* Ширина колонки доски (E03.6 «Organization», `BoardColumn`) — дословно
+     из прототипа, `docs/spec/DESIGN/source_unpacked/ШАГИ - R1 Design.dc.html`,
+     блок «[R1][D][09] Project / Board», строки 892–895
+     (`width:220px` на каждой из 4 колонок «Идеи/Сделать/В работе/Финал»).
+     Без токена это было бы сырым px, которое `.oxlintrc.json` пакета не
+     ловит для CSS-файлов — тем не менее правило пакета работ требует var()
+     везде, отдельного значения в тексте §6/§8 ТЗ для доски нет.
+     TODO(оркестратор E03.6): зарегистрировать в `src/tokens/registry.ts`
+     (kind: 'spacing', definedIn: 'src/tokens/spacing.css', themed: false) —
+     см. отчёт пакета работ. */
+  --board-column-width: 220px;
 }

@@ -1,0 +1,36 @@
+/**
+ * `BoardCard` (§10 «Organization», §11 Task «Dragging»). Визуальная карточка
+ * — сам `Card` (`../Card.css`); этот файл добавляет только board-специфичные
+ * модификаторы через дочерний селектор на вложенный `.shagi-card`
+ * (обёртка `.shagi-board-card` нужна как стабильный хук для
+ * `data-testid`/состояний, сама не несёт фона/рамки).
+ */
+
+.shagi-board-card {
+  width: 100%;
+}
+
+.shagi-board-card__title {
+  font-family: var(--font-sans);
+  font-size: var(--text-body-secondary);
+  line-height: var(--lh-body-secondary);
+  color: var(--foreground);
+}
+
+.shagi-board-card__meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin-top: var(--space-2);
+}
+
+.shagi-board-card--dragging > .shagi-card {
+  opacity: 0.5;
+}
+
+/* Selected — не только цвет: рамка формирует видимый контур, не просто
+   смена оттенка фона (§11 «state never color-only»). */
+.shagi-board-card--selected > .shagi-card {
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
+}

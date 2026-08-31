@@ -1,0 +1,134 @@
+/**
+ * `DatePicker` — календарная сетка (см. `DatePicker.tsx`). Сетка 7 колонок
+ * фиксированной ширины (§8 «Responsive»: одна и та же раскладка на
+ * мобайле/десктопе, меняется только внешний контейнер/попап вокруг неё —
+ * это забота вызывающего кода, не самой сетки).
+ */
+
+.shagi-date-picker {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  font-family: var(--font-sans);
+}
+
+.shagi-date-picker__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+/* Один и тот же глиф `chevron` (по умолчанию — «вниз»), направление —
+   поворотом через CSS у потребителя (см. комментарий у иконки в
+   `icons/contours.ts`): влево для «предыдущий месяц», вправо для
+   «следующий». */
+.shagi-date-picker__nav--prev svg {
+  transform: rotate(90deg);
+}
+.shagi-date-picker__nav--next svg {
+  transform: rotate(-90deg);
+}
+
+.shagi-date-picker__title {
+  font-size: var(--text-body-secondary);
+  line-height: var(--lh-body-secondary);
+  font-weight: var(--fw-semibold);
+  color: var(--foreground);
+}
+
+.shagi-date-picker__grid {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.shagi-date-picker__weekday-row,
+.shagi-date-picker__week {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: var(--space-1);
+}
+
+.shagi-date-picker__weekday {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--text-caption);
+  line-height: var(--lh-caption);
+  font-weight: var(--fw-bold);
+  letter-spacing: var(--ls-caption);
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+
+.shagi-date-picker__cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 1;
+  min-width: var(--touch-target-min);
+  min-height: var(--touch-target-min);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  font-size: var(--text-body-secondary);
+  line-height: var(--lh-body-secondary);
+  font-weight: var(--fw-medium);
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition:
+    background-color var(--motion-duration-fast) var(--motion-easing-standard),
+    color var(--motion-duration-fast) var(--motion-easing-standard),
+    transform var(--motion-duration-fast) var(--motion-easing-standard);
+}
+.shagi-date-picker__cell:active {
+  transform: scale(var(--motion-scale-press));
+}
+@media (hover: hover) {
+  .shagi-date-picker__cell:hover {
+    background: var(--muted);
+  }
+}
+.shagi-date-picker__cell:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.shagi-date-picker__cell--empty {
+  cursor: default;
+  visibility: hidden;
+}
+
+.shagi-date-picker__cell--today {
+  border-color: var(--border);
+  font-weight: var(--fw-bold);
+}
+
+.shagi-date-picker__cell--selected {
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+@media (hover: hover) {
+  .shagi-date-picker__cell--selected:hover {
+    background: var(--primary);
+  }
+}
+
+/* Скрытый `aria-live`-регион объявления выбранной даты — визуально не
+   занимает места, но остаётся доступным скринридерам (стандартный приём
+   «visually hidden», не токенизируемый спейсингом — здесь именно 1px-хак
+   обрезки, а не отступ). */
+.shagi-date-picker__announce {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

@@ -1,0 +1,11 @@
+/**
+ * `Composer` (§10 «Capture»). Ограничение ширины переиспользует уже
+ * заведённый `--floating-panel-max-width` (`tokens/spacing.css`,
+ * E03.3) — тот же класс поверхности «плавающая панель ввода поверх
+ * контента», новый токен под это заводить незачем.
+ */
+
+.shagi-composer {
+  width: 100%;
+  max-width: var(--floating-panel-max-width);
+}

@@ -1,0 +1,52 @@
+/**
+ * `ProjectHeader` (§10 «Organization», §5 «Section title 20/26»).
+ */
+
+.shagi-project-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.shagi-project-header__title-group {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.shagi-project-header__title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-sans);
+  font-size: var(--text-section-title);
+  line-height: var(--lh-section-title);
+  font-weight: var(--fw-bold);
+  color: var(--foreground);
+}
+
+.shagi-project-header__count {
+  flex-shrink: 0;
+  color: var(--muted-foreground);
+  font-family: var(--font-sans);
+  font-size: var(--text-body-secondary);
+  line-height: var(--lh-body-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.shagi-project-header__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex-shrink: 0;
+}
+
+/* Позиционированный якорь для абсолютно спозиционированного `Menu`
+   (тот же приём, что `Tooltip`/`Menu` сами документируют — `position:
+   absolute` относительно ближайшего позиционированного предка). */
+.shagi-project-header__menu-anchor {
+  position: relative;
+  display: inline-flex;
+}

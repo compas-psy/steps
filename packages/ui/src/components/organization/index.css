@@ -1,0 +1,14 @@
+/**
+ * Точка входа стилей компонентов организации (E03.6). Не подключена в
+ * `../index.css` пакета — интеграция в общий `@shagi/ui/components.css`
+ * сводится при приёмке пакета работ (см. комментарий в `./index.ts`).
+ */
+
+@import './BoardCard.css';
+@import './BoardColumn.css';
+@import './Filter.css';
+@import './Label.css';
+@import './Priority.css';
+@import './ProjectHeader.css';
+@import './ProjectRow.css';
+@import './Section.css';

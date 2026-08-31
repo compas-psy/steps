@@ -1,0 +1,73 @@
+/**
+ * `TimePicker` — два прокручиваемых списка часов/минут (см. `TimePicker.tsx`).
+ */
+
+.shagi-time-picker {
+  display: flex;
+  align-items: stretch;
+  gap: var(--space-2);
+  font-family: var(--font-sans);
+}
+
+.shagi-time-picker__dial {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  max-height: calc(var(--touch-target-min) * 5);
+  overflow-y: auto;
+  padding: var(--space-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--card);
+}
+
+.shagi-time-picker__separator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--text-hero-title);
+  line-height: var(--lh-hero-title);
+  font-weight: var(--fw-semibold);
+  color: var(--muted-foreground);
+}
+
+.shagi-time-picker__option {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: var(--touch-target-min);
+  min-height: var(--space-8);
+  padding: var(--space-1) var(--space-3);
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  font-size: var(--text-body-secondary);
+  line-height: var(--lh-body-secondary);
+  font-weight: var(--fw-medium);
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition:
+    background-color var(--motion-duration-fast) var(--motion-easing-standard),
+    color var(--motion-duration-fast) var(--motion-easing-standard);
+}
+@media (hover: hover) {
+  .shagi-time-picker__option:hover {
+    background: var(--muted);
+  }
+}
+.shagi-time-picker__option:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+}
+
+.shagi-time-picker__option--selected {
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+@media (hover: hover) {
+  .shagi-time-picker__option--selected:hover {
+    background: var(--primary);
+  }
+}
