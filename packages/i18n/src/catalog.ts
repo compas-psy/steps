@@ -14,6 +14,7 @@ import ruCommon from './catalog/ru-RU/common.json' with { type: 'json' };
 import ruOnboarding from './catalog/ru-RU/onboarding.json' with { type: 'json' };
 import ruTasks from './catalog/ru-RU/tasks.json' with { type: 'json' };
 import ruTime from './catalog/ru-RU/time.json' with { type: 'json' };
+import ruToday from './catalog/ru-RU/today.json' with { type: 'json' };
 
 /** R1 обязателен и полон (SPEC/00 §13.1) — единственная база, из которой выводятся типы ключей. */
 export const CATALOG_RU_RU = {
@@ -21,6 +22,7 @@ export const CATALOG_RU_RU = {
   onboarding: ruOnboarding,
   tasks: ruTasks,
   time: ruTime,
+  today: ruToday,
 } as const;
 
 export const BASE_LOCALE = 'ru-RU' as const;

@@ -1,0 +1,10 @@
+{
+  "pageTitle": "Сегодня",
+  "empty.description": "Новые задачи появятся здесь, когда вы их запланируете.",
+  "groups.missedDeadline": "Просрочен срок",
+  "groups.missedPlan": "Не по плану",
+  "groups.focus": "Главное",
+  "groups.timed": "По времени",
+  "groups.today": "Сегодня",
+  "groups.later": "Когда будет время"
+}

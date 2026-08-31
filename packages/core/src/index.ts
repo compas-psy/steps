@@ -96,6 +96,12 @@ export {
   type TaskForTodayClassification,
   type TodayGroup,
 } from './rules/today-classification.js';
+export {
+  selectTodayTasks,
+  type TodayGroups,
+  type TodayStorageQueryPort,
+  type TodayTaskReader,
+} from './rules/select-today-tasks.js';
 
 // --- Идентификаторы (§6, конспект §4) ----------------------------------------
 // Сведено вручную при приёмке: пакеты работ E01.2 и E01.3 шли параллельно и
