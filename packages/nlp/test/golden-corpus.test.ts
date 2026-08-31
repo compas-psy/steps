@@ -36,9 +36,9 @@ function serializeChipValue(chip: AnyAcceptedChip): string {
   }
 }
 
-describe(`golden-корпус (${GOLDEN_CORPUS.length} примеров, задел на расширение до 800+ по 01§4)`, () => {
-  it('минимальный размер пакета работ E05.1 — не менее 250 примеров', () => {
-    expect(GOLDEN_CORPUS.length).toBeGreaterThanOrEqual(250);
+describe(`golden-корпус (${GOLDEN_CORPUS.length} примеров, требование 01§4 — не менее 800)`, () => {
+  it('требование 01§4 — не менее 800 примеров', () => {
+    expect(GOLDEN_CORPUS.length).toBeGreaterThanOrEqual(800);
   });
 
   it('id кейсов уникальны — расширение корпуса не может тихо задвоить существующий кейс', () => {
