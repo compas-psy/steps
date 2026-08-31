@@ -6,33 +6,25 @@
  * ISO-нумерация дня недели домена (`Temporal.PlainDate#dayOfWeek`):
  * 1=понедельник .. 7=воскресенье. Используется и здесь, и в
  * `RecurrenceChipValue.byWeekday` — единая система на весь пакет.
+ *
+ * `resolveWeekend`/`resolveNextWeekMonday` **перенесены в `@shagi/core`**
+ * (`packages/core/src/temporal/date-shortcuts.ts`, пакет работ E08.2): та же
+ * арифметика понадобилась UI-редактору Planned Date
+ * (`packages/app/src/screens/TaskDetail.tsx`, шорткаты «Выходные»/
+ * «Следующая неделя»), а этот файл лежит в `internal/` — не экспортируется
+ * из публичной точки входа `@shagi/nlp`, значит для UI не было законного
+ * пути их переиспользовать. `packages/nlp` уже зависит от `@shagi/core`
+ * (`package.json`), перенос не создаёт цикл. Реэкспорт ниже сохраняет старый
+ * путь импорта для `matchers/date.ts`/`matchers/weekday.ts`/
+ * `matchers/deadline.ts` без изменений в них.
  */
 
 import { Temporal } from '@js-temporal/polyfill';
+import { resolveNextWeekMonday, resolveWeekend } from '@shagi/core';
 
-/**
- * "Выходные → today if Saturday/Sunday, otherwise nearest Saturday"
- * (`01_PRODUCT_BEHAVIOR_R1.md` §4 "Date shortcut semantics" — источник
- * приоритетнее конспекта `.ultraplan/research/01-domain.md`, где то же
- * правило сформулировано менее точно как "ближайшая суббота": если сегодня
- * уже выходной, "выходные" значит именно сегодня, а не следующую субботу).
- */
-export function resolveWeekend(today: Temporal.PlainDate): Temporal.PlainDate {
-  const dow = today.dayOfWeek;
-  if (dow === 6 || dow === 7) {
-    return today;
-  }
-  const daysUntilSaturday = 6 - dow;
-  return today.add({ days: daysUntilSaturday });
-}
-
-/** "Следующая неделя → next Monday, never current Monday" — даже если
- * сегодня понедельник, результат на 7 дней вперёд, а не сегодня. */
-export function resolveNextWeekMonday(today: Temporal.PlainDate): Temporal.PlainDate {
-  const dow = today.dayOfWeek;
-  const daysUntilMonday = (8 - dow) % 7 || 7;
-  return today.add({ days: daysUntilMonday });
-}
+// Реэкспорт под тем же именем — `resolveWeekdayNextCalendarWeek` ниже тоже
+// использует `resolveNextWeekMonday` (локальная ссылка, не только реэкспорт).
+export { resolveNextWeekMonday, resolveWeekend };
 
 /** "в пятницу" = ближайшая пятница ВКЛЮЧАЯ сегодня — если сегодня и есть
  * искомый день недели, результат = сегодня. */

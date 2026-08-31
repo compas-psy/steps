@@ -6,44 +6,49 @@
  * на него опирается) плюс §10/§16 (конверсия чек-лист/subtask, лейблы —
  * уже реализованы командным слоем пакета работ E10.1, здесь только UI).
  *
- * --- Ключевое сознательное решение по объёму (см. задание) ----------------
+ * --- Ключевое сознательное решение по объёму (см. задание E10.2) ----------
  *
  * §17 перечисляет полную иерархию M25 Full: 1) title/context, 2) description,
  * 3) Planning, 4) Organization, 5) Subtasks, 6) Checklist, 7) Attachments/
- * Links, 8) future activity. Этот пакет работ строит 1, 2, 4, 5, 6 —
+ * Links, 8) future activity. Пакет работ E10.2 построил 1, 2, 4, 5, 6 —
  * реально, функционально, с автосохранением через уже готовые команды
- * (`@shagi/core/commands`, пакеты E01/E10.1). 3 (Planning) и 7 (Attachments/
- * Links) — СОЗНАТЕЛЬНО не строятся полноценно:
+ * (`@shagi/core/commands`, пакеты E01/E10.1). 7 (Attachments/Links) —
+ * СОЗНАТЕЛЬНО не строится полноценно: в дереве пакетов нет вообще никакого
+ * командного слоя ни для `task_link`, ни для attachments (только read-only
+ * storage-порты, E02) — нечем наполнить интерфейс, это отдельный будущий
+ * эпик. Раздел не рендерится вовсе — то же решение, что
+ * `ProjectHeader.menuSections={[]}` в `ProjectDetail.tsx`: честно пусто, не
+ * выдуманные разделы.
  *
- * - **Attachments/Links** — в дереве пакетов нет вообще никакого командного
- *   слоя ни для `task_link`, ни для attachments (только read-only
- *   storage-порты, E02) — нечем наполнить интерфейс, это отдельный будущий
- *   эпик. Раздел не рендерится вовсе — то же решение, что
- *   `ProjectHeader.menuSections={[]}` в `ProjectDetail.tsx`: честно пусто,
- *   не выдуманные разделы.
- * - **Planning** (available_from/planned date+time/duration/deadline/focus)
- *   — командный слой (`updateTaskCommand`) полностью готов, но полноценный
- *   UI редактирования (M27 Date Picker shortcuts+calendar, M28 Advanced
- *   planning: time/duration/deadline/available + blocking/warning conflict
- *   states, M31 Reminder) — отдельный, ещё не начатый пакет работ эпика E08:
- *   работа с Temporal — по CLAUDE.md зона повышенной аккуратности («после
- *   смены пояса задача на 09:00 остаётся на 09:00 по местному» — не
- *   довесок к экрану, а отдельное сфокусированное внимание). В ЭТОМ пакете
- *   работ Planning — ТОЛЬКО НА ЧТЕНИЕ: уже заданные `plannedDate`/
- *   `deadlineDate`/`focusDate` показаны текстом (без интерактивного
- *   редактирования), рядом — честная пометка «редактирование дат появится
- *   в следующем обновлении» (`planning.comingSoon`, реальный i18n-ключ, не
- *   выдуманная функциональность).
+ * 3 (Planning) E10.2 оставил ТОЛЬКО НА ЧТЕНИЕ с честной пометкой
+ * «редактирование дат появится в следующем обновлении» — редактор дат
+ * (M27/M28/M31) был отдельным, ещё не начатым пакетом работ эпика E08.
+ * **Пакет работ E08.2 закрывает этот раздел эпика E08** («Временные
+ * редакторы и напоминания» — E08.1, командный слой напоминаний
+ * `commands/reminder-*.ts`, был закрыт раньше): читальная заглушка
+ * (`planning.comingSoon`) заменена настоящим редактором Available From/
+ * Planned Date+Time/Duration/Deadline Date+Time + Explicit Reminder — блок
+ * «--- Planning: редактор дат (эпик E08.2) ---» ниже разбирает решения
+ * этого пакета работ подробно (date shortcuts, warning/blocking-баннеры,
+ * общий под-компонент picker'а, explicit reminder). Работа с Temporal
+ * по-прежнему зона повышенной аккуратности CLAUDE.md — редактор не трогает
+ * `Date`, только `@js-temporal/polyfill`, и не переизобретает уже готовую
+ * доменную арифметику сброса полей (`@shagi/core` `rules/field-resets.ts`)
+ * или temporal-предикаты (`@shagi/core/temporal/predicates.ts`).
  *
  * M24 Simple перечисляет три частых действия: «Добавить дату» / «Приоритет»
  * / «Добавить заметку» (`quickActions.*` ниже) — все три настоящие кнопки:
  * «Приоритет» открывает picker приоритета (тот же `Modal`, что и «Изменить
  * приоритет» в разделе Organization — одна реализация, два входа), «Добавить
- * заметку» фокусирует поле описания (`descriptionRef`), «Добавить дату» —
- * честное сообщение «скоро» через `notice` (тот же приём «кликабельно, но
- * честно», что уже применён для SignIn email/Yandex, `SignIn.tsx`
- * `showUnavailable`, и AppShell «Быстрое добавление», `bottomNav.
- * quickAddUnavailable`).
+ * заметку» фокусирует поле описания (`descriptionRef`), «Добавить дату»
+ * (эпик E08.2) открывает тот же picker Planned Date, что и раздел Planning
+ * ниже — честное сообщение «скоро» (`quickActions.addDateUnavailable`,
+ * приём «кликабельно, но честно» `SignIn.tsx`/`AppShell`) было верно только
+ * пока редактора не существовало; теперь, когда он есть, кнопка открывает
+ * его напрямую. Неиспользуемый ключ каталога `quickActions.addDateUnavailable`
+ * удалён вместе с обработчиком (гейт `check-i18n-catalog.mjs` только
+ * предупреждает о мёртвых ключах, не валит CI, но оставлять заведомо
+ * неверную строку в каталоге — не повод её не убрать).
  *
  * `Готово` закрывает, не сохраняет (`01§17`, дословно: "`Готово` closes,
  * not saves") — сохранение уже произошло автосейвом по ходу редактирования,
@@ -103,22 +108,38 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactElement } from 'react';
 import { Temporal } from '@js-temporal/polyfill';
 
-import { formatDate, t } from '@shagi/i18n';
+import {
+  DEFAULT_LOCALE,
+  WEEKDAY_MONDAY,
+  WEEKDAY_SUNDAY,
+  formatDate,
+  formatTime,
+  t,
+  weekdayName,
+} from '@shagi/i18n';
 import {
   attachLabelToTaskCommand,
+  cancelReminderCommand,
   completeTaskCommand,
   convertChecklistItemToSubtaskCommand,
   convertSubtaskToChecklistItemCommand,
   createChecklistItemCommand,
+  createExplicitReminderCommand,
   createLabelCommand,
   createTaskCommand,
   deleteChecklistItemCommand,
   deleteTaskCommand,
   detachLabelFromTaskCommand,
+  doesDurationCrossDeadline,
   generateDeviceId,
   generateUuidV7,
+  isPlannedAfterDeadline,
+  isReminderAfterDeadline,
   isTaskLabelActive,
+  makeDurationMinutes,
   makePriority,
+  resolveNextWeekMonday,
+  resolveWeekend,
   updateChecklistItemCommand,
   updateTaskCommand,
   type ChecklistItem,
@@ -127,23 +148,38 @@ import {
   type NewTaskRank,
   type Priority,
   type Project,
+  type Reminder,
   type Section,
   type Task,
+  type UpdateTaskPatch,
   type Uuid,
+  type ValidationIssue,
 } from '@shagi/core';
 import {
   Button,
   Checkbox,
   ChecklistRow,
+  DatePicker,
+  DateChip,
+  DeadlineChip,
+  DurationChip,
   IconButton,
   Input,
   Label,
   Modal,
   Priority as PriorityBadge,
+  ReminderChip,
   SubtaskRow,
+  TemporalConflict,
   Textarea,
+  TimeChip,
+  TimePicker,
   Toast,
+  type CalendarDate,
+  type CalendarMonth,
   type PriorityLevel,
+  type TemporalConflictType,
+  type TimeValue,
 } from '@shagi/ui';
 
 import { useAppController, useStorage } from '../state/context.js';
@@ -207,6 +243,269 @@ const PRIORITY_LEVELS: readonly Priority[] = [
   makePriority(4),
 ];
 
+// --- Planning: конвертация Temporal ↔ простые числа `@shagi/ui` -------------
+//
+// Тот же приём, что `Today.tsx` (см. её заголовок, блок «Календарь
+// `DatePicker`») — `packages/ui` намеренно не зависит от
+// `@js-temporal/polyfill`, конвертация в обе стороны и локализация подписей
+// целиком на вызывающем коде. Дублирование этих пяти хелперов и двух
+// констант меток — тот же узкий, уже трижды принятый в этом дереве пакетов
+// компромисс (`Today.tsx`, `Inbox.tsx`, теперь этот экран): настоящее общее
+// место для них — будущий переиспользуемый слой, которого пока нет ни в
+// `packages/app`, ни в `packages/ui` (последний сознательно не может знать
+// про Temporal).
+
+function toCalendarDate(date: Temporal.PlainDate): CalendarDate {
+  return { year: date.year, month: date.month, day: date.day };
+}
+
+function toCalendarMonth(date: Temporal.PlainDate): CalendarMonth {
+  return { year: date.year, month: date.month };
+}
+
+function fromCalendarDate(date: CalendarDate): Temporal.PlainDate {
+  return Temporal.PlainDate.from(date);
+}
+
+function toTimeValue(time: Temporal.PlainTime): TimeValue {
+  return { hour: time.hour, minute: time.minute };
+}
+
+function fromTimeValue(value: TimeValue): Temporal.PlainTime {
+  return Temporal.PlainTime.from(value);
+}
+
+const WEEKDAY_LABELS: readonly [string, string, string, string, string, string, string] = [
+  weekdayName(WEEKDAY_SUNDAY, 'short'),
+  weekdayName(WEEKDAY_MONDAY, 'short'),
+  weekdayName(WEEKDAY_MONDAY + 1, 'short'),
+  weekdayName(WEEKDAY_MONDAY + 2, 'short'),
+  weekdayName(WEEKDAY_MONDAY + 3, 'short'),
+  weekdayName(WEEKDAY_MONDAY + 4, 'short'),
+  weekdayName(WEEKDAY_MONDAY + 5, 'short'),
+];
+
+function buildMonthLabels(): readonly [
+  string,
+  string,
+  string,
+  string,
+  string,
+  string,
+  string,
+  string,
+  string,
+  string,
+  string,
+  string,
+] {
+  const labels = Array.from({ length: 12 }, (_, index) =>
+    Temporal.PlainDate.from({ year: 2024, month: index + 1, day: 1 }).toLocaleString(
+      DEFAULT_LOCALE,
+      { month: 'long' },
+    ),
+  );
+  return labels as unknown as readonly [
+    string,
+    string,
+    string,
+    string,
+    string,
+    string,
+    string,
+    string,
+    string,
+    string,
+    string,
+    string,
+  ];
+}
+const MONTH_LABELS = buildMonthLabels();
+
+// --- Planning: разбор `Reminder.localRuleJson` explicit-напоминания ---------
+
+interface ParsedExplicitReminder {
+  readonly date: Temporal.PlainDate;
+  readonly time: Temporal.PlainTime | null;
+}
+
+/** `localRuleJson` объявлен непрозрачным на уровне типа `Reminder`
+ * (`entities/reminder.ts`: "конкретизация — задача команд"), но
+ * `createExplicitReminderCommand` (`reminder-explicit.ts`) документирует
+ * ТОЧНУЮ форму, которую сама же и пишет: `{kind:'explicit', date, time,
+ * firesAt}` (`date`/`time` — `Temporal.*#toString()`). Экрану нужно
+ * показать текущее напоминание (`ReminderChip`) и предзаполнить picker при
+ * «Изменить» — без чтения этой формы назад сделать это нечем (нет
+ * отдельного набора полей `Reminder.date`/`Reminder.time`). Не более
+ * рискованно, чем уже сложившееся сопряжение UI с точной формой домена в
+ * других местах этого файла (например `buildHierarchy`/`buildPlanning` в
+ * `@shagi/core` samples). Некорректная/чужая форма → `null`, не throw —
+ * экран не должен упасть от неожиданного будущего формата. */
+function parseExplicitReminderRule(reminder: Reminder): ParsedExplicitReminder | null {
+  const raw = reminder.localRuleJson;
+  const dateRaw = raw['date'];
+  if (typeof dateRaw !== 'string') return null;
+  try {
+    const date = Temporal.PlainDate.from(dateRaw);
+    const timeRaw = raw['time'];
+    const time = typeof timeRaw === 'string' ? Temporal.PlainTime.from(timeRaw) : null;
+    return { date, time };
+  } catch {
+    return null;
+  }
+}
+
+/** Состояние одной из трёх модалок выбора даты (Available From/Planned/
+ * Deadline) — только видимый месяц календаря; выбранное значение читается
+ * из самой `task` (поля коммитятся немедленно, тот же приём, что picker'ы
+ * Organization на этом экране), `null` — модалка закрыта. */
+interface PlanningDatePickerState {
+  readonly visibleMonth: CalendarMonth;
+}
+
+/** Состояние модалки Explicit Reminder — в отличие от трёх дат выше, дата
+ * И время выбираются здесь ДО отправки одной команды
+ * (`createExplicitReminderCommand` — нет отдельного шага "просто время"),
+ * поэтому черновик держит оба значения, не только видимый месяц. */
+interface ReminderPickerState {
+  readonly visibleMonth: CalendarMonth;
+  readonly date: CalendarDate | null;
+  readonly time: TimeValue | null;
+}
+
+// --- Planning: блокирующие ошибки → сообщение у конкретного поля -----------
+//
+// `01§17`: "Invalid temporal field blocks only that field commit" — экран
+// показывает ошибку РЯДОМ с полем, не общим `Toast`. `ValidationIssue.code`
+// у temporal-правил 1–4 один и тот же (`TEMPORAL_CONFLICT`, см.
+// `validation/task.ts`) — различать их приходится по `rule` (стабильный
+// номер правила из конспекта, тот же, что уже использует `code` в остальном
+// дереве пакетов), не по `code`.
+
+/** Каждая ветка — литеральный вызов `t()` (см. `priorityLabel` выше — тот же
+ * приём ради статического гейта `check-i18n-catalog.mjs`). */
+function planningFieldErrorMessage(issue: ValidationIssue): string {
+  switch (issue.rule) {
+    case 1:
+      return t('taskDetail', 'planning.errors.plannedTimeRequiresDate');
+    case 2:
+      return t('taskDetail', 'planning.errors.deadlineTimeRequiresDate');
+    case 3:
+      return t('taskDetail', 'planning.errors.plannedBeforeAvailableFrom');
+    case 4:
+      return t('taskDetail', 'planning.errors.deadlineBeforeAvailableFrom');
+    case 25:
+      return t('taskDetail', 'planning.errors.durationOutOfRange');
+    default:
+      return t('taskDetail', 'planning.errors.generic');
+  }
+}
+
+/** Только `severity==='blocking'` — `rejected` от `updateTaskCommand` несёт
+ * исключительно блокирующие issues по построению (`validation.valid===false`
+ * тогда и только тогда, когда есть хотя бы один blocking, `validation/types.ts`
+ * `buildResult`), но фильтр здесь как явная документация инварианта, а не
+ * молчаливое допущение о форме входа. */
+function mapIssuesToFieldErrors(issues: readonly ValidationIssue[]): Record<string, string> {
+  const result: Record<string, string> = {};
+  for (const issue of issues) {
+    if (issue.severity !== 'blocking') continue;
+    result[issue.field] = planningFieldErrorMessage(issue);
+  }
+  return result;
+}
+
+// --- Planning: warning-баннер (`TemporalConflict`) — живой пересчёт --------
+//
+// Источник — предикаты `@shagi/core/temporal/predicates.ts`, применённые
+// ПРЯМО К ЗАГРУЖЕННОЙ `task` (уже сохранённое состояние: все поля этого
+// экрана, кроме Duration, коммитятся немедленно по выбору в picker'е — см.
+// `savePlanningPatch`), а не к `validation` из ответа ПОСЛЕДНЕЙ команды.
+// Так баннер верен и сразу после открытия экрана (задача уже была в
+// конфликте до того, как пользователь вообще что-то нажал — ответа команды
+// в этот момент попросту нет), и после КАЖДОГО отдельного изменения поля
+// (перечитанная `task`, не память об одном конкретном вызове). Единственное
+// исключение — Duration: у него есть черновик/blur-разрыв (тот же приём,
+// что title/description), поэтому здесь ЖИВОЙ ввод (`durationDraft`, если
+// он парсится в валидное число) имеет приоритет над уже сохранённым
+// `task.durationMin` — именно это даёт "мгновенную реакцию формы" ДО
+// отправки для единственного поля этого экрана, где такой разрыв вообще
+// есть. Это не альтернатива фиксу `TaskCommandResult['ok'].validation`
+// (см. отчёт пакета работ) — тот фикс независимо ценен для будущих
+// потребителей ответа команды, просто ЭТОТ баннер решил не зависеть от
+// одного-единственного последнего вызова, а быть верным всегда.
+interface Conflict {
+  readonly type: TemporalConflictType;
+  readonly message: string;
+}
+
+function computeConflicts(
+  task: Task,
+  durationDraft: string,
+  explicitReminder: Reminder | null,
+): readonly Conflict[] {
+  const conflicts: Conflict[] = [];
+
+  if (
+    isPlannedAfterDeadline(task.plannedDate, task.plannedTime, task.deadlineDate, task.deadlineTime)
+  ) {
+    conflicts.push({
+      type: 'plannedAfterDeadline',
+      message: t('taskDetail', 'planning.conflicts.plannedAfterDeadline'),
+    });
+  }
+
+  const draftMinutes = parseDurationDraftMinutes(durationDraft);
+  const effectiveDuration = draftMinutes ?? task.durationMin;
+  if (
+    effectiveDuration !== null &&
+    doesDurationCrossDeadline(
+      task.plannedDate,
+      task.plannedTime,
+      makeDurationMinutes(effectiveDuration),
+      task.deadlineDate,
+      task.deadlineTime,
+    )
+  ) {
+    conflicts.push({
+      type: 'durationCrossesDeadline',
+      message: t('taskDetail', 'planning.conflicts.durationCrossesDeadline'),
+    });
+  }
+
+  if (explicitReminder !== null && task.deadlineDate !== null) {
+    const parsedReminder = parseExplicitReminderRule(explicitReminder);
+    if (
+      parsedReminder !== null &&
+      isReminderAfterDeadline(
+        parsedReminder.date,
+        parsedReminder.time,
+        task.deadlineDate,
+        task.deadlineTime,
+      )
+    ) {
+      conflicts.push({
+        type: 'reminderAfterDeadline',
+        message: t('taskDetail', 'planning.conflicts.reminderAfterDeadline'),
+      });
+    }
+  }
+
+  return conflicts;
+}
+
+/** `null` — пусто/не число/вне диапазона 1..1440 (правило 25, `01§1`).
+ * Модульный уровень (не замкнута на состояние компонента) — используется и
+ * `handleDurationBlur` (коммит по blur), и `computeConflicts` (live-баннер
+ * во время печати, до blur — см. её комментарий выше), одна реализация. */
+function parseDurationDraftMinutes(draft: string): number | null {
+  const trimmed = draft.trim();
+  if (!/^\d+$/.test(trimmed)) return null;
+  const parsed = Number(trimmed);
+  if (parsed < 1 || parsed > 1440) return null;
+  return parsed;
+}
+
 // --- Ранг новых сущностей — см. заголовок файла ------------------------------
 
 function appendTaskRank(list: readonly Task[]): NewTaskRank {
@@ -249,6 +548,121 @@ async function runAndRefresh<T extends { readonly status: string }>(
   return result;
 }
 
+// --- Planning: общий под-компонент picker'а дат ------------------------------
+//
+// Available From/Planned/Deadline — три поля с одной и той же разметкой
+// (`DatePicker` в `Modal`, опциональные шорткаты, опциональный `TimePicker`,
+// опциональная очистка) — задание прямо просит не дублировать её три раза.
+// `shortcuts`/`time` — `undefined`, когда полю они не нужны (Available From:
+// ни того, ни другого; Deadline: только `time`; Planned: оба).
+interface PlanningDateModalShortcut {
+  readonly key: string;
+  readonly label: string;
+  readonly onClick: () => void;
+}
+
+interface PlanningDateModalTimeSlot {
+  readonly value: TimeValue | null;
+  readonly onSelect: (time: TimeValue) => void;
+  readonly onClear: () => void;
+  readonly clearLabel: string;
+  readonly groupLabel: string;
+  readonly hourListLabel: string;
+  readonly minuteListLabel: string;
+}
+
+interface PlanningDateModalProps {
+  readonly open: boolean;
+  readonly onClose: () => void;
+  readonly title: string;
+  readonly gridLabel: string;
+  readonly value: CalendarDate | null;
+  readonly visibleMonth: CalendarMonth;
+  readonly onVisibleMonthChange: (month: CalendarMonth) => void;
+  readonly onSelectDate: (date: CalendarDate) => void;
+  readonly onClearDate?: () => void;
+  readonly clearDateLabel?: string;
+  readonly shortcuts?: readonly PlanningDateModalShortcut[];
+  /** `TimePicker` рендерится, только пока `value !== null` — тот же порядок,
+   * что уже требует домен (правило 1/2: время без даты блокирующее). */
+  readonly time?: PlanningDateModalTimeSlot;
+}
+
+function PlanningDateModal({
+  open,
+  onClose,
+  title,
+  gridLabel,
+  value,
+  visibleMonth,
+  onVisibleMonthChange,
+  onSelectDate,
+  onClearDate,
+  clearDateLabel,
+  shortcuts,
+  time,
+}: PlanningDateModalProps): ReactElement {
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={title}
+      footer={
+        <Button variant="secondary" onClick={onClose}>
+          {t('taskDetail', 'planning.picker.done')}
+        </Button>
+      }
+    >
+      {shortcuts !== undefined && (
+        <div>
+          {shortcuts.map((shortcut) => (
+            <Button key={shortcut.key} variant="secondary" onClick={shortcut.onClick}>
+              {shortcut.label}
+            </Button>
+          ))}
+        </div>
+      )}
+
+      <DatePicker
+        value={value}
+        visibleMonth={visibleMonth}
+        onVisibleMonthChange={onVisibleMonthChange}
+        onSelect={onSelectDate}
+        today={toCalendarDate(Temporal.Now.plainDateISO())}
+        weekStartsOn={WEEKDAY_MONDAY}
+        weekdayLabels={WEEKDAY_LABELS}
+        monthLabels={MONTH_LABELS}
+        label={gridLabel}
+        previousMonthLabel={t('taskDetail', 'planning.picker.prevMonth')}
+        nextMonthLabel={t('taskDetail', 'planning.picker.nextMonth')}
+      />
+
+      {onClearDate !== undefined && value !== null && (
+        <Button variant="ghost" onClick={onClearDate}>
+          {clearDateLabel}
+        </Button>
+      )}
+
+      {time !== undefined && value !== null && (
+        <div>
+          <TimePicker
+            value={time.value}
+            onSelect={time.onSelect}
+            label={time.groupLabel}
+            hourListLabel={time.hourListLabel}
+            minuteListLabel={time.minuteListLabel}
+          />
+          {time.value !== null && (
+            <Button variant="ghost" onClick={time.onClear}>
+              {time.clearLabel}
+            </Button>
+          )}
+        </div>
+      )}
+    </Modal>
+  );
+}
+
 export function TaskDetail(): ReactElement | null {
   const storage = useStorage();
   const controller = useAppController();
@@ -276,6 +690,23 @@ export function TaskDetail(): ReactElement | null {
   const [newChecklistText, setNewChecklistText] = useState('');
   const [convertSubtaskConfirm, setConvertSubtaskConfirm] = useState<Task | null>(null);
 
+  // --- Planning: состояние редактора дат (см. заголовок файла, эпик E08.2) --
+  const [availableFromPicker, setAvailableFromPicker] = useState<PlanningDatePickerState | null>(
+    null,
+  );
+  const [plannedPicker, setPlannedPicker] = useState<PlanningDatePickerState | null>(null);
+  const [deadlinePicker, setDeadlinePicker] = useState<PlanningDatePickerState | null>(null);
+  const [durationDraft, setDurationDraft] = useState('');
+  /** Блокирующая ошибка команды планирования, привязанная к КОНКРЕТНОМУ полю
+   * (`01§17`: "Invalid temporal field blocks only that field commit; other
+   * editing remains possible") — ключ, это имя `ValidationIssue.field`
+   * (`'plannedDate'`/`'deadlineTime'`/...), не общий `Toast` поверх экрана
+   * (в отличие от `notice` выше, который остаётся для прочих секций). */
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [explicitReminder, setExplicitReminder] = useState<Reminder | null>(null);
+  const [reminderPicker, setReminderPicker] = useState<ReminderPickerState | null>(null);
+  const [reminderError, setReminderError] = useState<string | null>(null);
+
   const descriptionRef = useRef<HTMLTextAreaElement>(null);
 
   async function loadAll(): Promise<void> {
@@ -296,6 +727,7 @@ export function TaskDetail(): ReactElement | null {
       nextAllLabels,
       nextTaskLabels,
       nextActiveProjects,
+      nextReminders,
     ] = await Promise.all([
       nextTask.projectId === null
         ? Promise.resolve(null)
@@ -305,6 +737,7 @@ export function TaskDetail(): ReactElement | null {
       storage.labels.listAll(),
       storage.taskLabels.listByTask(nextTask.id),
       storage.projects.listActive(),
+      storage.reminders.listByTask(nextTask.id),
     ]);
     setProject(nextProject);
     setSubtasks(nextSubtasks);
@@ -314,6 +747,14 @@ export function TaskDetail(): ReactElement | null {
       new Set(nextTaskLabels.filter(isTaskLabelActive).map((link) => link.labelId)),
     );
     setActiveProjects(nextActiveProjects);
+    // Правило 19 (`02§2`, E08.1): максимум один АКТИВНЫЙ explicit reminder на
+    // задачу — фильтр по `kind`+`enabled` тот же, что уже применяет
+    // `reminder-cancel.ts` (см. её комментарий про `countExplicitByTask`,
+    // которая считает и отменённые тоже — здесь, в отличие от той функции,
+    // цель другая: показать ТЕКУЩЕЕ активное напоминание, не посчитать лимит).
+    setExplicitReminder(
+      nextReminders.find((reminder) => reminder.kind === 'explicit' && reminder.enabled) ?? null,
+    );
 
     const nextSection =
       nextTask.sectionId === null ? null : await storage.sections.findById(nextTask.sectionId);
@@ -342,12 +783,31 @@ export function TaskDetail(): ReactElement | null {
     if (task !== null) {
       setTitleDraft(task.title);
       setDescriptionDraft(task.description);
+      setDurationDraft(task.durationMin === null ? '' : String(task.durationMin));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- намеренно только по task?.id, см. комментарий выше
   }, [task?.id]);
 
   function commandDeps(): { storage: typeof storage; now: Temporal.Instant; deviceId: Uuid } {
     return { storage, now: Temporal.Now.instant(), deviceId: getLocalIdentity().deviceId };
+  }
+
+  /** Зависимости команд `@shagi/core/commands` reminder-* (`reminder-port.ts`
+   * `ReminderCommandDeps`) — отдельная форма от `commandDeps()`: два
+   * "сейчас" (`now`/`nowLocal`), не одно (см. комментарий `ReminderCommandDeps`
+   * в `@shagi/core` — `nowLocal` нужен правилу 34, `now` только outbox). */
+  function reminderDeps(): {
+    storage: typeof storage;
+    now: Temporal.Instant;
+    nowLocal: Temporal.PlainDateTime;
+    deviceId: Uuid;
+  } {
+    return {
+      storage,
+      now: Temporal.Now.instant(),
+      nowLocal: Temporal.Now.plainDateTimeISO(),
+      deviceId: getLocalIdentity().deviceId,
+    };
   }
 
   function attachLabelDeps(): {
@@ -421,14 +881,234 @@ export function TaskDetail(): ReactElement | null {
         ? project.title
         : `${project.title} › ${section.title}`;
 
-  // --- Planning (только чтение) — см. заголовок файла -----------------------
+  // --- Planning: редактор дат (эпик E08.2) ------------------------------------
+  //
+  // Каждое поле коммитится НЕМЕДЛЕННО по выбору в picker'е (тот же приём,
+  // что Organization-picker'ы этого экрана и `Today.tsx`), а не через
+  // "черновик + Готово сохраняет всё разом" — `01§17` требует именно
+  // автосейва по ходу редактирования, и это одновременно самый простой
+  // способ дать warning-баннеру видеть уже РЕАЛЬНО сохранённое состояние
+  // (см. `computeConflicts` ниже и заголовок файла/отчёт пакета работ).
 
-  function handleAddDateUnavailable(): void {
-    setNotice({ message: t('taskDetail', 'quickActions.addDateUnavailable'), variant: 'default' });
+  /** Общий путь сохранения одного patch'а Planning-поля. Успех — очищает
+   * `fieldErrors` целиком (не мержит: предыдущая ошибка другого поля не
+   * должна пережить успешное сохранение) и перечитывает задачу. Отклонение
+   * (`01§17`: "Invalid temporal field blocks only that field commit") —
+   * заменяет `fieldErrors` целиком на свежий разбор `validation.issues`, а
+   * НЕ показывает общий `Toast` — конкретное поле покажет это само в JSX
+   * ниже. `not_found` (задача исчезла под ногами, крайний случай) —
+   * единственная ветка, которая всё-таки использует общий `notice`, как и
+   * остальные секции экрана. */
+  async function savePlanningPatch(patch: UpdateTaskPatch): Promise<boolean> {
+    if (task === null) return false;
+    const result = await updateTaskCommand({ id: task.id, patch }, commandDeps());
+    if (result.status === 'ok') {
+      setFieldErrors({});
+      await refreshOk();
+      return true;
+    }
+    if (result.status === 'rejected') {
+      setFieldErrors(mapIssuesToFieldErrors(result.validation.issues));
+      return false;
+    }
+    showError();
+    return false;
   }
 
   function handleFocusDescription(): void {
     descriptionRef.current?.focus();
+  }
+
+  // --- Planning: Available From ------------------------------------------------
+
+  function openAvailableFromPicker(): void {
+    const base = task?.availableFrom ?? Temporal.Now.plainDateISO();
+    setAvailableFromPicker({ visibleMonth: toCalendarMonth(base) });
+  }
+
+  function handleSelectAvailableFrom(date: CalendarDate): void {
+    // Закрывается сразу по выбору — одно значение, тот же UX, что picker'ы
+    // проекта/раздела/приоритета этого экрана (`handleSelectProject` и
+    // соседние); ошибка (если мутация отклонена) появится в основной
+    // разметке экрана, не в уже закрытой модалке.
+    setAvailableFromPicker(null);
+    void savePlanningPatch({ availableFrom: fromCalendarDate(date) });
+  }
+
+  function handleClearAvailableFrom(): void {
+    void savePlanningPatch({ availableFrom: null });
+  }
+
+  // --- Planning: Planned Date/Time ---------------------------------------------
+
+  function openPlannedPicker(): void {
+    const base = task?.plannedDate ?? Temporal.Now.plainDateISO();
+    setPlannedPicker({ visibleMonth: toCalendarMonth(base) });
+  }
+
+  /** В отличие от Available From, модалка НЕ закрывается по выбору даты —
+   * `TimePicker` должен появиться следом в ТОЙ ЖЕ модалке (домен требует
+   * порядок "сперва дата, потом время", `01§5` правило 1); закрывает
+   * модалку только явное «Готово» (footer) или очистка даты целиком. */
+  function handleSelectPlannedDate(date: CalendarDate): void {
+    void savePlanningPatch({ plannedDate: fromCalendarDate(date) });
+  }
+
+  function handleClearPlannedDate(): void {
+    // Патч — буквально только `plannedDate:null`: домен (`clearPlannedDate`,
+    // `rules/field-resets.ts`) сам снимает Time/Focus/day_bucket, оставляет
+    // Duration (`01§5`) — UI не передаёт их и не дублирует это правило.
+    setPlannedPicker(null);
+    void savePlanningPatch({ plannedDate: null });
+  }
+
+  function handleSelectPlannedTime(time: TimeValue): void {
+    void savePlanningPatch({ plannedTime: fromTimeValue(time) });
+  }
+
+  function handleClearPlannedTime(): void {
+    void savePlanningPatch({ plannedTime: null });
+  }
+
+  // --- Planning: Duration — числовой `Input`, не отдельный компонент `@shagi/ui`
+  // (задание: готового редактора длительности в дереве пакетов нет,
+  // `packages/ui` вне территории этого пакета работ).
+
+  /** Диапазон 1..1440 (правило 25) проверяется ЗДЕСЬ, на клиенте, ДО вызова
+   * команды — не потому что домен не проверяет (проверяет, `validation/task.ts`
+   * `checkDurationRange`), а потому что `DurationMinutes` — branded-тип:
+   * `makeDurationMinutes` на некорректном значении БРОСАЕТ `RangeError`
+   * (`values.ts`), и патч физически нельзя собрать с невалидным числом,
+   * чтобы отправить его валидатору и получить назад аккуратный `rejected`.
+   * Значит эта же проверка неизбежно живёт в UI — здесь она использует тот
+   * же текст ошибки (`planning.errors.durationOutOfRange`), что и правило 25
+   * показало бы, будь оно достижимо. */
+  function handleDurationBlur(): void {
+    if (task === null) return;
+    const raw = durationDraft.trim();
+    if (raw === '') {
+      if (task.durationMin === null) return;
+      void savePlanningPatch({ durationMin: null });
+      return;
+    }
+    const parsed = parseDurationDraftMinutes(raw);
+    if (parsed === null) {
+      setFieldErrors((current) => ({
+        ...current,
+        durationMin: t('taskDetail', 'planning.errors.durationOutOfRange'),
+      }));
+      return;
+    }
+    if (task.durationMin === parsed) return;
+    void savePlanningPatch({ durationMin: makeDurationMinutes(parsed) });
+  }
+
+  // --- Planning: Deadline Date/Time — тот же принцип, что Planned --------------
+
+  function openDeadlinePicker(): void {
+    const base = task?.deadlineDate ?? Temporal.Now.plainDateISO();
+    setDeadlinePicker({ visibleMonth: toCalendarMonth(base) });
+  }
+
+  function handleSelectDeadlineDate(date: CalendarDate): void {
+    void savePlanningPatch({ deadlineDate: fromCalendarDate(date) });
+  }
+
+  function handleClearDeadlineDate(): void {
+    setDeadlinePicker(null);
+    void savePlanningPatch({ deadlineDate: null });
+  }
+
+  function handleSelectDeadlineTime(time: TimeValue): void {
+    void savePlanningPatch({ deadlineTime: fromTimeValue(time) });
+  }
+
+  function handleClearDeadlineTime(): void {
+    void savePlanningPatch({ deadlineTime: null });
+  }
+
+  // --- Planning: Explicit Reminder (M31, `01§18`) ------------------------------
+
+  /** Предзаполняет picker текущим напоминанием при «Изменить» (см.
+   * `parseExplicitReminderRule`) — `null` при «Добавить». */
+  function openReminderPicker(): void {
+    if (explicitReminder !== null) {
+      const parsed = parseExplicitReminderRule(explicitReminder);
+      setReminderPicker({
+        visibleMonth: toCalendarMonth(parsed?.date ?? Temporal.Now.plainDateISO()),
+        date: parsed === null ? null : toCalendarDate(parsed.date),
+        time: parsed?.time == null ? null : toTimeValue(parsed.time),
+      });
+      return;
+    }
+    setReminderPicker({
+      visibleMonth: toCalendarMonth(Temporal.Now.plainDateISO()),
+      date: null,
+      time: null,
+    });
+  }
+
+  function handleSelectReminderDate(date: CalendarDate): void {
+    setReminderPicker((current) => (current === null ? null : { ...current, date }));
+  }
+
+  function handleSelectReminderTime(time: TimeValue): void {
+    setReminderPicker((current) => (current === null ? null : { ...current, time }));
+  }
+
+  function handleClearReminderTime(): void {
+    setReminderPicker((current) => (current === null ? null : { ...current, time: null }));
+  }
+
+  /** «Изменить» (заголовок кнопки зависит от `explicitReminder !== null`,
+   * см. JSX) отменяет старое напоминание ПЕРЕД созданием нового —
+   * `createExplicitReminderCommand` сама не заменяет, только создаёт
+   * (правило 19: максимум один explicit reminder). Известный, задокументированный
+   * в `@shagi/core` `reminder-cancel.ts` шов вне территории этого пакета
+   * работ (`packages/storage`): реальный `ReminderRepository.countExplicitByTask`
+   * считает по `kind='explicit'` БЕЗ фильтра `enabled`, поэтому создание
+   * нового СРАЗУ после отмены старого сегодня тоже отклоняется правилом 19
+   * — это не ошибка этого экрана, а актуальное состояние хранилища; починка
+   * (фильтр по `enabled` в счётчике) — задача будущего пакета работ
+   * `packages/storage`, эта форма (cancel-затем-create) уже написана
+   * ПРАВИЛЬНО и заработает без единой правки здесь, как только тот шов
+   * закроют. */
+  async function handleSubmitReminder(): Promise<void> {
+    if (task === null || reminderPicker === null || reminderPicker.date === null) return;
+    const date = fromCalendarDate(reminderPicker.date);
+    const time = reminderPicker.time === null ? null : fromTimeValue(reminderPicker.time);
+    if (explicitReminder !== null) {
+      await cancelReminderCommand({ reminder: explicitReminder }, reminderDeps());
+    }
+    const result = await createExplicitReminderCommand(
+      {
+        taskId: task.id,
+        date,
+        time,
+        deadlineDate: task.deadlineDate,
+        deadlineTime: task.deadlineTime,
+      },
+      reminderDeps(),
+    );
+    if (result.status === 'ok') {
+      setReminderError(null);
+      setReminderPicker(null);
+      await refreshOk();
+      return;
+    }
+    setReminderError(t('taskDetail', 'planning.reminder.limitError'));
+  }
+
+  function handleCancelReminder(): void {
+    if (explicitReminder === null) return;
+    const reminder = explicitReminder;
+    void (async () => {
+      const result = await cancelReminderCommand({ reminder }, reminderDeps());
+      if (result.status === 'ok' || result.status === 'already_cancelled') {
+        setReminderError(null);
+        await refreshOk();
+      }
+    })();
   }
 
   // --- Organization: приоритет ------------------------------------------------
@@ -676,9 +1356,13 @@ export function TaskDetail(): ReactElement | null {
       </div>
       <p aria-label={t('taskDetail', 'breadcrumb.ariaLabel')}>{breadcrumbText}</p>
 
-      {/* M24 Simple: три частых действия — см. заголовок файла */}
+      {/* M24 Simple: три частых действия — см. заголовок файла. «Добавить
+       * дату» теперь открывает настоящий редактор Planned Date (тот же
+       * picker, что раздел Planning ниже) — заглушка `planning.comingSoon`/
+       * `quickActions.addDateUnavailable` эпика E08.2 заменена реальной
+       * функциональностью. */}
       <div>
-        <Button variant="secondary" onClick={handleAddDateUnavailable}>
+        <Button variant="secondary" onClick={openPlannedPicker}>
           {t('taskDetail', 'quickActions.addDate')}
         </Button>
         <Button variant="secondary" onClick={() => setPriorityPickerOpen(true)}>
@@ -702,29 +1386,133 @@ export function TaskDetail(): ReactElement | null {
         />
       </section>
 
-      {/* --- 3. Planning (только чтение) — см. заголовок файла ------------- */}
+      {/* --- 3. Planning — редактор дат (эпик E08.2) ------------------------- */}
       <section>
         <h2>{t('taskDetail', 'planning.sectionTitle')}</h2>
-        {task.plannedDate === null && task.deadlineDate === null ? (
-          <p>{t('taskDetail', 'planning.empty')}</p>
-        ) : (
-          <>
-            {task.plannedDate !== null && (
-              <p>
-                {t('taskDetail', 'planning.plannedLabel', { date: formatDate(task.plannedDate) })}
-              </p>
-            )}
-            {task.deadlineDate !== null && (
-              <p>
-                {t('taskDetail', 'planning.deadlineLabel', {
-                  date: formatDate(task.deadlineDate),
-                })}
-              </p>
-            )}
-            {task.focusDate !== null && <p>{t('taskDetail', 'planning.focusLabel')}</p>}
-          </>
-        )}
-        <p>{t('taskDetail', 'planning.comingSoon')}</p>
+
+        {/* Available From */}
+        <div>
+          <span>{t('taskDetail', 'planning.availableFrom.label')}</span>
+          {task.availableFrom !== null ? (
+            <DateChip label={formatDate(task.availableFrom)} />
+          ) : (
+            <span>{t('taskDetail', 'planning.availableFrom.empty')}</span>
+          )}
+          <Button variant="secondary" onClick={openAvailableFromPicker}>
+            {task.availableFrom !== null
+              ? t('taskDetail', 'planning.availableFrom.change')
+              : t('taskDetail', 'planning.availableFrom.set')}
+          </Button>
+          {task.availableFrom !== null && (
+            <Button variant="ghost" onClick={handleClearAvailableFrom}>
+              {t('taskDetail', 'planning.availableFrom.clear')}
+            </Button>
+          )}
+          {fieldErrors['availableFrom'] !== undefined && <p>{fieldErrors['availableFrom']}</p>}
+        </div>
+
+        {/* Planned Date/Time */}
+        <div>
+          <span>{t('taskDetail', 'planning.planned.label')}</span>
+          {task.plannedDate !== null ? (
+            <DateChip label={formatDate(task.plannedDate)} />
+          ) : (
+            <span>{t('taskDetail', 'planning.planned.empty')}</span>
+          )}
+          {task.plannedTime !== null && <TimeChip label={formatTime(task.plannedTime)} />}
+          <Button variant="secondary" onClick={openPlannedPicker}>
+            {task.plannedDate !== null
+              ? t('taskDetail', 'planning.planned.change')
+              : t('taskDetail', 'planning.planned.set')}
+          </Button>
+          {task.plannedDate !== null && (
+            <Button variant="ghost" onClick={handleClearPlannedDate}>
+              {t('taskDetail', 'planning.planned.clearDate')}
+            </Button>
+          )}
+          {fieldErrors['plannedDate'] !== undefined && <p>{fieldErrors['plannedDate']}</p>}
+          {fieldErrors['plannedTime'] !== undefined && <p>{fieldErrors['plannedTime']}</p>}
+        </div>
+
+        {/* Duration */}
+        <div>
+          <Input
+            aria-label={t('taskDetail', 'planning.duration.label')}
+            type="number"
+            min={1}
+            max={1440}
+            placeholder={t('taskDetail', 'planning.duration.placeholder')}
+            value={durationDraft}
+            onChange={(event) => setDurationDraft(event.target.value)}
+            onBlur={handleDurationBlur}
+            error={fieldErrors['durationMin'] !== undefined}
+            errorMessage={fieldErrors['durationMin']}
+          />
+          {task.durationMin !== null && (
+            <DurationChip
+              label={t('taskDetail', 'planning.duration.chipLabel', { count: task.durationMin })}
+            />
+          )}
+        </div>
+
+        {/* Deadline Date/Time */}
+        <div>
+          <span>{t('taskDetail', 'planning.deadline.label')}</span>
+          {task.deadlineDate !== null ? (
+            <DeadlineChip label={formatDate(task.deadlineDate)} />
+          ) : (
+            <span>{t('taskDetail', 'planning.deadline.empty')}</span>
+          )}
+          {task.deadlineTime !== null && <TimeChip label={formatTime(task.deadlineTime)} />}
+          <Button variant="secondary" onClick={openDeadlinePicker}>
+            {task.deadlineDate !== null
+              ? t('taskDetail', 'planning.deadline.change')
+              : t('taskDetail', 'planning.deadline.set')}
+          </Button>
+          {task.deadlineDate !== null && (
+            <Button variant="ghost" onClick={handleClearDeadlineDate}>
+              {t('taskDetail', 'planning.deadline.clearDate')}
+            </Button>
+          )}
+          {fieldErrors['deadlineDate'] !== undefined && <p>{fieldErrors['deadlineDate']}</p>}
+          {fieldErrors['deadlineTime'] !== undefined && <p>{fieldErrors['deadlineTime']}</p>}
+        </div>
+
+        {/* Warning-баннеры — см. `computeConflicts` за источником */}
+        {computeConflicts(task, durationDraft, explicitReminder).map((conflict) => (
+          <TemporalConflict key={conflict.type} type={conflict.type} message={conflict.message} />
+        ))}
+
+        {/* Explicit Reminder (M31, `01§18`) */}
+        <div>
+          <span>{t('taskDetail', 'planning.reminder.label')}</span>
+          {(() => {
+            const parsedReminder =
+              explicitReminder !== null ? parseExplicitReminderRule(explicitReminder) : null;
+            return parsedReminder !== null ? (
+              <ReminderChip
+                label={
+                  parsedReminder.time !== null
+                    ? `${formatDate(parsedReminder.date)} ${formatTime(parsedReminder.time)}`
+                    : formatDate(parsedReminder.date)
+                }
+              />
+            ) : (
+              <span>{t('taskDetail', 'planning.reminder.empty')}</span>
+            );
+          })()}
+          <Button variant="secondary" onClick={openReminderPicker}>
+            {explicitReminder !== null
+              ? t('taskDetail', 'planning.reminder.change')
+              : t('taskDetail', 'planning.reminder.add')}
+          </Button>
+          {explicitReminder !== null && (
+            <Button variant="ghost" onClick={handleCancelReminder}>
+              {t('taskDetail', 'planning.reminder.cancel')}
+            </Button>
+          )}
+          {reminderError !== null && <p>{reminderError}</p>}
+        </div>
       </section>
 
       {/* --- 4. Organization ------------------------------------------------ */}
@@ -871,6 +1659,148 @@ export function TaskDetail(): ReactElement | null {
           </Button>
         </form>
       </section>
+
+      {/* --- Planning: Available From — picker (без шорткатов, без времени) - */}
+      <PlanningDateModal
+        open={availableFromPicker !== null}
+        onClose={() => setAvailableFromPicker(null)}
+        title={t('taskDetail', 'planning.availableFrom.pickerTitle')}
+        gridLabel={t('taskDetail', 'planning.availableFrom.gridLabel')}
+        value={task.availableFrom !== null ? toCalendarDate(task.availableFrom) : null}
+        visibleMonth={
+          availableFromPicker?.visibleMonth ?? toCalendarMonth(Temporal.Now.plainDateISO())
+        }
+        onVisibleMonthChange={(month) => setAvailableFromPicker({ visibleMonth: month })}
+        onSelectDate={handleSelectAvailableFrom}
+      />
+
+      {/* --- Planning: Planned Date/Time — picker (шорткаты + время) --------- */}
+      <PlanningDateModal
+        open={plannedPicker !== null}
+        onClose={() => setPlannedPicker(null)}
+        title={t('taskDetail', 'planning.planned.pickerTitle')}
+        gridLabel={t('taskDetail', 'planning.planned.gridLabel')}
+        value={task.plannedDate !== null ? toCalendarDate(task.plannedDate) : null}
+        visibleMonth={plannedPicker?.visibleMonth ?? toCalendarMonth(Temporal.Now.plainDateISO())}
+        onVisibleMonthChange={(month) => setPlannedPicker({ visibleMonth: month })}
+        onSelectDate={handleSelectPlannedDate}
+        onClearDate={handleClearPlannedDate}
+        clearDateLabel={t('taskDetail', 'planning.planned.clearDate')}
+        shortcuts={[
+          {
+            key: 'today',
+            label: t('taskDetail', 'planning.shortcuts.today'),
+            onClick: () => handleSelectPlannedDate(toCalendarDate(Temporal.Now.plainDateISO())),
+          },
+          {
+            key: 'tomorrow',
+            label: t('taskDetail', 'planning.shortcuts.tomorrow'),
+            onClick: () =>
+              handleSelectPlannedDate(toCalendarDate(Temporal.Now.plainDateISO().add({ days: 1 }))),
+          },
+          {
+            key: 'weekend',
+            label: t('taskDetail', 'planning.shortcuts.weekend'),
+            onClick: () =>
+              handleSelectPlannedDate(toCalendarDate(resolveWeekend(Temporal.Now.plainDateISO()))),
+          },
+          {
+            key: 'nextWeek',
+            label: t('taskDetail', 'planning.shortcuts.nextWeek'),
+            onClick: () =>
+              handleSelectPlannedDate(
+                toCalendarDate(resolveNextWeekMonday(Temporal.Now.plainDateISO())),
+              ),
+          },
+        ]}
+        time={{
+          value: task.plannedTime !== null ? toTimeValue(task.plannedTime) : null,
+          onSelect: handleSelectPlannedTime,
+          onClear: handleClearPlannedTime,
+          clearLabel: t('taskDetail', 'planning.planned.clearTime'),
+          groupLabel: t('taskDetail', 'planning.planned.timeLabel'),
+          hourListLabel: t('taskDetail', 'planning.planned.hourListLabel'),
+          minuteListLabel: t('taskDetail', 'planning.planned.minuteListLabel'),
+        }}
+      />
+
+      {/* --- Planning: Deadline Date/Time — picker (тот же принцип, что Planned,
+       * без шорткатов) ------------------------------------------------------ */}
+      <PlanningDateModal
+        open={deadlinePicker !== null}
+        onClose={() => setDeadlinePicker(null)}
+        title={t('taskDetail', 'planning.deadline.pickerTitle')}
+        gridLabel={t('taskDetail', 'planning.deadline.gridLabel')}
+        value={task.deadlineDate !== null ? toCalendarDate(task.deadlineDate) : null}
+        visibleMonth={deadlinePicker?.visibleMonth ?? toCalendarMonth(Temporal.Now.plainDateISO())}
+        onVisibleMonthChange={(month) => setDeadlinePicker({ visibleMonth: month })}
+        onSelectDate={handleSelectDeadlineDate}
+        onClearDate={handleClearDeadlineDate}
+        clearDateLabel={t('taskDetail', 'planning.deadline.clearDate')}
+        time={{
+          value: task.deadlineTime !== null ? toTimeValue(task.deadlineTime) : null,
+          onSelect: handleSelectDeadlineTime,
+          onClear: handleClearDeadlineTime,
+          clearLabel: t('taskDetail', 'planning.deadline.clearTime'),
+          groupLabel: t('taskDetail', 'planning.deadline.timeLabel'),
+          hourListLabel: t('taskDetail', 'planning.deadline.hourListLabel'),
+          minuteListLabel: t('taskDetail', 'planning.deadline.minuteListLabel'),
+        }}
+      />
+
+      {/* --- Planning: Explicit Reminder — picker (дата+время, один submit) -- */}
+      <Modal
+        open={reminderPicker !== null}
+        onClose={() => setReminderPicker(null)}
+        title={t('taskDetail', 'planning.reminder.pickerTitle')}
+        footer={
+          <Button
+            variant="primary"
+            disabled={reminderPicker?.date === null}
+            onClick={() => void handleSubmitReminder()}
+          >
+            {t('taskDetail', 'planning.reminder.save')}
+          </Button>
+        }
+      >
+        {reminderPicker !== null && (
+          <>
+            <DatePicker
+              value={reminderPicker.date}
+              visibleMonth={reminderPicker.visibleMonth}
+              onVisibleMonthChange={(month) =>
+                setReminderPicker((current) =>
+                  current === null ? null : { ...current, visibleMonth: month },
+                )
+              }
+              onSelect={handleSelectReminderDate}
+              today={toCalendarDate(Temporal.Now.plainDateISO())}
+              weekStartsOn={WEEKDAY_MONDAY}
+              weekdayLabels={WEEKDAY_LABELS}
+              monthLabels={MONTH_LABELS}
+              label={t('taskDetail', 'planning.reminder.gridLabel')}
+              previousMonthLabel={t('taskDetail', 'planning.picker.prevMonth')}
+              nextMonthLabel={t('taskDetail', 'planning.picker.nextMonth')}
+            />
+            {reminderPicker.date !== null && (
+              <div>
+                <TimePicker
+                  value={reminderPicker.time}
+                  onSelect={handleSelectReminderTime}
+                  label={t('taskDetail', 'planning.reminder.timeLabel')}
+                  hourListLabel={t('taskDetail', 'planning.reminder.hourListLabel')}
+                  minuteListLabel={t('taskDetail', 'planning.reminder.minuteListLabel')}
+                />
+                {reminderPicker.time !== null && (
+                  <Button variant="ghost" onClick={handleClearReminderTime}>
+                    {t('taskDetail', 'planning.reminder.clearTime')}
+                  </Button>
+                )}
+              </div>
+            )}
+          </>
+        )}
+      </Modal>
 
       {/* --- Приоритет: picker (M24 quick action + Organization, один Modal) - */}
       <Modal

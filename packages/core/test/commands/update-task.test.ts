@@ -192,6 +192,42 @@ describe('updateTaskCommand — успешный путь', () => {
   });
 });
 
+describe('updateTaskCommand — ok-результат несёт validation целиком (пакет работ E08.2, найденный пробел)', () => {
+  it('planned > deadline (правило 32, warning) сохраняется успешно И несёт предупреждение в ответе, не отбрасывает его молча', async () => {
+    const { storage, task } = await withSeeded({ deadlineDate: d('2026-09-01') });
+
+    const result = await updateTaskCommand(
+      { id: task.id, patch: { plannedDate: d('2026-09-05') } },
+      deps(storage),
+    );
+
+    expect(result.status).toBe('ok');
+    if (result.status !== 'ok') return;
+    // Сохранение прошло — warning не блокирует (`02§11.1`).
+    const stored = storage.allTasks().find((candidate) => candidate.id === task.id);
+    expect(stored?.plannedDate?.toString()).toBe('2026-09-05');
+    // Но предупреждение обязано дойти до вызывающего кода, не потеряться:
+    // до фикса `TaskCommandResult['ok']` не нёс `validation` вовсе.
+    expect(result.validation.valid).toBe(true);
+    expect(
+      result.validation.issues.some((issue) => issue.rule === 32 && issue.severity === 'warning'),
+    ).toBe(true);
+  });
+
+  it('без конфликтов — validation.issues пуст, но поле присутствует (не только при warning)', async () => {
+    const { storage, task } = await withSeeded();
+
+    const result = await updateTaskCommand(
+      { id: task.id, patch: { title: 'Без конфликтов' } },
+      deps(storage),
+    );
+
+    expect(result.status).toBe('ok');
+    if (result.status !== 'ok') return;
+    expect(result.validation).toEqual({ valid: true, issues: [] });
+  });
+});
+
 describe('updateTaskCommand — путь отклонения на блокирующем нарушении', () => {
   it('невалидный патч отклоняется, хранимая задача не меняется', async () => {
     const { storage, task } = await withSeeded();

@@ -22,9 +22,26 @@ import type { CommandStoragePort } from './storage-port.js';
  * подсветки конкретного поля, `code` для стабильного текста ошибки,
  * `severity` (хотя тут все issues в `rejected` заведомо `blocking` — иначе
  * `validation.valid` было бы `true`, и команда пошла бы дальше и писала).
+ *
+ * `ok.validation` — **аддитивное** расширение (пакет работ E08.2, тот же
+ * приём, что `DeleteTaskResult` эпика E10: новое поле у существующей формы,
+ * не новый тип результата — вызывающий код, типизированный на
+ * `Promise<TaskCommandResult>` и не читающий это поле, продолжает
+ * компилироваться без изменений). Закрывает найденный при приёмке пробел:
+ * `validateDomainMutation` внутри `create`/`update`/`completeTaskCommand`
+ * уже вычисляет и блокирующие, и warning-issues (`02§11.1`), но при успехе
+ * (`valid=true`, когда есть только warning, например правило 32 "planned >
+ * deadline", `01§5` "Warning/save allowed") наружу раньше уходил только
+ * `task` — предупреждение отбрасывалось молча. Без этого поля UI не может
+ * честно показать баннер «сохранено, но с предупреждением» по ФАКТУ
+ * сохранённой командой мутации (только клиентский пересчёт до отправки,
+ * который не отражает, что именно только что записал валидатор). Все три
+ * команды (`create`/`update`/`completeTaskCommand`) уже держат вычисленный
+ * `validation` локально перед веткой `if (!validation.valid) return
+ * {status:'rejected', ...}` — здесь просто не отбрасывается на успешном пути.
  */
 export type TaskCommandResult =
-  | { readonly status: 'ok'; readonly task: Task }
+  | { readonly status: 'ok'; readonly task: Task; readonly validation: ValidationResult }
   | { readonly status: 'rejected'; readonly validation: ValidationResult }
   | { readonly status: 'not_found' };
 

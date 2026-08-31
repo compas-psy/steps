@@ -29,6 +29,18 @@ export interface DeleteTaskInput {
  * Links — сознательно ВНЕ охвата (в `01§9` упомянуты в одном списке с
  * subtasks/checklist, но командного слоя `task-link` ещё нигде нет в дереве
  * пакетов — заведёт будущий эпик, не этот).
+ *
+ * `ok.validation` — добавлено пакетом работ E08.2 вслед за тем же полем на
+ * `TaskCommandResult['ok']` (`commands/types.ts`): `deleteTaskCommand` тоже
+ * прогоняет `validateDomainMutation` на неизменных данных (см. комментарий
+ * функции ниже) и держит результат локально — без этого поля структурное
+ * присваивание `Promise<DeleteTaskResult>` в места, типизированные на
+ * `Promise<TaskCommandResult>` (`Inbox.tsx`/`ProjectDetail.tsx`
+ * `runCommand`), перестало бы компилироваться, как только `ok` того типа
+ * стал требовать `validation`. Для мягкого удаления содержимое всегда
+ * `{valid:true, issues:[]}` (удаление не меняет ни одно проверяемое поле),
+ * но поле присутствует ради той же структурной совместимости, не потому что
+ * оно содержательно здесь.
  */
 export type DeleteTaskResult =
   | {
@@ -36,6 +48,7 @@ export type DeleteTaskResult =
       readonly task: Task;
       readonly affectedSubtaskIds: readonly Uuid[];
       readonly affectedChecklistItemIds: readonly Uuid[];
+      readonly validation: ValidationResult;
     }
   | { readonly status: 'rejected'; readonly validation: ValidationResult }
   | { readonly status: 'not_found' };
@@ -153,5 +166,11 @@ export async function deleteTaskCommand(
     await tx.applyMutation(mutation);
   });
 
-  return { status: 'ok', task: finalTask, affectedSubtaskIds, affectedChecklistItemIds };
+  return {
+    status: 'ok',
+    task: finalTask,
+    affectedSubtaskIds,
+    affectedChecklistItemIds,
+    validation,
+  };
 }

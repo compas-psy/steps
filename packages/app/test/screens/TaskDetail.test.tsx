@@ -16,8 +16,8 @@ import {
 } from '@shagi/storage/contract';
 import type { StoragePort } from '@shagi/storage';
 import type { ChecklistItem, Label, Project, Section, Task, Uuid } from '@shagi/core';
-import { isTaskLabelActive } from '@shagi/core';
-import { describe, expect, it } from 'vitest';
+import { isTaskLabelActive, makeDurationMinutes } from '@shagi/core';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { AppHost } from '../../src/App.js';
 import { AppProvider, useStorage } from '../../src/state/context.js';
@@ -235,31 +235,309 @@ describe('TaskDetail — заголовок/контекст', () => {
   });
 });
 
-describe('TaskDetail — Planning (только чтение, см. решение по объёму)', () => {
-  it('показывает уже заданные дату/срок как текст, без интерактивных полей дат', async () => {
-    const plannedDate = Temporal.Now.plainDateISO().add({ days: 1 });
-    const deadlineDate = Temporal.Now.plainDateISO().add({ days: 3 });
-    const task = makeTask({ title: 'С датами', plannedDate, deadlineDate });
-    renderTaskDetail(task.id, { tasks: [task] });
+describe('TaskDetail — Planning: Available From/Planned/Deadline (E08.2, редактор дат)', () => {
+  it('Available From — выбор в picker сохраняет availableFrom через updateTaskCommand', async () => {
+    const user = userEvent.setup();
+    const task = makeTask({ title: 'Без доступности' });
+    const { getStorage } = renderTaskDetail(task.id, { tasks: [task] });
 
-    await waitFor(() =>
-      expect(
-        screen.getByText(
-          t('taskDetail', 'planning.plannedLabel', { date: formatDate(plannedDate) }),
-        ),
-      ).toBeInTheDocument(),
+    await user.click(
+      await screen.findByRole('button', { name: t('taskDetail', 'planning.availableFrom.set') }),
     );
-    expect(
-      screen.getByText(
-        t('taskDetail', 'planning.deadlineLabel', { date: formatDate(deadlineDate) }),
-      ),
-    ).toBeInTheDocument();
-    expect(screen.getByText(t('taskDetail', 'planning.comingSoon'))).toBeInTheDocument();
-    // Честно: ни один календарь/date-picker здесь не рендерится.
+    const todayCell = await screen.findByRole('gridcell', { current: 'date' });
+    await user.click(todayCell);
+
+    await waitFor(async () => {
+      const stored = await getStorage().tasks.findById(task.id);
+      expect(stored?.availableFrom?.equals(Temporal.Now.plainDateISO())).toBe(true);
+    });
+    // Модалка Available From закрывается сама после выбора (одно значение,
+    // тот же приём, что picker'ы проекта/раздела/приоритета этого экрана).
     expect(screen.queryByRole('grid')).not.toBeInTheDocument();
   });
 
-  it('«Добавить дату» показывает честное сообщение «скоро», не открывает редактор', async () => {
+  it('Available From — «Очистить» снимает availableFrom', async () => {
+    const user = userEvent.setup();
+    const task = makeTask({ title: 'С доступностью' });
+    const withAvailableFrom: Task = { ...task, availableFrom: Temporal.Now.plainDateISO() };
+    const { getStorage } = renderTaskDetail(task.id, { tasks: [withAvailableFrom] });
+
+    await user.click(
+      await screen.findByRole('button', { name: t('taskDetail', 'planning.availableFrom.clear') }),
+    );
+
+    await waitFor(async () => {
+      const stored = await getStorage().tasks.findById(task.id);
+      expect(stored?.availableFrom).toBeNull();
+    });
+  });
+
+  it('Planned Date — шорткат «Сегодня» ставит дату, время появляется только после этого', async () => {
+    const user = userEvent.setup();
+    const task = makeTask({ title: 'Без плана' });
+    const { getStorage } = renderTaskDetail(task.id, { tasks: [task] });
+
+    await user.click(
+      await screen.findByRole('button', { name: t('taskDetail', 'planning.planned.set') }),
+    );
+    // До выбора даты TimePicker ещё не смонтирован — тот же порядок, что
+    // требует домен (правило 1: `plannedTime` без `plannedDate` блокирующее).
+    expect(
+      screen.queryByRole('listbox', { name: t('taskDetail', 'planning.planned.hourListLabel') }),
+    ).not.toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole('button', { name: t('taskDetail', 'planning.shortcuts.today') }),
+    );
+
+    await waitFor(async () => {
+      const stored = await getStorage().tasks.findById(task.id);
+      expect(stored?.plannedDate?.equals(Temporal.Now.plainDateISO())).toBe(true);
+    });
+    // После сохранения даты модалка остаётся открытой — время теперь доступно.
+    await waitFor(() =>
+      expect(
+        screen.getByRole('listbox', { name: t('taskDetail', 'planning.planned.hourListLabel') }),
+      ).toBeInTheDocument(),
+    );
+
+    await user.click(
+      within(
+        screen.getByRole('listbox', {
+          name: t('taskDetail', 'planning.planned.hourListLabel'),
+        }),
+      ).getByRole('option', { name: '09' }),
+    );
+    await user.click(
+      within(
+        screen.getByRole('listbox', {
+          name: t('taskDetail', 'planning.planned.minuteListLabel'),
+        }),
+      ).getByRole('option', { name: '00' }),
+    );
+
+    await waitFor(async () => {
+      const stored = await getStorage().tasks.findById(task.id);
+      expect(stored?.plannedTime?.toString()).toBe('09:00:00');
+    });
+  });
+
+  describe('Date shortcuts — арифметика `01§4`/`01§5`, детерминированно (инъекция «сегодня»)', () => {
+    beforeEach(() => {
+      // Понедельник 2026-08-31 — тот же опорный день, что тест
+      // `@shagi/core/temporal/date-shortcuts.test.ts`. Фиксирует только
+      // `Date` (`toFake:['Date']`) — `waitFor`/RTL продолжают опираться на
+      // реальные таймеры, только "сегодня" внутри `Temporal.Now` детерминировано.
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(new Date('2026-08-31T10:00:00Z'));
+    });
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('«Завтра» ставит дату +1 день от «сегодня»', async () => {
+      const user = userEvent.setup();
+      const task = makeTask({ title: 'Задача' });
+      const { getStorage } = renderTaskDetail(task.id, { tasks: [task] });
+
+      await user.click(
+        await screen.findByRole('button', { name: t('taskDetail', 'planning.planned.set') }),
+      );
+      await user.click(
+        screen.getByRole('button', { name: t('taskDetail', 'planning.shortcuts.tomorrow') }),
+      );
+
+      await waitFor(async () => {
+        const stored = await getStorage().tasks.findById(task.id);
+        expect(stored?.plannedDate?.toString()).toBe('2026-09-01');
+      });
+    });
+
+    it('«Выходные» на понедельник ставит ближайшую субботу', async () => {
+      const user = userEvent.setup();
+      const task = makeTask({ title: 'Задача' });
+      const { getStorage } = renderTaskDetail(task.id, { tasks: [task] });
+
+      await user.click(
+        await screen.findByRole('button', { name: t('taskDetail', 'planning.planned.set') }),
+      );
+      await user.click(
+        screen.getByRole('button', { name: t('taskDetail', 'planning.shortcuts.weekend') }),
+      );
+
+      await waitFor(async () => {
+        const stored = await getStorage().tasks.findById(task.id);
+        expect(stored?.plannedDate?.toString()).toBe('2026-09-05');
+      });
+    });
+
+    it('«Следующая неделя» на понедельник ставит понедельник через 7 дней, не сегодня', async () => {
+      const user = userEvent.setup();
+      const task = makeTask({ title: 'Задача' });
+      const { getStorage } = renderTaskDetail(task.id, { tasks: [task] });
+
+      await user.click(
+        await screen.findByRole('button', { name: t('taskDetail', 'planning.planned.set') }),
+      );
+      await user.click(
+        screen.getByRole('button', { name: t('taskDetail', 'planning.shortcuts.nextWeek') }),
+      );
+
+      await waitFor(async () => {
+        const stored = await getStorage().tasks.findById(task.id);
+        expect(stored?.plannedDate?.toString()).toBe('2026-09-07');
+      });
+    });
+  });
+
+  it('Очистка Planned Date снимает время/фокус/day_bucket (правило домена), Duration остаётся', async () => {
+    const user = userEvent.setup();
+    const plannedDate = Temporal.Now.plainDateISO();
+    const task = makeTask({
+      title: 'Со всем сразу',
+      plannedDate,
+      focusDate: plannedDate,
+      dayBucket: 'later',
+    });
+    // `Task` — размеченное объединение по `plannedDate`/`deadlineDate`/...
+    // (`entities/task.ts`); спред `...task` с точечным переопределением
+    // `plannedTime`/`durationMin` не сохраняет узнаваемость конкретной ветки
+    // для компилятора (та же причина, по которой `assemble.ts` в `@shagi/core`
+    // строит эти срезы явными билдерами, а не спредом) — `as Task` здесь
+    // безопасен: обе комбинации (`plannedDate` задан + `plannedTime` задан +
+    // `durationMin` задан) валидны по домену, просто вне зоны, где TS может
+    // это вывести из спреда union-типа.
+    const withDurationAndTime = {
+      ...task,
+      plannedTime: Temporal.PlainTime.from('09:00'),
+      durationMin: makeDurationMinutes(30),
+    } as Task;
+    const { getStorage } = renderTaskDetail(task.id, { tasks: [withDurationAndTime] });
+
+    await user.click(
+      await screen.findByRole('button', { name: t('taskDetail', 'planning.planned.clearDate') }),
+    );
+
+    await waitFor(async () => {
+      const stored = await getStorage().tasks.findById(task.id);
+      expect(stored?.plannedDate).toBeNull();
+      expect(stored?.plannedTime).toBeNull();
+      expect(stored?.focusDate).toBeNull();
+      expect(stored?.dayBucket).toBe('default');
+      // Duration — независимое поле, не зависит от Planned Date (`01§5`).
+      expect(stored?.durationMin).toBe(30);
+    });
+  });
+
+  it('Duration — числовой ввод сохраняется по blur (правило `01§1`: целые минуты 1..1440)', async () => {
+    const task = makeTask({ title: 'Без длительности' });
+    const { getStorage } = renderTaskDetail(task.id, { tasks: [task] });
+
+    const input = await screen.findByLabelText(t('taskDetail', 'planning.duration.label'));
+    fireEvent.change(input, { target: { value: '45' } });
+    fireEvent.blur(input);
+
+    await waitFor(async () => {
+      const stored = await getStorage().tasks.findById(task.id);
+      expect(stored?.durationMin).toBe(45);
+    });
+  });
+
+  it('Deadline Date/Time — задаётся picker’ом (тот же принцип, что Planned)', async () => {
+    const user = userEvent.setup();
+    const task = makeTask({ title: 'Без срока' });
+    const { getStorage } = renderTaskDetail(task.id, { tasks: [task] });
+
+    await user.click(
+      await screen.findByRole('button', { name: t('taskDetail', 'planning.deadline.set') }),
+    );
+    const todayCell = await screen.findByRole('gridcell', { current: 'date' });
+    await user.click(todayCell);
+
+    await waitFor(async () => {
+      const stored = await getStorage().tasks.findById(task.id);
+      expect(stored?.deadlineDate?.equals(Temporal.Now.plainDateISO())).toBe(true);
+    });
+
+    await waitFor(() =>
+      expect(
+        screen.getByRole('listbox', { name: t('taskDetail', 'planning.deadline.hourListLabel') }),
+      ).toBeInTheDocument(),
+    );
+    await user.click(
+      within(
+        screen.getByRole('listbox', { name: t('taskDetail', 'planning.deadline.hourListLabel') }),
+      ).getByRole('option', { name: '18' }),
+    );
+
+    await waitFor(async () => {
+      const stored = await getStorage().tasks.findById(task.id);
+      expect(stored?.deadlineTime?.toString().startsWith('18:')).toBe(true);
+    });
+  });
+
+  it('Warning: planned > deadline показывает TemporalConflict, сохранение не блокируется', async () => {
+    const deadlineDate = Temporal.Now.plainDateISO();
+    const task = makeTask({ title: 'Конфликт', deadlineDate });
+    const { getStorage } = renderTaskDetail(task.id, { tasks: [task] });
+
+    const user = userEvent.setup();
+    await user.click(
+      await screen.findByRole('button', { name: t('taskDetail', 'planning.planned.set') }),
+    );
+    await user.click(
+      screen.getByRole('button', { name: t('taskDetail', 'planning.shortcuts.nextWeek') }),
+    );
+
+    await waitFor(async () => {
+      const stored = await getStorage().tasks.findById(task.id);
+      expect(stored?.plannedDate).not.toBeNull();
+    });
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      t('taskDetail', 'planning.conflicts.plannedAfterDeadline'),
+    );
+  });
+
+  it('Блокирующая ошибка (правило 3: planned_date < available_from) показывается у конкретного поля, не общим Toast', async () => {
+    const user = userEvent.setup();
+    const plannedDate = Temporal.Now.plainDateISO();
+    const task = makeTask({ title: 'Скоро конфликт', plannedDate });
+    const { getStorage } = renderTaskDetail(task.id, { tasks: [task] });
+
+    await user.click(
+      await screen.findByRole('button', { name: t('taskDetail', 'planning.availableFrom.set') }),
+    );
+    // Любая дата СЛЕДУЮЩЕГО месяца гарантированно позже plannedDate=«сегодня».
+    await user.click(
+      screen.getByRole('button', { name: t('taskDetail', 'planning.picker.nextMonth') }),
+    );
+    const [firstDayOfNextMonth] = await screen.findAllByRole('gridcell');
+    if (firstDayOfNextMonth === undefined) throw new Error('ожидалась хотя бы одна ячейка');
+    await user.click(firstDayOfNextMonth);
+
+    await waitFor(() =>
+      expect(
+        screen.getByText(t('taskDetail', 'planning.errors.plannedBeforeAvailableFrom')),
+      ).toBeInTheDocument(),
+    );
+    // Ничего не записалось — вся мутация отклонена целиком (валидатор видит
+    // задачу как единое целое), не только «частично применена».
+    const stored = await getStorage().tasks.findById(task.id);
+    expect(stored?.availableFrom).toBeNull();
+    expect(stored?.plannedDate?.equals(plannedDate)).toBe(true);
+
+    // «Другое редактирование остаётся доступным» (`01§17`) — title всё ещё
+    // редактируется и сохраняется после отклонённой мутации.
+    const titleInput = screen.getByLabelText(t('taskDetail', 'title.label'));
+    fireEvent.change(titleInput, { target: { value: 'Новое имя' } });
+    fireEvent.blur(titleInput);
+    await waitFor(async () => {
+      const refreshed = await getStorage().tasks.findById(task.id);
+      expect(refreshed?.title).toBe('Новое имя');
+    });
+  });
+
+  it('«Добавить дату» открывает Planned Date picker, а не сообщение «скоро»', async () => {
     const user = userEvent.setup();
     const task = makeTask({ title: 'Без дат' });
     renderTaskDetail(task.id, { tasks: [task] });
@@ -269,11 +547,71 @@ describe('TaskDetail — Planning (только чтение, см. решени
     );
 
     expect(
-      screen.getByText(t('taskDetail', 'quickActions.addDateUnavailable')),
+      screen.getByRole('dialog', { name: t('taskDetail', 'planning.planned.pickerTitle') }),
     ).toBeInTheDocument();
-    expect(screen.queryByRole('grid')).not.toBeInTheDocument();
+  });
+});
+
+describe('TaskDetail — Explicit Reminder (M31, `01§18`)', () => {
+  it('«Добавить» создаёт explicit reminder через createExplicitReminderCommand', async () => {
+    const user = userEvent.setup();
+    const task = makeTask({ title: 'Без напоминания' });
+    const { getStorage } = renderTaskDetail(task.id, { tasks: [task] });
+
+    await user.click(
+      await screen.findByRole('button', { name: t('taskDetail', 'planning.reminder.add') }),
+    );
+    const todayCell = await screen.findByRole('gridcell', { current: 'date' });
+    await user.click(todayCell);
+    await user.click(
+      screen.getByRole('button', { name: t('taskDetail', 'planning.reminder.save') }),
+    );
+
+    await waitFor(async () => {
+      const reminders = await getStorage().reminders.listByTask(task.id);
+      expect(reminders.some((r) => r.kind === 'explicit' && r.enabled)).toBe(true);
+    });
+    await waitFor(() =>
+      expect(
+        screen.getByText(formatDate(Temporal.Now.plainDateISO()), { exact: false }),
+      ).toBeInTheDocument(),
+    );
   });
 
+  it('«Отменить» вызывает cancelReminderCommand — enabled становится false', async () => {
+    const user = userEvent.setup();
+    const task = makeTask({ title: 'С напоминанием' });
+    const { getStorage } = renderTaskDetail(task.id, { tasks: [task] });
+
+    await user.click(
+      await screen.findByRole('button', { name: t('taskDetail', 'planning.reminder.add') }),
+    );
+    const todayCell = await screen.findByRole('gridcell', { current: 'date' });
+    await user.click(todayCell);
+    await user.click(
+      screen.getByRole('button', { name: t('taskDetail', 'planning.reminder.save') }),
+    );
+
+    await waitFor(async () => {
+      const reminders = await getStorage().reminders.listByTask(task.id);
+      expect(reminders).toHaveLength(1);
+    });
+
+    await user.click(
+      await screen.findByRole('button', { name: t('taskDetail', 'planning.reminder.cancel') }),
+    );
+
+    await waitFor(async () => {
+      const reminders = await getStorage().reminders.listByTask(task.id);
+      expect(reminders.every((r) => !r.enabled)).toBe(true);
+    });
+    await waitFor(() =>
+      expect(screen.getByText(t('taskDetail', 'planning.reminder.empty'))).toBeInTheDocument(),
+    );
+  });
+});
+
+describe('TaskDetail — Organization: приоритет (после E08.2 — тот же экран, без регрессии)', () => {
   it('«Приоритет» открывает picker приоритета', async () => {
     const user = userEvent.setup();
     const task = makeTask({ title: 'Задача' });

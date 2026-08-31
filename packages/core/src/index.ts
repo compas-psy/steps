@@ -74,6 +74,7 @@ export { type SyncConflict } from './entities/sync-conflict.js';
 
 // --- Temporal-модель (§5, конспект §3) --------------------------------------
 export { effectiveDeadlineDateTime, isDeadlinePassed } from './temporal/deadline.js';
+export { resolveNextWeekMonday, resolveWeekend } from './temporal/date-shortcuts.js';
 export {
   doesDurationCrossDeadline,
   isAvailableFromConflict,

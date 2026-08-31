@@ -320,5 +320,5 @@ export async function updateTaskCommand(
     await tx.applyMutation(mutation);
   });
 
-  return { status: 'ok', task: finalTask };
+  return { status: 'ok', task: finalTask, validation };
 }
