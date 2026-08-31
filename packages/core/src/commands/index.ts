@@ -223,3 +223,42 @@ export {
   type ConvertSubtaskToChecklistItemInput,
   type ConvertSubtaskToChecklistItemResult,
 } from './checklist-subtask-convert.js';
+
+// --- Порт RecurrenceSeries (расширение `storage-port.ts`) — E11 -----------------
+export type { CommandRecurrenceSeriesReader } from './storage-port.js';
+
+// --- Мост RecurrenceRuleTemplate ↔ RecurrenceSeries JSON-полей — E11 -----------
+export {
+  buildRecurrenceAnchor,
+  parseRecurrenceRuleTemplate,
+  RECURRENCE_SERIES_MUTABLE_FIELDS,
+  toRecurrenceTemplateJson,
+} from './recurrence-template.js';
+
+// --- Повторы (`01§11`) — E11 ------------------------------------------------------
+export {
+  createRecurringTaskCommand,
+  type CreateRecurringTaskInput,
+  type CreateRecurringTaskResult,
+} from './create-recurring-task.js';
+export {
+  completeOccurrenceCommand,
+  skipOccurrenceCommand,
+  type CompleteOccurrenceInput,
+  type CompleteOccurrenceResult,
+} from './complete-occurrence.js';
+export {
+  undoCompleteOccurrenceCommand,
+  type UndoCompleteOccurrenceInput,
+  type UndoCompleteOccurrenceResult,
+} from './undo-complete-occurrence.js';
+export {
+  updateSeriesTemplateCommand,
+  type UpdateSeriesTemplateInput,
+  type UpdateSeriesTemplateResult,
+} from './update-series-template.js';
+export {
+  deleteSeriesCommand,
+  type DeleteSeriesInput,
+  type DeleteSeriesResult,
+} from './delete-series.js';

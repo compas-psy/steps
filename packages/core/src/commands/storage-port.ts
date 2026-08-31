@@ -1,4 +1,5 @@
 import type { ChecklistItem } from '../entities/checklist-item.js';
+import type { RecurrenceSeries } from '../entities/recurrence-series.js';
 import type { Task, TaskStatus } from '../entities/task.js';
 import type { SyncOutboxEntry } from '../entities/sync-outbox.js';
 import type { TaskValidationContext } from '../validation/task.js';
@@ -82,20 +83,38 @@ export interface CommandChecklistItemReader {
   countActiveByTask(taskId: Uuid): Promise<number>;
 }
 
+/**
+ * Срез `RecurrenceSeriesRepository` (`packages/storage/src/ports/
+ * recurrence-series-repository.ts`) — добавлен пакетом работ E11. Живёт в
+ * этом же файле (не в отдельном `recurrence-series-port.ts`), тем же
+ * рассуждением, что и `CommandChecklistItemReader` выше: команды повторов
+ * (`create-recurring-task.ts`/`complete-occurrence.ts`/`undo-complete-
+ * occurrence.ts`/`update-series-template.ts`/`delete-series.ts`) в ЛЮБОМ
+ * вызове читают/пишут Task (сам occurrence) и RecurrenceSeries ВМЕСТЕ —
+ * заводить для серии полностью отдельный порт (как `label-port.ts`) означало
+ * бы дать их deps ДВА поля хранения вместо одного, лишняя непрямота там, где
+ * реальный `StoragePort` и так одна точка входа на обе таблицы (тот же
+ * аргумент, что уже принят для `checklistItems`).
+ */
+export interface CommandRecurrenceSeriesReader {
+  findById(id: Uuid): Promise<RecurrenceSeries | null>;
+}
+
 /** Единственные формы записи, которые умеют команды этого файла —
  * подмножество `EntityWrite` из `packages/storage`: там дискриминированное
- * объединение на 10 типов сущностей, здесь — `task` (E01.4) и, с пакета
- * работ E10, `checklist_item` (см. комментарий `CommandChecklistItemReader`
- * выше про причину общего порта). Project/Section/Label/Recurrence — вне
- * охвата, у них свои узкие порты (`project-port.ts`/`section-port.ts`/
- * `label-port.ts`/`task-label-port.ts`). Это ПОДмножество union'а
- * `EntityWrite`, что и делает `CommandDomainMutation` присваиваемым в
- * `DomainMutation` (не наоборот) — см. ADR-0003; сам ADR прямо
- * предусматривает этот путь расширения ("расширит `CommandEntityWrite` до
- * объединения... совместимо с этим ADR"). */
+ * объединение на 10 типов сущностей, здесь — `task` (E01.4), `checklist_item`
+ * (E10) и, с пакета работ E11, `recurrence_series` (см. комментарий
+ * `CommandRecurrenceSeriesReader` выше про причину общего порта).
+ * Project/Section/Label — вне охвата, у них свои узкие порты
+ * (`project-port.ts`/`section-port.ts`/`label-port.ts`/`task-label-port.ts`).
+ * Это ПОДмножество union'а `EntityWrite`, что и делает `CommandDomainMutation`
+ * присваиваемым в `DomainMutation` (не наоборот) — см. ADR-0003; сам ADR
+ * прямо предусматривает этот путь расширения ("расширит `CommandEntityWrite`
+ * до объединения... совместимо с этим ADR"). */
 export type CommandEntityWrite =
   | { readonly entity: 'task'; readonly value: Task }
-  | { readonly entity: 'checklist_item'; readonly value: ChecklistItem };
+  | { readonly entity: 'checklist_item'; readonly value: ChecklistItem }
+  | { readonly entity: 'recurrence_series'; readonly value: RecurrenceSeries };
 
 /** Структурный эквивалент `DomainMutation` (`packages/storage/src/ports/transaction.ts`)
  * — те же два поля, та же семантика (`writes` может быть пустым, `outbox`
@@ -116,6 +135,7 @@ export interface CommandDomainMutation {
 export interface CommandStorageWriteTransaction {
   readonly tasks: CommandTaskReader;
   readonly checklistItems: CommandChecklistItemReader;
+  readonly recurrenceSeries: CommandRecurrenceSeriesReader;
   applyMutation(mutation: CommandDomainMutation): Promise<void>;
 }
 
@@ -129,5 +149,6 @@ export interface CommandStorageWriteTransaction {
 export interface CommandStoragePort {
   readonly tasks: CommandTaskReader;
   readonly checklistItems: CommandChecklistItemReader;
+  readonly recurrenceSeries: CommandRecurrenceSeriesReader;
   runTransaction<T>(run: (tx: CommandStorageWriteTransaction) => Promise<T>): Promise<T>;
 }

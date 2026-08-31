@@ -83,6 +83,12 @@ export {
   isReminderAfterDeadline,
 } from './temporal/predicates.js';
 export { toZonedDateTime } from './temporal/timezone.js';
+export {
+  computeNextCompletionDate,
+  computeNextScheduledDate,
+  type RecurrenceRuleTemplate,
+  type RecurrenceRuleUnit,
+} from './temporal/recurrence-anchor.js';
 
 // --- Правила (конспект §3, §5) -----------------------------------------------
 export {

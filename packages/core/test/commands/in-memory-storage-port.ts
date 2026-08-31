@@ -1,10 +1,12 @@
 import type {
   CommandChecklistItemReader,
   CommandDomainMutation,
+  CommandRecurrenceSeriesReader,
   CommandStoragePort,
   CommandStorageWriteTransaction,
 } from '../../src/commands/storage-port.js';
 import type { ChecklistItem } from '../../src/entities/checklist-item.js';
+import type { RecurrenceSeries } from '../../src/entities/recurrence-series.js';
 import { isTaskLabelActive, type TaskLabel } from '../../src/entities/task-label.js';
 import type { Task, TaskStatus } from '../../src/entities/task.js';
 import type { SyncOutboxEntry } from '../../src/entities/sync-outbox.js';
@@ -34,6 +36,7 @@ export class InMemoryCommandStoragePort implements CommandStoragePort {
   private readonly outboxLog: SyncOutboxEntry[] = [];
   private readonly checklistItemsById = new Map<Uuid, ChecklistItem>();
   private readonly taskLabelsByKey = new Map<string, TaskLabel>();
+  private readonly recurrenceSeriesById = new Map<Uuid, RecurrenceSeries>();
 
   readonly tasks = {
     findById: (id: Uuid): Promise<Task | null> => {
@@ -77,16 +80,25 @@ export class InMemoryCommandStoragePort implements CommandStoragePort {
     },
   };
 
+  readonly recurrenceSeries: CommandRecurrenceSeriesReader = {
+    findById: (id: Uuid): Promise<RecurrenceSeries | null> => {
+      return Promise.resolve(this.recurrenceSeriesById.get(id) ?? null);
+    },
+  };
+
   async runTransaction<T>(run: (tx: CommandStorageWriteTransaction) => Promise<T>): Promise<T> {
     const tx: CommandStorageWriteTransaction = {
       tasks: this.tasks,
       checklistItems: this.checklistItems,
+      recurrenceSeries: this.recurrenceSeries,
       applyMutation: (mutation: CommandDomainMutation): Promise<void> => {
         for (const write of mutation.writes) {
           if (write.entity === 'task') {
             this.byId.set(write.value.id, write.value);
-          } else {
+          } else if (write.entity === 'checklist_item') {
             this.checklistItemsById.set(write.value.id, write.value);
+          } else {
+            this.recurrenceSeriesById.set(write.value.id, write.value);
           }
         }
         this.outboxLog.push(...mutation.outbox);
@@ -199,6 +211,19 @@ export class InMemoryCommandStoragePort implements CommandStoragePort {
 
   listTaskLabelsByLabel(labelId: Uuid): readonly TaskLabel[] {
     return [...this.taskLabelsByKey.values()].filter((link) => link.labelId === labelId);
+  }
+
+  /** Прямая запись RecurrenceSeries в обход команд — фикстура (E11). */
+  seedRecurrenceSeries(series: RecurrenceSeries): void {
+    this.recurrenceSeriesById.set(series.id, series);
+  }
+
+  findRecurrenceSeries(id: Uuid): RecurrenceSeries | null {
+    return this.recurrenceSeriesById.get(id) ?? null;
+  }
+
+  allRecurrenceSeries(): readonly RecurrenceSeries[] {
+    return [...this.recurrenceSeriesById.values()];
   }
 }
 
