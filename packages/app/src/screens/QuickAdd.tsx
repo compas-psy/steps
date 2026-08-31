@@ -56,18 +56,36 @@
  * требует доп. полей и упирается в paywall (правило 27/28), плодить второй
  * урезанный путь создания проекта из текстового чипа не нужно (задание).
  *
- * --- 4. Recurrence-чип — честный вырез (нет command-слоя, эпик E11) --------
+ * --- 4. Recurrence-чип — теперь реально создаёт повтор (эпик E11.2) --------
  *
- * `createTaskCommand` не принимает recurrence — нет ни одной команды
- * "создать повторяющуюся задачу" в дереве пакетов. Recurrence-чип рендерится
- * через `NLPToken` c `disabled` и пометкой `chips.recurrenceComingSoon`, его
- * `span` НИКОГДА не входит в набор "чипов на вычистку из заголовка"
- * (`spansToStrip` ниже) — функционально это тот же путь, что и
- * explicit-отклонённый кандидат: текст остаётся в заголовке, задача не
- * теряет то, что пользователь написал, без эффекта и без объяснения молча.
- * Тот же тон, что "Planning-заглушка" в `TaskDetail.tsx` до E08.2 (см. его
- * заголовок) — честно "появится в одном из следующих обновлений", не
- * притворяется рабочим полем.
+ * Движок повторов (`@shagi/core`, эпик E11.1) уже есть — recurrence-чип
+ * больше не `disabled`: при наличии активного чипа `recurrence` на момент
+ * сабмита вызывается `createRecurringTaskCommand` вместо `createTaskCommand`
+ * (см. `handleSubmit` ниже), его `span` теперь ВХОДИТ в набор "чипов на
+ * вычистку из заголовка" (`spansToStrip`) — тот же путь, что остальные
+ * категории чипов, признак того, что чип реально что-то создаёт, а не
+ * просто отображается.
+ *
+ * `rule` — `chip.value` (`RecurrenceChipValue`, `@shagi/nlp`) передаётся В
+ * `createRecurringTaskCommand` БЕЗ каста: `RecurrenceChipValue` (`unit:'day'
+ * |'week'|'month'`) структурно — уже пройденный подтип `RecurrenceRuleTemplate`
+ * (`@shagi/core`, `temporal/recurrence-anchor.ts`, её же заголовок это прямо
+ * документирует — "не выдумывай вторую форму", CLAUDE.md).
+ *
+ * `anchorType: 'scheduled'` — фиксированное умолчание этого пакета работ:
+ * грамматика NLP (`01§4`) не выражает выбор scheduled/completion, а формы,
+ * которые она РЕАЛЬНО распознаёт ("каждый понедельник"/"каждое 5 число") по
+ * буквальному смыслу — привязка к календарным СЛОТАМ, не к дате завершения
+ * задачи. Полноценный выбор anchorType в UI (M30 Advanced) — отдельный,
+ * ещё не начатый пакет работ (см. задание).
+ *
+ * `chipLabel` для категории `recurrence` (ниже) больше не показывает
+ * "появится позже" — строит человекочитаемую формулировку правила
+ * (`recurrenceChipLabel`) тем же приёмом, что `TaskDetail.tsx`
+ * `recurrenceRuleLabel` (её же заголовок разбирает решения по формулировкам
+ * подробно) — узкое дублирование между двумя экранами, не общий модуль вне
+ * разрешённой территории этого пакета работ, тот же принцип, что уже
+ * применён для `DatePicker`-хелперов этого файла (см. блок ниже).
  *
  * --- 5. Rejected-чип — восстановление исходного текста ----------------------
  *
@@ -121,13 +139,12 @@
 import { useEffect, useMemo, useState, type ReactElement, type ReactNode } from 'react';
 import { Temporal } from '@js-temporal/polyfill';
 
-import { formatDate, formatTime, t } from '@shagi/i18n';
+import { formatDate, formatTime, t, weekdayName } from '@shagi/i18n';
 import {
   Button,
   DraftIndicator,
   InheritedContextChip,
   Modal,
-  NLPToken,
   ParsingPreview,
   QuickAdd as QuickAddInput,
   type ParsingPreviewToken,
@@ -135,6 +152,7 @@ import {
 import {
   attachLabelToTaskCommand,
   createLabelCommand,
+  createRecurringTaskCommand,
   createTaskCommand,
   generateDeviceId,
   generateUuidV7,
@@ -151,6 +169,7 @@ import {
   type InheritedContext,
   type NowContext,
   type ParseQuickAddResult,
+  type RecurrenceChipValue,
   type SourceSpan,
 } from '@shagi/nlp';
 
@@ -245,6 +264,58 @@ function findChip<C extends ChipCategory>(
     Extract<AnyAcceptedChip, { category: C }> | undefined;
 }
 
+// --- Recurrence-чип: человекочитаемая подпись (эпик E11.2) -------------------
+//
+// Тот же приём/то же обоснование формулировок, что `TaskDetail.tsx`
+// `recurrenceRuleLabel` (см. её заголовок за подробным разбором решений по
+// склонениям) — узкое дублирование между двумя экранами, не общий модуль.
+// `RecurrenceChipValue` (`@shagi/nlp`) уже — подмножество форм, которые
+// умеет распознать грамматика (`01§4`, шесть форм: день/будни/конкретный
+// день недели/число месяца/раз в.../каждые N) — `unit` здесь никогда не
+// `'year'` (NLP такую форму не производит), поэтому этот helper короче
+// `TaskDetail.tsx`-варианта на одну ветку.
+
+const QUICK_ADD_RECURRENCE_WEEKDAYS_MON_FRI: readonly number[] = [1, 2, 3, 4, 5];
+
+function isQuickAddRecurrenceWeekdaysMonFri(byWeekday: readonly number[]): boolean {
+  return (
+    byWeekday.length === QUICK_ADD_RECURRENCE_WEEKDAYS_MON_FRI.length &&
+    QUICK_ADD_RECURRENCE_WEEKDAYS_MON_FRI.every((day) => byWeekday.includes(day))
+  );
+}
+
+/** Каждая ветка — литеральный вызов `t()` (тот же приём, что `chipLabel`
+ * ради статического гейта `check-i18n-catalog.mjs`). */
+function recurrenceChipLabel(value: RecurrenceChipValue): string {
+  switch (value.unit) {
+    case 'day':
+      return value.interval === 1
+        ? t('quickAdd', 'chips.recurrenceEveryDay')
+        : t('quickAdd', 'chips.recurrenceEveryNDays', { interval: value.interval });
+    case 'week': {
+      if (value.byWeekday !== undefined && value.byWeekday.length > 0) {
+        if (isQuickAddRecurrenceWeekdaysMonFri(value.byWeekday)) {
+          return t('quickAdd', 'chips.recurrenceWeekdays');
+        }
+        const days = value.byWeekday
+          .toSorted((a, b) => a - b)
+          .map((day) => weekdayName(day, 'long'))
+          .join(', ');
+        return t('quickAdd', 'chips.recurrenceWeeklyOnDays', { days });
+      }
+      return value.interval === 1
+        ? t('quickAdd', 'chips.recurrenceEveryWeek')
+        : t('quickAdd', 'chips.recurrenceEveryNWeeks', { interval: value.interval });
+    }
+    case 'month':
+      return value.byMonthDay !== undefined
+        ? t('quickAdd', 'chips.recurrenceMonthlyOnDay', { day: value.byMonthDay })
+        : value.interval === 1
+          ? t('quickAdd', 'chips.recurrenceEveryMonth')
+          : t('quickAdd', 'chips.recurrenceEveryNMonths', { interval: value.interval });
+  }
+}
+
 /** `switch` без `default` по `chip.category` — умышленно (тот же приём, что
  * `NlpOnboarding.tsx chipLabel`): если категория когда-нибудь вырастет, это
  * перестанет компилироваться, а не молча покажет пустой чип. */
@@ -267,7 +338,7 @@ function chipLabel(chip: AnyAcceptedChip, resolvedProject: Project | null): Reac
     case 'duration':
       return t('quickAdd', 'chips.durationMinutes', { minutes: chip.value.minutes });
     case 'recurrence':
-      return t('quickAdd', 'chips.recurrenceComingSoon');
+      return recurrenceChipLabel(chip.value);
     case 'project':
       return resolvedProject !== null
         ? resolvedProject.title
@@ -340,8 +411,11 @@ export function QuickAdd(): ReactElement | null {
   const showTodayBadge =
     origin === 'today' && dateChip === undefined && !removedKeys.has(TODAY_BADGE_KEY);
 
+  // `recurrence` больше не исключён (эпик E11.2, см. заголовок файла, п.4) —
+  // теперь реально создаёт повтор, его текст вычищается из заголовка тем же
+  // путём, что остальные категории.
   const spansToStrip: SourceSpan[] = activeChips
-    .filter((chip) => chip.category !== 'recurrence' && chip.span !== null)
+    .filter((chip) => chip.span !== null)
     .map((chip) => chip.span as SourceSpan);
   const displayTitle = buildDisplayTitle(rawText, spansToStrip);
 
@@ -425,6 +499,7 @@ export function QuickAdd(): ReactElement | null {
       const timeChip = findChip(activeChips, 'time');
       const durationChip = findChip(activeChips, 'duration');
       const deadlineChip = findChip(activeChips, 'deadline');
+      const recurrenceChip = findChip(activeChips, 'recurrence');
 
       const plannedDate =
         dateChip !== undefined
@@ -461,7 +536,17 @@ export function QuickAdd(): ReactElement | null {
           : {}),
       };
 
-      const created = await createTaskCommand(input, deps);
+      // Активный чип `recurrence` → `createRecurringTaskCommand` вместо
+      // `createTaskCommand` (эпик E11.2, см. заголовок файла, п.4) — ровно
+      // те же поля `input`, плюс `anchorType`/`rule`. `anchorType:'scheduled'`
+      // — фиксированное умолчание (обоснование там же).
+      const created =
+        recurrenceChip !== undefined
+          ? await createRecurringTaskCommand(
+              { ...input, anchorType: 'scheduled', rule: recurrenceChip.value },
+              deps,
+            )
+          : await createTaskCommand(input, deps);
       if (created.status !== 'ok') {
         setSubmitError(t('quickAdd', 'errors.submitFailed'));
         setSubmitting(false);
@@ -490,15 +575,10 @@ export function QuickAdd(): ReactElement | null {
 
   const showDraftPrompt = !draftResolved && pendingDraftText !== null;
 
-  // Recurrence — честный вырез (см. заголовок файла, п.4): рендерится
-  // ОТДЕЛЬНО от `ParsingPreview.tokens` через `NLPToken` напрямую — форма
-  // `ParsingPreviewToken` не несёт `disabled` (только `removable`), а
-  // recurrence обязан быть недоступным для взаимодействия, не просто
-  // "ещё одним removable-чипом".
-  const recurrenceChips = activeChips.filter((chip) => chip.category === 'recurrence');
-  const previewChips = activeChips.filter((chip) => chip.category !== 'recurrence');
-
-  const tokens: ParsingPreviewToken[] = previewChips.map((chip, index) => {
+  // Recurrence — больше не отдельный путь (эпик E11.2, см. заголовок файла,
+  // п.4): рендерится через обычный `ParsingPreview.tokens`, как любая другая
+  // категория — снимаемый (`removable`), реально влияющий на создание.
+  const tokens: ParsingPreviewToken[] = activeChips.map((chip, index) => {
     const resolvedProject =
       chip.category === 'project'
         ? (projects.find(
@@ -566,11 +646,6 @@ export function QuickAdd(): ReactElement | null {
               rawText.trim().length === 0 ? <p>{t('quickAdd', 'preview.empty')}</p> : undefined
             }
           />
-          {recurrenceChips.map((chip, index) => (
-            <NLPToken key={`recurrence-${index}`} kind="recurrence" disabled>
-              {chipLabel(chip, null)}
-            </NLPToken>
-          ))}
           {parsed.rejected.length > 0 && (
             <ul aria-label={t('quickAdd', 'rejected.label')}>
               {parsed.rejected.map((rejected) => (

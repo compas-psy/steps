@@ -265,7 +265,7 @@ import {
   weekdayName,
 } from '@shagi/i18n';
 import {
-  completeTaskCommand,
+  completeOccurrenceCommand,
   generateDeviceId,
   selectTodayTasks,
   updateTaskCommand,
@@ -896,8 +896,22 @@ export function Today(): ReactElement {
   }
 
   const handlers: RowActionHandlers = {
+    // `completeOccurrenceCommand` (эпик E11.2, `@shagi/core`) — для НЕ
+    // recurring задачи (`task.seriesId === null`) ведёт себя идентично
+    // `completeTaskCommand` (тот же контракт, аддитивно расширенный
+    // `series`/`generatedTask`/`generatedChecklistItems`, см. её
+    // комментарий) — единственное отличие входа: обязательный
+    // `occurrenceLocalDate`, уже материализованная локальная дата события
+    // (CLAUDE.md «Время», не `Date`). Без этой замены recurring-задачи
+    // никогда бы не генерировали следующий occurrence — только
+    // `completeOccurrenceCommand` ветвится на `RecurrenceSeries`.
     onComplete: (id) => {
-      void runCommand(completeTaskCommand({ id }, commandDeps()));
+      void runCommand(
+        completeOccurrenceCommand(
+          { id, occurrenceLocalDate: Temporal.Now.plainDateISO() },
+          commandDeps(),
+        ),
+      );
     },
     onRescheduleToday: (id) => {
       const plannedDate = Temporal.Now.plainDateISO();

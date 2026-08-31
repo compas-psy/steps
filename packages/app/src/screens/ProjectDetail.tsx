@@ -117,7 +117,7 @@ import { Temporal } from '@js-temporal/polyfill';
 
 import { t } from '@shagi/i18n';
 import {
-  completeTaskCommand,
+  completeOccurrenceCommand,
   createSectionCommand,
   createTaskCommand,
   deleteSectionCommand,
@@ -888,9 +888,18 @@ export function ProjectDetail(): ReactElement | null {
 
   const isEmpty = sectionEntries.every((entry) => entry.tasks.length === 0);
 
+  // `completeOccurrenceCommand` (эпик E11.2) — см. тот же комментарий в
+  // `Today.tsx`: для НЕ recurring задачи ведёт себя идентично
+  // `completeTaskCommand`, обязательный вход `occurrenceLocalDate` — уже
+  // материализованная локальная дата (CLAUDE.md «Время»).
   function handleComplete(task: Task): void {
     setOpenMenuTaskId(null);
-    void runCommand(completeTaskCommand({ id: task.id }, commandDeps()));
+    void runCommand(
+      completeOccurrenceCommand(
+        { id: task.id, occurrenceLocalDate: Temporal.Now.plainDateISO() },
+        commandDeps(),
+      ),
+    );
   }
 
   function handleDelete(task: Task): void {

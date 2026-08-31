@@ -278,24 +278,55 @@ describe('QuickAdd — проект (find only)', () => {
   });
 });
 
-describe('QuickAdd — recurrence (честный вырез, эпик E11 не начат)', () => {
-  it('чип повтора показан disabled, текст остаётся в заголовке, задача создаётся без повтора', async () => {
+describe('QuickAdd — recurrence (эпик E11.2)', () => {
+  it('текст с распознанным повтором ("каждый день") создаёт RecurrenceSeries + первый occurrence через createRecurringTaskCommand', async () => {
     const user = userEvent.setup();
     const { getStorage } = renderQuickAdd('global');
     const input = await inputField();
 
     await user.type(input, 'Зарядка каждый день');
 
-    expect(screen.getByText(t('quickAdd', 'chips.recurrenceComingSoon'))).toBeInTheDocument();
-    expect(screen.getByText('Зарядка каждый день')).toBeInTheDocument();
+    // Чип больше не `disabled` — виден обычным текстом разбора, тот же
+    // алгоритм `buildDisplayTitle` вычищает его span из заголовка.
+    expect(screen.getByText('Зарядка')).toBeInTheDocument();
 
     await user.click(submitButton());
 
     await waitFor(async () => {
       const inboxTasks = await getStorage().tasks.listByCaptureStateAndStatus('inbox', 'active');
       expect(inboxTasks).toHaveLength(1);
-      expect(inboxTasks[0]?.title).toBe('Зарядка каждый день');
-      expect(inboxTasks[0]?.seriesId).toBeNull();
+      const task = inboxTasks[0]!;
+      expect(task.title).toBe('Зарядка');
+      expect(task.seriesId).not.toBeNull();
+      expect(task.occurrenceSeq).toBe(1n);
+
+      const series = await getStorage().recurrenceSeries.findById(task.seriesId!);
+      expect(series).not.toBeNull();
+      // `anchorType:'scheduled'` — умолчание этого пакета работ (см.
+      // заголовок `QuickAdd.tsx`, п.4): NLP-грамматика не даёт пользователю
+      // выбрать scheduled/completion.
+      expect(series?.anchorType).toBe('scheduled');
+      expect(series?.templateJson).toEqual({ unit: 'day', interval: 1 });
+      expect(series?.active).toBe(true);
+    });
+  });
+
+  it('текст с распознанным недельным повтором ("каждый понедельник") сохраняет byWeekday в шаблоне серии', async () => {
+    const user = userEvent.setup();
+    const { getStorage } = renderQuickAdd('global');
+    const input = await inputField();
+
+    await user.type(input, 'Планёрка каждый понедельник');
+    await user.click(submitButton());
+
+    await waitFor(async () => {
+      const inboxTasks = await getStorage().tasks.listByCaptureStateAndStatus('inbox', 'active');
+      expect(inboxTasks).toHaveLength(1);
+      const task = inboxTasks[0]!;
+      expect(task.title).toBe('Планёрка');
+
+      const series = await getStorage().recurrenceSeries.findById(task.seriesId!);
+      expect(series?.templateJson).toEqual({ unit: 'week', interval: 1, byWeekday: [1] });
     });
   });
 });

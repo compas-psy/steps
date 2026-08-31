@@ -7,7 +7,7 @@ import { createUnavailablePlatform } from '@shagi/platform';
 import { t } from '@shagi/i18n';
 import { makeOutboxEntry, makeTask } from '@shagi/storage/contract';
 import type { StoragePort } from '@shagi/storage';
-import type { Task } from '@shagi/core';
+import { generateUuidV7, makeOccurrenceSeq, type RecurrenceSeries, type Task } from '@shagi/core';
 import { describe, expect, it } from 'vitest';
 
 import type { AppHost } from '../../src/App.js';
@@ -25,6 +25,54 @@ async function seedTasks(storage: StoragePort, tasks: readonly Task[]): Promise<
       await tx.applyMutation({
         writes: [{ entity: 'task', value: task }],
         outbox: [makeOutboxEntry('task', task.id)],
+      });
+    });
+  }
+}
+
+/** Узкая фикстура `RecurrenceSeries` для тестов E11.2 этого экрана — та же
+ * причина, что у остальных дублированных хелперов файла (`getDeviceId` и
+ * т.п. по всему дереву пакетов): общей фикстуры для этой сущности в
+ * `@shagi/storage/contract` пока нет, заводить её вне территории этого
+ * пакета работ не нужно ради трёх экранных тестовых файлов. Значения по
+ * умолчанию — минимальная валидная серия `unit:'day', interval:1,
+ * anchorType:'scheduled'`, ещё не исчерпавшая себя (`active:true`,
+ * `stopAfterOccurrenceSeq:null`), `nextOccurrenceSeq:2` — тот же инвариант,
+ * что `createRecurringTaskCommand` устанавливает после материализации
+ * occurrence 1 (см. его комментарий).
+ */
+function seedRecurrenceSeries(
+  overrides: Partial<
+    Omit<RecurrenceSeries, 'anchorType' | 'rrule' | 'completionIntervalJson'>
+  > = {},
+): RecurrenceSeries {
+  const now = Temporal.Now.instant();
+  return {
+    id: generateUuidV7(),
+    anchorType: 'scheduled',
+    rrule: JSON.stringify({ unit: 'day', interval: 1 }),
+    completionIntervalJson: null,
+    templateJson: { unit: 'day', interval: 1 },
+    active: true,
+    nextOccurrenceSeq: makeOccurrenceSeq(2n),
+    stopAfterOccurrenceSeq: null,
+    templateRevision: 1n,
+    createdAt: now,
+    updatedAt: now,
+    clocks: {},
+    ...overrides,
+  };
+}
+
+async function seedSeries(
+  storage: StoragePort,
+  series: readonly RecurrenceSeries[],
+): Promise<void> {
+  for (const s of series) {
+    await storage.runTransaction(async (tx) => {
+      await tx.applyMutation({
+        writes: [{ entity: 'recurrence_series', value: s }],
+        outbox: [makeOutboxEntry('recurrence_series', s.id)],
       });
     });
   }
@@ -140,6 +188,52 @@ function renderTodayWithController(tasks: readonly Task[]): {
       return capturedStorage;
     },
     controller,
+  };
+}
+
+/** Тот же приём, что `renderTodayCapturingStorage`, плюс посев
+ * `RecurrenceSeries` — нужна только тестам E11.2 (описанным ниже), не
+ * тронута сама `renderTodayCapturingStorage` (задание — точечная правка). */
+function renderTodayCapturingStorageWithSeries(
+  tasks: readonly Task[],
+  series: readonly RecurrenceSeries[],
+): () => StoragePort {
+  const controller = createAppController({ screen: 'todayEmpty' });
+  let capturedStorage: StoragePort | undefined;
+
+  function SeedThenTodayWithSeries(): ReactElement | null {
+    const storage = useStorage();
+    const [seeded, setSeeded] = useState(false);
+
+    useEffect(() => {
+      capturedStorage = storage;
+    }, [storage]);
+
+    useEffect(() => {
+      let cancelled = false;
+      void seedSeries(storage, series)
+        .then(() => seedTasks(storage, tasks))
+        .then(() => {
+          if (!cancelled) setSeeded(true);
+        });
+      return () => {
+        cancelled = true;
+      };
+      // eslint-disable-next-line react-hooks/exhaustive-deps -- фиксировано на монтирование теста
+    }, [storage]);
+
+    return seeded ? <Today /> : null;
+  }
+
+  render(
+    <AppProvider host={testHost()} controller={controller}>
+      <SeedThenTodayWithSeries />
+    </AppProvider>,
+  );
+  return () => {
+    if (capturedStorage === undefined)
+      throw new Error('storage не захвачен — компонент не смонтировался');
+    return capturedStorage;
   };
 }
 
@@ -904,5 +998,54 @@ describe('Today — кнопка Quick Add (эпик E05.2)', () => {
 
     expect(controller.getState().quickAdd).toEqual({ origin: 'today' });
     expect(controller.getState().screen).toBe('todayEmpty');
+  });
+});
+
+describe('Today — повторы (E11.2)', () => {
+  it('чекбокс recurring-задачи вызывает completeOccurrenceCommand и генерирует следующий occurrence', async () => {
+    const user = userEvent.setup();
+    const series = seedRecurrenceSeries();
+    const task = makeTask({
+      title: 'Полить цветы',
+      plannedDate: TODAY,
+      seriesId: series.id,
+      occurrenceSeq: 1n,
+    });
+    const getStorage = renderTodayCapturingStorageWithSeries([task], [series]);
+
+    await waitFor(() => expect(screen.getByText('Полить цветы')).toBeInTheDocument());
+    await user.click(screen.getByRole('checkbox', { name: 'Полить цветы' }));
+
+    await waitFor(() => expect(screen.getByText(t('common', 'today.doneAll'))).toBeInTheDocument());
+
+    const stored = await getStorage().tasks.findById(task.id);
+    expect(stored?.status).toBe('completed');
+    expect(stored?.completionKind).toBe('done');
+
+    // Серия unit:'day', interval:1, anchorType:'scheduled' — следующий слот
+    // строго после сегодняшней локальной даты завершения (`01§11.3`).
+    const nextOccurrences = await getStorage().tasks.listBySeries(series.id, 'active');
+    expect(nextOccurrences).toHaveLength(1);
+    expect(nextOccurrences[0]?.plannedDate?.toString()).toBe(TODAY.add({ days: 1 }).toString());
+    expect(nextOccurrences[0]?.occurrenceSeq).toBe(2n);
+
+    const updatedSeries = await getStorage().recurrenceSeries.findById(series.id);
+    expect(updatedSeries?.nextOccurrenceSeq).toBe(3n);
+  });
+
+  it('чекбокс НЕ-recurring задачи по-прежнему завершает её как раньше (регрессия)', async () => {
+    const user = userEvent.setup();
+    const task = makeTask({ title: 'Обычная без повтора', plannedDate: TODAY });
+    const getStorage = renderTodayCapturingStorageWithSeries([task], []);
+
+    await waitFor(() => expect(screen.getByText('Обычная без повтора')).toBeInTheDocument());
+    await user.click(screen.getByRole('checkbox', { name: 'Обычная без повтора' }));
+
+    await waitFor(() => expect(screen.getByText(t('common', 'today.doneAll'))).toBeInTheDocument());
+
+    const stored = await getStorage().tasks.findById(task.id);
+    expect(stored?.status).toBe('completed');
+    expect(stored?.completionKind).toBe('done');
+    expect(stored?.seriesId).toBeNull();
   });
 });

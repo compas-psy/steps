@@ -15,8 +15,21 @@ import {
   makeTaskLabel,
 } from '@shagi/storage/contract';
 import type { StoragePort } from '@shagi/storage';
-import type { ChecklistItem, Label, Project, Section, Task, Uuid } from '@shagi/core';
-import { isTaskLabelActive, makeDurationMinutes } from '@shagi/core';
+import type {
+  ChecklistItem,
+  Label,
+  Project,
+  RecurrenceSeries,
+  Section,
+  Task,
+  Uuid,
+} from '@shagi/core';
+import {
+  generateUuidV7,
+  isTaskLabelActive,
+  makeDurationMinutes,
+  makeOccurrenceSeq,
+} from '@shagi/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { AppHost } from '../../src/App.js';
@@ -35,9 +48,20 @@ interface Seed {
   readonly checklistItems?: readonly ChecklistItem[];
   readonly labels?: readonly Label[];
   readonly taskLabels?: readonly ReturnType<typeof makeTaskLabel>[];
+  readonly recurrenceSeries?: readonly RecurrenceSeries[];
 }
 
 async function seed(storage: StoragePort, entities: Seed): Promise<void> {
+  // Серии — ДО задач (см. `ProjectDetail.test.tsx` за тем же обоснованием
+  // порядка: тот же, что `createRecurringTaskCommand` использует в проде).
+  for (const series of entities.recurrenceSeries ?? []) {
+    await storage.runTransaction(async (tx) => {
+      await tx.applyMutation({
+        writes: [{ entity: 'recurrence_series', value: series }],
+        outbox: [makeOutboxEntry('recurrence_series', series.id)],
+      });
+    });
+  }
   for (const project of entities.projects ?? []) {
     await storage.runTransaction(async (tx) => {
       await tx.applyMutation({
@@ -86,6 +110,31 @@ async function seed(storage: StoragePort, entities: Seed): Promise<void> {
       });
     });
   }
+}
+
+/** См. `Today.test.tsx`/`ProjectDetail.test.tsx` за тем же обоснованием
+ * узкой фикстуры-дублёра `RecurrenceSeries`. */
+function seedRecurrenceSeries(
+  overrides: Partial<
+    Omit<RecurrenceSeries, 'anchorType' | 'rrule' | 'completionIntervalJson'>
+  > = {},
+): RecurrenceSeries {
+  const now = Temporal.Now.instant();
+  return {
+    id: generateUuidV7(),
+    anchorType: 'scheduled',
+    rrule: JSON.stringify({ unit: 'day', interval: 1 }),
+    completionIntervalJson: null,
+    templateJson: { unit: 'day', interval: 1 },
+    active: true,
+    nextOccurrenceSeq: makeOccurrenceSeq(2n),
+    stopAfterOccurrenceSeq: null,
+    templateRevision: 1n,
+    createdAt: now,
+    updatedAt: now,
+    clocks: {},
+    ...overrides,
+  };
 }
 
 /** Тот же приём, что `ProjectDetail.test.tsx` — сеет и монтирует
@@ -912,5 +961,146 @@ describe('TaskDetail — Checklist', () => {
     });
     const items = await getStorage().checklistItems.listByTask(task.id);
     expect(items).toHaveLength(0);
+  });
+});
+
+describe('TaskDetail — повторы (E11.2)', () => {
+  it('главный чекбокс recurring-задачи вызывает completeOccurrenceCommand и генерирует следующий occurrence', async () => {
+    const user = userEvent.setup();
+    const series = seedRecurrenceSeries();
+    const today = Temporal.Now.plainDateISO();
+    const task = makeTask({
+      title: 'Полить цветы',
+      plannedDate: today,
+      seriesId: series.id,
+      occurrenceSeq: 1n,
+    });
+    const { getStorage } = renderTaskDetail(task.id, {
+      tasks: [task],
+      recurrenceSeries: [series],
+    });
+
+    const checkbox = await screen.findByRole('checkbox', {
+      name: t('taskDetail', 'completeCheckbox.label', { title: 'Полить цветы' }),
+    });
+    await user.click(checkbox);
+
+    await waitFor(async () => {
+      const stored = await getStorage().tasks.findById(task.id);
+      expect(stored?.status).toBe('completed');
+    });
+
+    const nextOccurrences = await getStorage().tasks.listBySeries(series.id, 'active');
+    expect(nextOccurrences).toHaveLength(1);
+    expect(nextOccurrences[0]?.plannedDate?.toString()).toBe(today.add({ days: 1 }).toString());
+  });
+
+  it('обычная (не recurring) задача по-прежнему завершается чекбоксом как раньше (регрессия)', async () => {
+    const user = userEvent.setup();
+    const task = makeTask({ title: 'Обычная без повтора' });
+    const { getStorage } = renderTaskDetail(task.id, { tasks: [task] });
+
+    const checkbox = await screen.findByRole('checkbox', {
+      name: t('taskDetail', 'completeCheckbox.label', { title: 'Обычная без повтора' }),
+    });
+    await user.click(checkbox);
+
+    await waitFor(async () => {
+      const stored = await getStorage().tasks.findById(task.id);
+      expect(stored?.status).toBe('completed');
+      expect(stored?.completionKind).toBe('done');
+    });
+  });
+
+  it('показывает RecurrenceChip с текстом правила для recurring-задачи', async () => {
+    const series = seedRecurrenceSeries({ templateJson: { unit: 'day', interval: 1 } });
+    const task = makeTask({
+      title: 'Ежедневная задача',
+      seriesId: series.id,
+      occurrenceSeq: 1n,
+    });
+    renderTaskDetail(task.id, { tasks: [task], recurrenceSeries: [series] });
+
+    await waitFor(() =>
+      expect(screen.getByText(t('taskDetail', 'recurrence.everyDay'))).toBeInTheDocument(),
+    );
+  });
+
+  it('не показывает блок повтора для обычной задачи', async () => {
+    const task = makeTask({ title: 'Совсем обычная' });
+    renderTaskDetail(task.id, { tasks: [task] });
+
+    await screen.findByLabelText(t('taskDetail', 'title.label'));
+    expect(
+      screen.queryByText(t('taskDetail', 'organization.recurrenceTitle')),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: t('taskDetail', 'organization.skipOccurrence') }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('«Пропустить это повторение» помечает completionKind=skipped и создаёт следующий occurrence', async () => {
+    const user = userEvent.setup();
+    const series = seedRecurrenceSeries();
+    const today = Temporal.Now.plainDateISO();
+    const task = makeTask({
+      title: 'Тренировка',
+      plannedDate: today,
+      seriesId: series.id,
+      occurrenceSeq: 1n,
+    });
+    const { getStorage } = renderTaskDetail(task.id, {
+      tasks: [task],
+      recurrenceSeries: [series],
+    });
+
+    await user.click(
+      await screen.findByRole('button', { name: t('taskDetail', 'organization.skipOccurrence') }),
+    );
+
+    await waitFor(async () => {
+      const stored = await getStorage().tasks.findById(task.id);
+      expect(stored?.completionKind).toBe('skipped');
+    });
+
+    const nextOccurrences = await getStorage().tasks.listBySeries(series.id, 'active');
+    expect(nextOccurrences).toHaveLength(1);
+    expect(nextOccurrences[0]?.plannedDate?.toString()).toBe(today.add({ days: 1 }).toString());
+  });
+
+  it('«Удалить всю серию» (после подтверждения) tombstone-ит occurrence, останавливает серию и возвращает на returnScreen', async () => {
+    const user = userEvent.setup();
+    const series = seedRecurrenceSeries();
+    const task = makeTask({
+      title: 'Серия под удаление',
+      seriesId: series.id,
+      occurrenceSeq: 1n,
+    });
+    const { getStorage, controller } = renderTaskDetail(
+      task.id,
+      { tasks: [task], recurrenceSeries: [series] },
+      'todayEmpty',
+    );
+
+    await user.click(
+      await screen.findByRole('button', { name: t('taskDetail', 'organization.deleteSeries') }),
+    );
+    const dialog = await screen.findByRole('dialog', {
+      name: t('taskDetail', 'organization.deleteSeriesConfirmTitle'),
+    });
+    await user.click(
+      within(dialog).getByRole('button', {
+        name: t('taskDetail', 'organization.deleteSeriesConfirmConfirm'),
+      }),
+    );
+
+    await waitFor(() => expect(controller.getState().screen).toBe('todayEmpty'));
+
+    const storedTask = await getStorage().tasks.findById(task.id);
+    expect(storedTask?.deletedAt).not.toBeNull();
+
+    const storedSeries = await getStorage().recurrenceSeries.findById(series.id);
+    expect(storedSeries?.active).toBe(false);
+    expect(storedSeries?.stopAfterOccurrenceSeq).toBe(1n);
   });
 });

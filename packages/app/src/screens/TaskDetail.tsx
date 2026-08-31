@@ -120,6 +120,7 @@ import {
 import {
   attachLabelToTaskCommand,
   cancelReminderCommand,
+  completeOccurrenceCommand,
   completeTaskCommand,
   convertChecklistItemToSubtaskCommand,
   convertSubtaskToChecklistItemCommand,
@@ -128,6 +129,7 @@ import {
   createLabelCommand,
   createTaskCommand,
   deleteChecklistItemCommand,
+  deleteSeriesCommand,
   deleteTaskCommand,
   detachLabelFromTaskCommand,
   doesDurationCrossDeadline,
@@ -138,8 +140,10 @@ import {
   isTaskLabelActive,
   makeDurationMinutes,
   makePriority,
+  parseRecurrenceRuleTemplate,
   resolveNextWeekMonday,
   resolveWeekend,
+  skipOccurrenceCommand,
   updateChecklistItemCommand,
   updateTaskCommand,
   type ChecklistItem,
@@ -148,6 +152,8 @@ import {
   type NewTaskRank,
   type Priority,
   type Project,
+  type RecurrenceRuleTemplate,
+  type RecurrenceSeries,
   type Reminder,
   type Section,
   type Task,
@@ -168,6 +174,7 @@ import {
   Label,
   Modal,
   Priority as PriorityBadge,
+  RecurrenceChip,
   ReminderChip,
   SubtaskRow,
   TemporalConflict,
@@ -242,6 +249,92 @@ const PRIORITY_LEVELS: readonly Priority[] = [
   makePriority(3),
   makePriority(4),
 ];
+
+// --- Organization: подпись правила повтора (эпик E11.2) --------------------
+//
+// `RecurrenceSeries.templateJson` не несёт готового текста — разбираем его
+// через `parseRecurrenceRuleTemplate` (`@shagi/core`, задание прямо просит
+// не читать сырой JSON руками) и строим формулировку здесь. Точные
+// словесные формы — решение этого пакета работ (задание: "реши сам
+// разумную русскую формулировку"):
+//  - интервал `N` (`каждые N дней/недель/...`) — ICU `plural` каталога
+//    (`@shagi/i18n` `message-format.ts`), а не одна хардкоженная форма:
+//    русское склонение числительных (1 день/2 дня/5 дней) не сводится к
+//    одной строке;
+//  - "29 февраля" (`unit:'year'`) получает правильный родительный падеж
+//    БЕСПЛАТНО от `Intl`, если день и месяц форматируются ОДНИМ вызовом
+//    `toLocaleString({day:'numeric', month:'long'})` — то же наблюдение,
+//    что уже описано в `.ultraplan` заметках по локализации; 2024 —
+//    тот же заведомо-верный високосный якорь, что `buildMonthLabels` выше
+//    в этом файле;
+//  - день недели ("каждый понедельник") показан в именительном падеже
+//    ("Каждую неделю: понедельник") вместо дательного множественного
+//    ("...по понедельникам") — грамматически верное склонение дня недели
+//    во множественном дательном не входит ни в `weekdayName` (только
+//    именительный), ни в публичный API `@shagi/nlp` (внутренние словари
+//    accusative-форм не экспортируются) — переизобретать словарь склонений
+//    ради одной подписи вне территории этого пакета работ.
+
+const RECURRENCE_WEEKDAYS_MON_FRI: readonly number[] = [1, 2, 3, 4, 5];
+
+function isRecurrenceWeekdaysMonFri(byWeekday: readonly number[]): boolean {
+  return (
+    byWeekday.length === RECURRENCE_WEEKDAYS_MON_FRI.length &&
+    RECURRENCE_WEEKDAYS_MON_FRI.every((day) => byWeekday.includes(day))
+  );
+}
+
+function recurrenceMonthDayLabel(month: number, day: number): string {
+  return Temporal.PlainDate.from({ year: 2024, month, day }).toLocaleString(DEFAULT_LOCALE, {
+    month: 'long',
+    day: 'numeric',
+  });
+}
+
+/** Каждая ветка — литеральный вызов `t()` (см. `priorityLabel` выше — тот же
+ * приём ради статического гейта `check-i18n-catalog.mjs`). `switch` по
+ * `rule.unit` без `default` — тот же приём, что `groupLabel`/`priorityLabel`:
+ * исчерпывающий по `RecurrenceRuleUnit`, растущий тип перестанет
+ * компилироваться, а не молча вернёт `undefined`. */
+function recurrenceRuleLabel(rule: RecurrenceRuleTemplate): string {
+  switch (rule.unit) {
+    case 'day':
+      return rule.interval === 1
+        ? t('taskDetail', 'recurrence.everyDay')
+        : t('taskDetail', 'recurrence.everyNDays', { interval: rule.interval });
+    case 'week': {
+      if (rule.byWeekday !== undefined && rule.byWeekday.length > 0) {
+        if (isRecurrenceWeekdaysMonFri(rule.byWeekday)) {
+          return t('taskDetail', 'recurrence.weekdays');
+        }
+        const days = rule.byWeekday
+          .toSorted((a, b) => a - b)
+          .map((day) => weekdayName(day, 'long'))
+          .join(', ');
+        return t('taskDetail', 'recurrence.weeklyOnDays', { days });
+      }
+      return rule.interval === 1
+        ? t('taskDetail', 'recurrence.everyWeek')
+        : t('taskDetail', 'recurrence.everyNWeeks', { interval: rule.interval });
+    }
+    case 'month':
+      if (rule.byMonthDay !== undefined) {
+        return t('taskDetail', 'recurrence.monthlyOnDay', { day: rule.byMonthDay });
+      }
+      return rule.interval === 1
+        ? t('taskDetail', 'recurrence.everyMonth')
+        : t('taskDetail', 'recurrence.everyNMonths', { interval: rule.interval });
+    case 'year':
+      if (rule.byMonth !== undefined && rule.byMonthDay !== undefined) {
+        return t('taskDetail', 'recurrence.yearlyOnDate', {
+          date: recurrenceMonthDayLabel(rule.byMonth, rule.byMonthDay),
+        });
+      }
+      return rule.interval === 1
+        ? t('taskDetail', 'recurrence.everyYear')
+        : t('taskDetail', 'recurrence.everyNYears', { interval: rule.interval });
+  }
+}
 
 // --- Planning: конвертация Temporal ↔ простые числа `@shagi/ui` -------------
 //
@@ -690,6 +783,13 @@ export function TaskDetail(): ReactElement | null {
   const [newChecklistText, setNewChecklistText] = useState('');
   const [convertSubtaskConfirm, setConvertSubtaskConfirm] = useState<Task | null>(null);
 
+  // --- Organization: повторы (эпик E11.2) — `null` для НЕ recurring задачи -
+  const [recurrence, setRecurrence] = useState<{
+    readonly series: RecurrenceSeries;
+    readonly ruleLabel: string;
+  } | null>(null);
+  const [deleteSeriesConfirm, setDeleteSeriesConfirm] = useState(false);
+
   // --- Planning: состояние редактора дат (см. заголовок файла, эпик E08.2) --
   const [availableFromPicker, setAvailableFromPicker] = useState<PlanningDatePickerState | null>(
     null,
@@ -728,6 +828,7 @@ export function TaskDetail(): ReactElement | null {
       nextTaskLabels,
       nextActiveProjects,
       nextReminders,
+      nextSeries,
     ] = await Promise.all([
       nextTask.projectId === null
         ? Promise.resolve(null)
@@ -738,6 +839,9 @@ export function TaskDetail(): ReactElement | null {
       storage.taskLabels.listByTask(nextTask.id),
       storage.projects.listActive(),
       storage.reminders.listByTask(nextTask.id),
+      nextTask.seriesId === null
+        ? Promise.resolve(null)
+        : storage.recurrenceSeries.findById(nextTask.seriesId),
     ]);
     setProject(nextProject);
     setSubtasks(nextSubtasks);
@@ -747,6 +851,17 @@ export function TaskDetail(): ReactElement | null {
       new Set(nextTaskLabels.filter(isTaskLabelActive).map((link) => link.labelId)),
     );
     setActiveProjects(nextActiveProjects);
+    // Организация: повтор (эпик E11.2) — `null` для НЕ recurring задачи
+    // (`nextTask.seriesId === null`), см. заголовок файла раздел
+    // «подпись правила повтора» за обоснованием формулировки.
+    setRecurrence(
+      nextSeries === null
+        ? null
+        : {
+            series: nextSeries,
+            ruleLabel: recurrenceRuleLabel(parseRecurrenceRuleTemplate(nextSeries.templateJson)),
+          },
+    );
     // Правило 19 (`02§2`, E08.1): максимум один АКТИВНЫЙ explicit reminder на
     // задачу — фильтр по `kind`+`enabled` тот же, что уже применяет
     // `reminder-cancel.ts` (см. её комментарий про `countExplicitByTask`,
@@ -869,9 +984,23 @@ export function TaskDetail(): ReactElement | null {
     );
   }
 
+  // `completeOccurrenceCommand` (эпик E11.2) — см. тот же комментарий в
+  // `Today.tsx`/`ProjectDetail.tsx`: для НЕ recurring задачи (`seriesId ===
+  // null`) ведёт себя идентично `completeTaskCommand`, обязательный вход
+  // `occurrenceLocalDate` — уже материализованная локальная дата (CLAUDE.md
+  // «Время»). Только ГЛАВНЫЙ чекбокс задачи — чекбоксы subtasks ниже
+  // (`handleCompleteSubtask`) остаются на `completeTaskCommand`: subtasks не
+  // могут сами иметь повтор (`01§11.1`).
   function handleComplete(): void {
     if (task === null || task.status === 'completed') return;
-    void runAndRefresh(completeTaskCommand({ id: task.id }, commandDeps()), refreshOk, showError);
+    void runAndRefresh(
+      completeOccurrenceCommand(
+        { id: task.id, occurrenceLocalDate: Temporal.Now.plainDateISO() },
+        commandDeps(),
+      ),
+      refreshOk,
+      showError,
+    );
   }
 
   const breadcrumbText =
@@ -1108,6 +1237,47 @@ export function TaskDetail(): ReactElement | null {
         setReminderError(null);
         await refreshOk();
       }
+    })();
+  }
+
+  // --- Organization: повтор (эпик E11.2, `01§11.5`/`01§11.8`) ------------------
+
+  /** «Пропустить это повторение» — `skipOccurrenceCommand` (`@shagi/core`):
+   * та же генерация следующего occurrence, что и завершение, но текущий
+   * получает `completionKind:'skipped'` вместо `'done'` (см. её
+   * комментарий). Без подтверждения — обратимо тем же способом, что и
+   * обычное завершение (Undo-тост UI вне охвата этого пакета работ, см.
+   * заголовок файла). */
+  function handleSkipOccurrence(): void {
+    if (task === null) return;
+    void runAndRefresh(
+      skipOccurrenceCommand(
+        { id: task.id, occurrenceLocalDate: Temporal.Now.plainDateISO() },
+        commandDeps(),
+      ),
+      refreshOk,
+      showError,
+    );
+  }
+
+  /** «Удалить всю серию» (`01§11.8`) — подтверждение обязательно (тот же
+   * паттерн `Modal`, что уже применён на этом экране для конвертации
+   * subtask→checklist, задание): необратимое по ощущению действие.
+   * `deleteSeriesCommand` tombstone-ит ТЕКУЩИЙ occurrence и останавливает
+   * генерацию будущих (см. её комментарий) — после успеха экрану больше
+   * нечего показывать, `controller.closeTask()`, тот же принцип, что если
+   * бы задачу удалили обычным способом. */
+  function handleConfirmDeleteSeries(): void {
+    if (task === null) return;
+    const currentOccurrenceId = task.id;
+    setDeleteSeriesConfirm(false);
+    void (async () => {
+      const result = await deleteSeriesCommand({ currentOccurrenceId }, commandDeps());
+      if (result.status === 'ok') {
+        controller.closeTask();
+        return;
+      }
+      showError();
     })();
   }
 
@@ -1569,6 +1739,21 @@ export function TaskDetail(): ReactElement | null {
             </Button>
           </form>
         </div>
+
+        {/* Повтор (эпик E11.2, `01§11.5`/`01§11.8`) — только для recurring
+         * задачи (`recurrence !== null`), пусто для обычной. */}
+        {recurrence !== null && (
+          <div>
+            <h3>{t('taskDetail', 'organization.recurrenceTitle')}</h3>
+            <RecurrenceChip label={recurrence.ruleLabel} />
+            <Button variant="secondary" onClick={handleSkipOccurrence}>
+              {t('taskDetail', 'organization.skipOccurrence')}
+            </Button>
+            <Button variant="destructive" onClick={() => setDeleteSeriesConfirm(true)}>
+              {t('taskDetail', 'organization.deleteSeries')}
+            </Button>
+          </div>
+        )}
       </section>
 
       {/* --- 5. Subtasks ---------------------------------------------------- */}
@@ -1880,6 +2065,25 @@ export function TaskDetail(): ReactElement | null {
         }
       >
         <p>{t('taskDetail', 'subtasks.convertConfirmBody')}</p>
+      </Modal>
+
+      {/* --- Удаление всей серии (`01§11.8`) — подтверждение обязательно --- */}
+      <Modal
+        open={deleteSeriesConfirm}
+        onClose={() => setDeleteSeriesConfirm(false)}
+        title={t('taskDetail', 'organization.deleteSeriesConfirmTitle')}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setDeleteSeriesConfirm(false)}>
+              {t('taskDetail', 'organization.deleteSeriesConfirmCancel')}
+            </Button>
+            <Button variant="destructive" onClick={handleConfirmDeleteSeries}>
+              {t('taskDetail', 'organization.deleteSeriesConfirmConfirm')}
+            </Button>
+          </>
+        }
+      >
+        <p>{t('taskDetail', 'organization.deleteSeriesConfirmBody')}</p>
       </Modal>
     </div>
   );

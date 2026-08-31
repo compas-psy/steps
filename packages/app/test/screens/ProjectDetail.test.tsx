@@ -2,12 +2,13 @@ import { useEffect, useState, type ReactElement } from 'react';
 
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { Temporal } from '@js-temporal/polyfill';
 import { createUnavailablePlatform } from '@shagi/platform';
 import { t } from '@shagi/i18n';
 import { makeOutboxEntry, makeProject, makeTask } from '@shagi/storage/contract';
 import type { StoragePort } from '@shagi/storage';
-import type { Project, Section, Task, Uuid } from '@shagi/core';
-import { generateUuidV7, initialRank, rankAfter } from '@shagi/core';
+import type { Project, RecurrenceSeries, Section, Task, Uuid } from '@shagi/core';
+import { generateUuidV7, initialRank, makeOccurrenceSeq, rankAfter } from '@shagi/core';
 import { describe, expect, it } from 'vitest';
 
 import type { AppHost } from '../../src/App.js';
@@ -33,6 +34,7 @@ async function seed(
     projects?: readonly Project[];
     sections?: readonly Section[];
     tasks?: readonly Task[];
+    recurrenceSeries?: readonly RecurrenceSeries[];
   },
 ): Promise<void> {
   for (const project of entities.projects ?? []) {
@@ -51,6 +53,18 @@ async function seed(
       });
     });
   }
+  // Серии — ДО задач: `recurrenceSeries` фикстура ниже задаёт `task.seriesId`
+  // на уже существующую серию (тот же порядок, что и `createRecurringTask
+  // Command` в проде — см. её комментарий про безвредную осиротевшую серию
+  // vs опасную задачу-в-никуда).
+  for (const series of entities.recurrenceSeries ?? []) {
+    await storage.runTransaction(async (tx) => {
+      await tx.applyMutation({
+        writes: [{ entity: 'recurrence_series', value: series }],
+        outbox: [makeOutboxEntry('recurrence_series', series.id)],
+      });
+    });
+  }
   for (const task of entities.tasks ?? []) {
     await storage.runTransaction(async (tx) => {
       await tx.applyMutation({
@@ -61,6 +75,30 @@ async function seed(
   }
 }
 
+/** См. `Today.test.tsx` за тем же обоснованием узкой фикстуры-дублёра. */
+function seedRecurrenceSeries(
+  overrides: Partial<
+    Omit<RecurrenceSeries, 'anchorType' | 'rrule' | 'completionIntervalJson'>
+  > = {},
+): RecurrenceSeries {
+  const now = Temporal.Now.instant();
+  return {
+    id: generateUuidV7(),
+    anchorType: 'scheduled',
+    rrule: JSON.stringify({ unit: 'day', interval: 1 }),
+    completionIntervalJson: null,
+    templateJson: { unit: 'day', interval: 1 },
+    active: true,
+    nextOccurrenceSeq: makeOccurrenceSeq(2n),
+    stopAfterOccurrenceSeq: null,
+    templateRevision: 1n,
+    createdAt: now,
+    updatedAt: now,
+    clocks: {},
+    ...overrides,
+  };
+}
+
 /** Тот же приём захвата `storage`, что `Inbox.test.tsx`/`Projects.test.tsx`
  * — сеет данные и монтирует экран только ПОСЛЕ завершения посева, на том же
  * инстансе `StoragePort`, который получает сам экран. */
@@ -68,11 +106,13 @@ function SeedThenProjectDetailCapturing({
   projects,
   sections = [],
   tasks = [],
+  recurrenceSeries = [],
   onStorage,
 }: {
   projects: readonly Project[];
   sections?: readonly Section[];
   tasks?: readonly Task[];
+  recurrenceSeries?: readonly RecurrenceSeries[];
   onStorage: (storage: StoragePort) => void;
 }): ReactElement | null {
   const storage = useStorage();
@@ -84,7 +124,7 @@ function SeedThenProjectDetailCapturing({
 
   useEffect(() => {
     let cancelled = false;
-    void seed(storage, { projects, sections, tasks }).then(() => {
+    void seed(storage, { projects, sections, tasks, recurrenceSeries }).then(() => {
       if (!cancelled) setSeeded(true);
     });
     return () => {
@@ -100,6 +140,7 @@ function renderProjectDetail(
   project: Project,
   sections: readonly Section[] = [],
   tasks: readonly Task[] = [],
+  recurrenceSeries: readonly RecurrenceSeries[] = [],
 ): { getStorage: () => StoragePort; controller: ReturnType<typeof createAppController> } {
   const controller = createAppController({
     screen: 'projectDetail',
@@ -112,6 +153,7 @@ function renderProjectDetail(
         projects={[project]}
         sections={sections}
         tasks={tasks}
+        recurrenceSeries={recurrenceSeries}
         onStorage={(storage) => (capturedStorage = storage)}
       />
     </AppProvider>,
@@ -690,5 +732,45 @@ describe('ProjectDetail — CRUD секций (E09.4)', () => {
       }),
     ).not.toBeInTheDocument();
     expect(within(noneSection).queryByTestId(/^sectionDrag-/)).not.toBeInTheDocument();
+  });
+});
+
+describe('ProjectDetail — повторы (E11.2)', () => {
+  it('«Завершить» на recurring-задаче вызывает completeOccurrenceCommand и генерирует следующий occurrence', async () => {
+    const user = userEvent.setup();
+    const project = makeProject({ title: 'Проект с повтором' });
+    const series = seedRecurrenceSeries();
+    const today = Temporal.Now.plainDateISO();
+    const task = makeTask({
+      title: 'Полить цветы в проекте',
+      projectId: project.id,
+      plannedDate: today,
+      seriesId: series.id,
+      occurrenceSeq: 1n,
+    });
+    const { getStorage } = renderProjectDetail(project, [], [task], [series]);
+
+    await waitFor(() => expect(screen.getByText('Полить цветы в проекте')).toBeInTheDocument());
+    await user.click(
+      screen.getByRole('button', {
+        name: t('projectDetail', 'menu.triggerLabel', { title: 'Полить цветы в проекте' }),
+      }),
+    );
+    await user.click(
+      screen.getByRole('menuitem', { name: t('projectDetail', 'actions.complete') }),
+    );
+
+    // Текст заголовка НЕ пропадает со страницы (в отличие от обычной
+    // задачи) — следующий occurrence наследует тот же `title` и остаётся
+    // активным в том же проекте (`01§11.1`/`01§11.7`), поэтому регрессия
+    // тут проверяется через хранилище, не через исчезновение текста.
+    await waitFor(async () => {
+      const stored = await getStorage().tasks.findById(task.id);
+      expect(stored?.status).toBe('completed');
+    });
+
+    const nextOccurrences = await getStorage().tasks.listBySeries(series.id, 'active');
+    expect(nextOccurrences).toHaveLength(1);
+    expect(nextOccurrences[0]?.plannedDate?.toString()).toBe(today.add({ days: 1 }).toString());
   });
 });
