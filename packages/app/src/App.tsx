@@ -19,6 +19,7 @@ import { isAvailable, type PlatformCapabilitiesRegistry } from '@shagi/platform'
 import { AppProvider, useAppState } from './state/context.js';
 import type { StorageBackend } from './state/storage-backend.js';
 import { SCREENS } from './screens/index.js';
+import { AppShell, isMainTabScreen } from './shell/AppShell.js';
 
 /**
  * Контракт между оболочкой (`apps/*`) и продуктом (`@shagi/app`).
@@ -39,7 +40,18 @@ export interface AppHost {
 function Screens(): ReactElement | null {
   const { screen } = useAppState();
   const ScreenComponent = SCREENS[screen];
-  return ScreenComponent === undefined ? null : <ScreenComponent />;
+  if (ScreenComponent === undefined) return null;
+  // `AppShell` (постоянная нижняя навигация, эпик E09) оборачивает только
+  // «главные» экраны (`isMainTabScreen`) — онбординг-поток и `Inbox`
+  // (карточка со своей кнопкой «Назад», не равноправная вкладка) рендерятся
+  // как раньше, без обвязки.
+  return isMainTabScreen(screen) ? (
+    <AppShell>
+      <ScreenComponent />
+    </AppShell>
+  ) : (
+    <ScreenComponent />
+  );
 }
 
 /**

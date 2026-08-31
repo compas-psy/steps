@@ -15,10 +15,19 @@
  * Остальные экраны (`today`, `inbox`, `plan`, …) заводятся эпиками,
  * которым они принадлежат (E06+) — `ScreenId` растёт по мере поступления
  * экранов, не декларируется наперёд списком, который никто не реализует.
+ * `'projects'` добавлен эпиком E09 (M16 «Projects» — список всех проектов
+ * пользователя с доступом к созданию/архиву, `12_SCREEN_STATE_MATRIX.md`).
  */
 
 export type ScreenId =
-  'launch' | 'welcome' | 'signIn' | 'firstTask' | 'nlpOnboarding' | 'todayEmpty' | 'inbox';
+  | 'launch'
+  | 'welcome'
+  | 'signIn'
+  | 'firstTask'
+  | 'nlpOnboarding'
+  | 'todayEmpty'
+  | 'inbox'
+  | 'projects';
 
 /**
  * `localMode` — пользователь выбрал «Начать локально» (M02 Welcome) без
