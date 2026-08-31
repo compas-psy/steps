@@ -37,3 +37,33 @@ export { createTaskCommand, type CreateTaskInput } from './create-task.js';
 export { updateTaskCommand, type UpdateTaskInput, type UpdateTaskPatch } from './update-task.js';
 export { completeTaskCommand, type CompleteTaskInput } from './complete-task.js';
 export { deleteTaskCommand, type DeleteTaskInput } from './delete-task.js';
+
+// --- Порт хранения Reminder (инверсия зависимости, ADR-0003) — E08 -----------
+export type {
+  CommandReminderDomainMutation,
+  CommandReminderEntityWrite,
+  CommandReminderReader,
+  CommandReminderStoragePort,
+  CommandReminderWriteTransaction,
+  ReminderCommandDeps,
+} from './reminder-port.js';
+
+// --- Команды Reminder (`01§18`) — E08 -----------------------------------------
+export {
+  createExplicitReminderCommand,
+  type CreateExplicitReminderInput,
+  type CreateExplicitReminderResult,
+} from './reminder-explicit.js';
+export {
+  createDeadlineApproachingReminderCommand,
+  createDeadlineMissedReminderCommand,
+  type CreateDeadlineApproachingReminderInput,
+  type CreateDeadlineApproachingReminderResult,
+  type CreateDeadlineMissedReminderInput,
+  type CreateDeadlineMissedReminderResult,
+} from './reminder-deadline.js';
+export {
+  cancelReminderCommand,
+  type CancelReminderInput,
+  type CancelReminderResult,
+} from './reminder-cancel.js';
