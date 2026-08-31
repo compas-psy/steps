@@ -1,21 +1,31 @@
-import type { ReactElement } from 'react';
+import { render, screen } from '@testing-library/react';
+import { createUnavailablePlatform } from '@shagi/platform';
 import { describe, expect, it } from 'vitest';
 
 import { App, type AppHost } from '../src/index.js';
-import { createUnavailablePlatform } from '@shagi/platform';
+
+function testHost(): AppHost {
+  return { platform: createUnavailablePlatform(), storageBackend: { kind: 'memory' } };
+}
 
 describe('App', () => {
-  it('рендерит ровно один корневой узел с крючком для smoke-теста оболочки, без текста', () => {
-    const host: AppHost = { platform: createUnavailablePlatform() };
-    // Компонент — чистая функция без хуков, вызвать напрямую и посмотреть
-    // на возвращённый React-элемент дешевле, чем поднимать DOM-рендерер
-    // ради одного div (в этом пакете работ его и не поднять — окружение
-    // vitest здесь `node`, без DOM).
-    const rendered = App({ host }) as ReactElement<Record<string, unknown>, string>;
+  it('монтирует корневой узел с крючком для smoke-теста оболочки', () => {
+    render(<App host={testHost()} />);
+    const root = document.querySelector('[data-shagi-app-root]');
+    expect(root).not.toBeNull();
+  });
 
-    expect(rendered.type).toBe('div');
-    expect(rendered.props['data-shagi-app-root']).toBe('');
-    // Ни детей, ни текста — экранов нет до E04 (SPEC §3).
-    expect(rendered.props['children']).toBeUndefined();
+  it('не падает и не инициализирует localDb, когда платформа его не поддерживает (Unavailable)', () => {
+    // `createUnavailablePlatform()` даёт `localDb: Unavailable` — boot-эффект
+    // обязан пройти проверку `isAvailable` и молча пропустить initialize/close,
+    // а не бросить (SPEC §4: Unavailable — честный ответ, не ошибка).
+    expect(() => render(<App host={testHost()} />)).not.toThrow();
+  });
+
+  it('рендерит экран по умолчанию (launch) без падения, даже если реестр экранов пуст', () => {
+    // `SCREENS` заполняется пакетами работ E04.2+ — до этого путь
+    // `SCREENS[screen] === undefined` обязан рендерить пустой узел, не падать.
+    render(<App host={testHost()} />);
+    expect(screen.queryByRole('alert')).toBeNull();
   });
 });

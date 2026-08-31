@@ -18,18 +18,28 @@
  *    (`'share' in navigator`) — проверка возможности в рантайме, а не
  *    догадка по UA;
  *  - `updater` — обновление веба это перезагрузка с новым service worker'ом
- *    (SPEC §4, `UpdaterPort`: «На Web это просто перезагрузка страницы»).
+ *    (SPEC §4, `UpdaterPort`: «На Web это просто перезагрузка страницы»);
+ *  - `localDb` — с E04 больше не `Unavailable`: `@shagi/storage` поставлен
+ *    (эпик E02), реальный `StoragePort` для веба — `createIndexedDbStorage`,
+ *    которую собирает `main.tsx` и кладёт в `AppHost.storage` напрямую (это
+ *    отдельное поле, не через `platform` — командный слой `@shagi/core`
+ *    работает с `StoragePort`, а не с реестром возможностей платформы).
+ *    Сам `localDb`-порт здесь — тонкий lifecycle-хук boot-последовательности
+ *    (`@shagi/app` вызывает `initialize()`/`close()` одинаково на всех
+ *    платформах): `IndexedDbStorage` открывает соединение лениво в своём
+ *    конструкторе (см. `createIndexedDbStorage`, `@shagi/storage`) и сама
+ *    управляет им — на вебе явно открывать/закрывать нечего, оба метода
+ *    честные no-op, а не притворство, что здесь происходит реальная работа.
  *
- * Остальные порты помечены `Unavailable` с объяснением — либо у платформы
- * этого нет в принципе (haptics, globalShortcut, widget — см. заголовки
- * портов), либо инфраструктура ещё не построена в этом пакете работ
- * (localDb — репозитории живут в `@shagi/storage`, ещё не поставлен;
- * fileStore — вложения это R1b; secureCredentials/billing/pushHint —
- * аккаунта и сервера в R1a нет вовсе; calendarProvider — R1.1;
- * audioCapture — R3).
+ * Остальные порты помечены `Unavailable` с объяснением — у платформы этого
+ * нет в принципе (haptics, globalShortcut, widget — см. заголовки портов),
+ * либо инфраструктура ещё не построена в этом пакете работ (fileStore —
+ * вложения это R1b; secureCredentials/billing/pushHint — аккаунта и
+ * сервера в R1a нет вовсе; calendarProvider — R1.1; audioCapture — R3).
  */
 import type {
   DeepLinkPort,
+  LocalDbPort,
   NotificationSchedulerPort,
   PlatformCapabilitiesRegistry,
   SharePort,
@@ -98,6 +108,18 @@ function createNotificationScheduler(): NotificationSchedulerPort {
     async getSchedulingCapability() {
       return 'no-guarantee';
     },
+  };
+}
+
+/**
+ * `IndexedDbStorage` (реальный `StoragePort`) открывает соединение сама —
+ * см. заголовок файла. `initialize()`/`close()` — честный no-op, симметричный
+ * с нативными платформами, которым есть что открывать/закрывать явно.
+ */
+function createLocalDb(): LocalDbPort {
+  return {
+    async initialize() {},
+    async close() {},
   };
 }
 
@@ -173,9 +195,7 @@ function createUpdater(): UpdaterPort | Unavailable {
 
 export function createWebPlatform(): PlatformCapabilitiesRegistry {
   return {
-    localDb: unavailable(
-      'Репозитории — задача @shagi/storage, ещё не поставлена (следующий пакет работ)',
-    ),
+    localDb: createLocalDb(),
     fileStore: unavailable('Вложения — R1b (SPEC/00 §10)'),
     secureCredentials: unavailable('Аккаунта и синка в R1a нет — нечего защищённо хранить'),
     notificationScheduler: createNotificationScheduler(),

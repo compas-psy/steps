@@ -12,8 +12,17 @@ import '@shagi/ui/tokens.css';
 
 import { createMobilePlatform } from './platform.js';
 
+// `storageBackend: { kind: 'memory' }` — временно, пока не поставлен
+// Tauri SQL-плагин (нет Rust-тулчейна в среде разработки этого пакета
+// работ — `.ultraplan/research/04-android-release.md`). Честно: данные НЕ
+// переживают перезапуск оболочки, это не притворство, что персистентность
+// уже есть. `@shagi/app` сама решает, какой адаптер `@shagi/storage`
+// строить — оболочке запрещено видеть этот пакет напрямую (SPEC §3,
+// `apps/web/test/architecture-boundary.test.ts` сканирует все три
+// оболочки одним и тем же правилом).
 const host: AppHost = {
   platform: createMobilePlatform(),
+  storageBackend: { kind: 'memory' },
 };
 
 const container = document.getElementById('root');

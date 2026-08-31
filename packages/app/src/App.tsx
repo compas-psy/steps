@@ -1,38 +1,74 @@
 /**
  * `App` — единственная точка монтирования продукта (SPEC/00 §3).
  *
- * Экранов здесь нет — они появятся в E04. До тех пор `App` существует,
- * чтобы `apps/web|desktop|mobile` было ЧТО монтировать уже сейчас (E00.5):
- * оболочка собирает `AppHost` из платформенных портов и передаёт его сюда,
- * а корневой узел — единственное, что рендерится. Ни одного пользовательского
- * текста, ни одной ветки по `host.platform` — это уже была бы продуктовая
- * логика, а не корневой узел.
+ * До E04 это был пустой корневой узел (E00.5) — оболочки могли монтировать
+ * `@shagi/app` до того, как появились экраны. С E04 здесь: boot-
+ * последовательность (`platform.localDb.initialize()`/`close()` — SPEC §4,
+ * «порт существует, чтобы приложение могло инициализировать хранилище в
+ * boot-последовательности»), контекст состояния навигации (`state/
+ * context.tsx`) и переключение экранов матрицы M01–M06
+ * (`docs/spec/SPEC/12_SCREEN_STATE_MATRIX.md`).
  *
  * `data-shagi-app-root` — устойчивый крючок для smoke-теста оболочки
- * (Playwright у `apps/web`): «примонтировалось» проверяется по DOM, а не по
- * содержимому, которого здесь намеренно нет.
+ * (Playwright у `apps/web`), сохранён неизменным.
  */
-import type { ReactElement } from 'react';
+import { useEffect, type ReactElement } from 'react';
 
-import type { PlatformCapabilitiesRegistry } from '@shagi/platform';
+import { isAvailable, type PlatformCapabilitiesRegistry } from '@shagi/platform';
+
+import { AppProvider, useAppState } from './state/context.js';
+import type { StorageBackend } from './state/storage-backend.js';
+import { SCREENS } from './screens/index.js';
 
 /**
  * Контракт между оболочкой (`apps/*`) и продуктом (`@shagi/app`).
  *
- * Единственное поле сегодня — реестр возможностей платформы: оболочка
- * поставляет реализации портов (SPEC §4), продукт решает, что с ними
- * делать, когда появятся экраны. Новые поля host'а добавляются по мере
- * того, как экранам реально есть, что у оболочки спросить (deep link,
- * сохранение файла и т.д.) — не заранее.
+ * `platform` — реестр возможностей платформы (SPEC §4). `storageBackend` —
+ * ТОЛЬКО описание, какой адаптер `@shagi/storage` использовать (данные, не
+ * готовый объект) — оболочке запрещено импортировать `@shagi/storage`
+ * напрямую (`apps/web/test/architecture-boundary.test.ts`, SPEC §3), сам
+ * `StoragePort` строит `@shagi/app` через `resolveStorageBackend`
+ * (`state/storage-backend.ts`). Новые поля host'а добавляются по мере
+ * того, как экранам реально есть, что у оболочки спросить — не заранее.
  */
 export interface AppHost {
   readonly platform: PlatformCapabilitiesRegistry;
+  readonly storageBackend: StorageBackend;
+}
+
+function Screens(): ReactElement | null {
+  const { screen } = useAppState();
+  const ScreenComponent = SCREENS[screen];
+  return ScreenComponent === undefined ? null : <ScreenComponent />;
+}
+
+/**
+ * Boot-последовательность: `localDb.initialize()` при монтировании,
+ * `close()` при размонтировании. `Unavailable` (тестовый режим, SPEC §4)
+ * пропускается молча — это не ошибка, а честный ответ «на этой платформе
+ * персистентности нет», уже разобранный на уровне типов `isAvailable`.
+ */
+function useBootstrapLocalDb(platform: PlatformCapabilitiesRegistry): void {
+  useEffect(() => {
+    const localDb = platform.localDb;
+    if (!isAvailable(localDb)) return;
+    void localDb.initialize();
+    return () => void localDb.close();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `platform` — стабильный объект от вызывающей оболочки, пересоздание host'а не входит в жизненный цикл монтирования
+  }, []);
+}
+
+function Bootstrap({ host }: { host: AppHost }): ReactElement {
+  useBootstrapLocalDb(host.platform);
+  return <Screens />;
 }
 
 export function App({ host }: { host: AppHost }): ReactElement {
-  // host пока не используется здесь — это `@shagi/app`, а не screens/routes
-  // (те приходят в E04). Поле принято в сигнатуре, а не отброшено, чтобы
-  // оболочки уже сейчас типизированно передавали host целиком.
-  void host;
-  return <div data-shagi-app-root="" />;
+  return (
+    <div data-shagi-app-root="">
+      <AppProvider host={host}>
+        <Bootstrap host={host} />
+      </AppProvider>
+    </div>
+  );
 }

@@ -37,10 +37,17 @@ describe('createWebPlatform', () => {
     unsubscribe();
   });
 
+  it('localDb доступен (E04) и initialize()/close() не бросают', async () => {
+    const platform = createWebPlatform();
+    expect(isAvailable(platform.localDb)).toBe(true);
+    if (!isAvailable(platform.localDb)) throw new Error('unreachable');
+    await expect(platform.localDb.initialize()).resolves.toBeUndefined();
+    await expect(platform.localDb.close()).resolves.toBeUndefined();
+  });
+
   it('капабилити, которых у веба на этом этапе честно нет, помечены Unavailable с причиной', () => {
     const platform = createWebPlatform();
     const expectedUnavailable = [
-      'localDb',
       'fileStore',
       'secureCredentials',
       'globalShortcut',

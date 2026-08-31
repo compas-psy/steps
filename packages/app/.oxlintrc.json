@@ -25,6 +25,10 @@
   "extends": ["../../.oxlintrc.json"],
   "jsPlugins": [{ "name": "eslint-js", "specifier": "oxlint-plugin-eslint" }],
   "rules": {
+    // `test/setup.ts` (E04) регистрирует jest-dom матчеры побочным
+    // импортом — тот же легитимный паттерн и то же точечное исключение,
+    // что уже заведено в `packages/ui/.oxlintrc.json` для того же модуля.
+    "import/no-unassigned-import": ["error", { "allow": ["@testing-library/jest-dom/vitest"] }],
     "eslint-js/no-restricted-syntax": [
       "error",
       {
