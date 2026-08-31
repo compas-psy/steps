@@ -109,6 +109,7 @@ export {
   type TodayStorageQueryPort,
   type TodayTaskReader,
 } from './rules/select-today-tasks.js';
+export { selectPlanAgenda, type PlanDayGroup } from './rules/select-plan-agenda.js';
 
 // --- Идентификаторы (§6, конспект §4) ----------------------------------------
 // Сведено вручную при приёмке: пакеты работ E01.2 и E01.3 шли параллельно и

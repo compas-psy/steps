@@ -18,6 +18,9 @@
  * `search` (M34 Empty / M35 Results) — эпик E12, пакет работ E12.1: см.
  * заголовок `state/store.ts`, блок про `'search'`, за обоснованием
  * «обычный `ScreenId`, не оверлей».
+ *
+ * `plan` (M14 Agenda / M15 selected) — эпик E12, пакет работ E12.2: см.
+ * заголовок `state/store.ts`, блок про `'plan'`, и заголовок `Plan.tsx`.
  */
 import type { ComponentType } from 'react';
 
@@ -26,6 +29,7 @@ import { FirstTask } from './FirstTask.js';
 import { Inbox } from './Inbox.js';
 import { Launch } from './Launch.js';
 import { NlpOnboarding } from './NlpOnboarding.js';
+import { Plan } from './Plan.js';
 import { ProjectDetail } from './ProjectDetail.js';
 import { Projects } from './Projects.js';
 import { Search } from './Search.js';
@@ -38,6 +42,7 @@ export { FirstTask } from './FirstTask.js';
 export { Inbox } from './Inbox.js';
 export { Launch } from './Launch.js';
 export { NlpOnboarding } from './NlpOnboarding.js';
+export { Plan } from './Plan.js';
 export { ProjectDetail } from './ProjectDetail.js';
 export { Projects } from './Projects.js';
 export { Search } from './Search.js';
@@ -58,4 +63,5 @@ export const SCREENS: Partial<Record<ScreenId, ComponentType>> = {
   projectDetail: ProjectDetail,
   taskDetail: TaskDetail,
   search: Search,
+  plan: Plan,
 };

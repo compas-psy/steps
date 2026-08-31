@@ -1,0 +1,13 @@
+{
+  "pageTitle": "План",
+  "dateStrip.label": "Полоса дат",
+  "dateStrip.pickDate": "Выбрать дату",
+  "datePickerDialog.title": "Перейти к дате",
+  "datePickerDialog.gridLabel": "Выбор даты",
+  "datePickerDialog.prevMonth": "Предыдущий месяц",
+  "datePickerDialog.nextMonth": "Следующий месяц",
+  "availableFromMarker.label": "Станет доступна",
+  "loadMore.button": "Показать ещё",
+  "empty.title": "Впереди пока нет запланированных задач.",
+  "empty.description": "Запланируйте задачу на будущую дату — она появится здесь."
+}

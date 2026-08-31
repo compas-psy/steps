@@ -164,6 +164,24 @@ describe('AppController', () => {
     );
   });
 
+  it('goTo("plan") переводит контроллер на экран Plan (M14/M15, эпик E12.2) — обычный переход, не оверлей', () => {
+    const controller = createAppController({ screen: 'projects' });
+    const listener = vi.fn();
+    controller.subscribe(listener);
+
+    controller.goTo('plan');
+
+    expect(controller.getState()).toEqual({
+      screen: 'plan',
+      localMode: false,
+      selectedProjectId: null,
+      selectedTaskId: null,
+      returnScreen: null,
+      quickAdd: null,
+    });
+    expect(listener).toHaveBeenCalledWith(expect.objectContaining({ screen: 'plan' }));
+  });
+
   it('goTo("search") переводит контроллер на экран Search (M34/M35, эпик E12.1) — обычный переход, не оверлей', () => {
     const controller = createAppController({ screen: 'projects' });
     const listener = vi.fn();

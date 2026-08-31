@@ -65,6 +65,16 @@
  * — у Search нет «какой именно» сущности, экран сам держит текст запроса
  * локальным состоянием (`screens/Search.tsx`), поэтому обычная запись в
  * `goTo`, без отдельного метода контроллера.
+ *
+ * `'plan'` (M14 Plan Agenda / M15 Plan selected, эпик E12, второй пакет
+ * работ E12.2) — тот же приём, что `'search'` выше: обычный `ScreenId`, не
+ * оверлей («главный» экран, на который возвращаются, не шаг разового
+ * потока), не параметризован (выбранная в date strip дата — локальное
+ * состояние `screens/Plan.tsx`, не часть навигационного состояния
+ * приложения — M15 "selected date state" не переживает уход с экрана и
+ * обратно, поэтому не заслуживает поля в `AppState`, в отличие от
+ * `selectedProjectId`/`selectedTaskId`, которые обязаны пережить показ и
+ * скрытие `taskDetail` поверх них).
  */
 import type { Uuid } from '@shagi/core';
 
@@ -79,7 +89,8 @@ export type ScreenId =
   | 'projects'
   | 'projectDetail'
   | 'taskDetail'
-  | 'search';
+  | 'search'
+  | 'plan';
 
 /** Откуда открыт Quick Add — см. блок про `quickAdd` в заголовке файла.
  * Только три из семи строк таблицы «Origin → Inherited values» (`01§3`) —

@@ -14,8 +14,9 @@ function testHost(): AppHost {
 }
 
 describe('isMainTabScreen', () => {
-  it('todayEmpty, projects и search — главные экраны с постоянной навигацией', () => {
+  it('todayEmpty, plan, projects и search — главные экраны с постоянной навигацией', () => {
     expect(isMainTabScreen('todayEmpty')).toBe(true);
+    expect(isMainTabScreen('plan')).toBe(true);
     expect(isMainTabScreen('projects')).toBe(true);
     expect(isMainTabScreen('search')).toBe(true);
   });
@@ -46,6 +47,22 @@ describe('AppShell', () => {
     expect(todayItem).toHaveAttribute('aria-current', 'page');
     const projectsItem = screen.getByRole('button', { name: t('shell', 'bottomNav.projects') });
     expect(projectsItem).not.toHaveAttribute('aria-current');
+  });
+
+  it('клик по «План» переводит контроллер на экран plan (эпик E12.2)', async () => {
+    const user = userEvent.setup();
+    const controller = createAppController({ screen: 'todayEmpty' });
+    render(
+      <AppProvider host={testHost()} controller={controller}>
+        <AppShell>
+          <div>контент</div>
+        </AppShell>
+      </AppProvider>,
+    );
+
+    await user.click(screen.getByRole('button', { name: t('shell', 'bottomNav.plan') }));
+
+    expect(controller.getState().screen).toBe('plan');
   });
 
   it('клик по «Проекты» переводит контроллер на экран projects', async () => {

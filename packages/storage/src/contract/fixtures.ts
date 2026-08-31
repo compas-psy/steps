@@ -56,7 +56,9 @@ export interface TaskFixtureOverrides {
   readonly sectionId?: Uuid | null;
   readonly parentTaskId?: Uuid | null;
   readonly captureState?: Task['captureState'];
+  readonly availableFrom?: Temporal.PlainDate | null;
   readonly plannedDate?: Temporal.PlainDate | null;
+  readonly plannedTime?: Temporal.PlainTime | null;
   readonly focusDate?: Temporal.PlainDate | null;
   readonly dayBucket?: Task['dayBucket'];
   readonly deadlineDate?: Temporal.PlainDate | null;
@@ -94,15 +96,25 @@ function buildHierarchy(
   };
 }
 
-/** Ветка `TaskPlanning` по `plannedDate` — см. комментарий `buildHierarchy`. */
+/**
+ * Ветка `TaskPlanning` по `plannedDate` — см. комментарий `buildHierarchy`.
+ * `availableFrom` независим от `plannedDate` в самом типе (`@shagi/core`
+ * `entities/task.ts`: поле есть в ОБЕИХ ветках union) — передаётся сквозь
+ * обе ветки как есть. `plannedTime`, наоборот, типом ЗАПРЕЩЁН без
+ * `plannedDate` (п.1 конспекта §2) — в ветке `plannedDate === null` override
+ * молча игнорируется, а не бросает: фикстура для тестового посева, не место
+ * для валидации ошибок вызывающего теста.
+ */
 function buildPlanning(
   plannedDate: Temporal.PlainDate | null,
+  plannedTime: Temporal.PlainTime | null,
   focusDate: Temporal.PlainDate | null,
   dayBucket: Task['dayBucket'],
+  availableFrom: Temporal.PlainDate | null,
 ): TaskPlanning {
   if (plannedDate === null) {
     return {
-      availableFrom: null,
+      availableFrom,
       plannedDate: null,
       plannedTime: null,
       durationMin: null,
@@ -111,9 +123,9 @@ function buildPlanning(
     };
   }
   return {
-    availableFrom: null,
+    availableFrom,
     plannedDate,
-    plannedTime: null,
+    plannedTime,
     durationMin: null,
     focusDate,
     dayBucket,
@@ -170,8 +182,10 @@ export function makeTask(overrides: TaskFixtureOverrides = {}): Task {
     ...buildProjectPlacement(overrides.projectId ?? null, overrides.sectionId ?? null),
     ...buildPlanning(
       overrides.plannedDate ?? null,
+      overrides.plannedTime ?? null,
       overrides.focusDate ?? null,
       overrides.dayBucket ?? 'default',
+      overrides.availableFrom ?? null,
     ),
     ...buildDeadline(overrides.deadlineDate ?? null),
     ...buildCompletion(status, createdAt),

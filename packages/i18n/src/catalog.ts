@@ -13,6 +13,7 @@
 import ruCommon from './catalog/ru-RU/common.json' with { type: 'json' };
 import ruInbox from './catalog/ru-RU/inbox.json' with { type: 'json' };
 import ruOnboarding from './catalog/ru-RU/onboarding.json' with { type: 'json' };
+import ruPlan from './catalog/ru-RU/plan.json' with { type: 'json' };
 // Имя файла — `projectDetail.json`, НЕ `project-detail.json`: гейт
 // `scripts/check-i18n-catalog.mjs` берёт имя namespace прямо из имени файла
 // (`entry.name.slice(0, -'.json'.length)`) и сверяет его буквально со
@@ -33,6 +34,7 @@ export const CATALOG_RU_RU = {
   common: ruCommon,
   inbox: ruInbox,
   onboarding: ruOnboarding,
+  plan: ruPlan,
   projectDetail: ruProjectDetail,
   projects: ruProjects,
   quickAdd: ruQuickAdd,
