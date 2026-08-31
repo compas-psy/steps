@@ -20,5 +20,17 @@
   "empty.description": "Добавьте первую задачу — она появится в разделе ниже.",
   "empty.cta": "Создать первую задачу",
   "errors.actionFailed": "Не удалось выполнить действие. Попробуйте ещё раз.",
-  "errors.dismiss": "Закрыть"
+  "errors.dismiss": "Закрыть",
+  "sections.createLabel": "Заголовок нового раздела",
+  "sections.createPlaceholder": "Название раздела",
+  "sections.createSubmit": "Добавить раздел",
+  "sections.renameFieldLabel": "Переименовать раздел «{title}»",
+  "sections.moveUp": "Переместить вверх",
+  "sections.moveDown": "Переместить вниз",
+  "sections.deleteLabel": "Удалить раздел «{title}»",
+  "sections.deleteConfirmTitle": "Удалить раздел?",
+  "sections.deleteConfirmBody": "Задачи раздела «{title}» переместятся в «Без раздела».",
+  "sections.deleteConfirmCancel": "Отмена",
+  "sections.deleteConfirmConfirm": "Удалить",
+  "sections.errors.titleInvalid": "Название раздела должно быть от 1 до 80 символов"
 }

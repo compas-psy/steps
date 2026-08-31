@@ -487,3 +487,208 @@ describe('ProjectDetail — клик по строке/карточке откр
     expect(controller.getState().selectedTaskId).toBeNull();
   });
 });
+
+describe('ProjectDetail — CRUD секций (E09.4)', () => {
+  it('форма создания раздела — новый раздел появляется в списке (List)', async () => {
+    const user = userEvent.setup();
+    const project = makeProject({ title: 'Проект Т1' });
+    const { getStorage } = renderProjectDetail(project, [], []);
+
+    await waitFor(() =>
+      expect(screen.getByText(t('projectDetail', 'empty.title'))).toBeInTheDocument(),
+    );
+
+    await user.type(
+      screen.getByLabelText(t('projectDetail', 'sections.createLabel')),
+      'Новый раздел',
+    );
+    await user.click(
+      screen.getByRole('button', { name: t('projectDetail', 'sections.createSubmit') }),
+    );
+
+    await waitFor(() => expect(screen.getByText('Новый раздел')).toBeInTheDocument());
+    const stored = await getStorage().sections.listByProject(project.id);
+    expect(stored.map((s) => s.title)).toContain('Новый раздел');
+  });
+
+  it('форма создания раздела видна и в Board', async () => {
+    const user = userEvent.setup();
+    const project = { ...makeProject({ title: 'Проект Т2' }), defaultView: 'board' as const };
+    renderProjectDetail(project, [], []);
+
+    await waitFor(() =>
+      expect(screen.getByLabelText(t('projectDetail', 'sections.createLabel'))).toBeInTheDocument(),
+    );
+    await user.type(
+      screen.getByLabelText(t('projectDetail', 'sections.createLabel')),
+      'Раздел в доске',
+    );
+    await user.click(
+      screen.getByRole('button', { name: t('projectDetail', 'sections.createSubmit') }),
+    );
+
+    await waitFor(() => expect(screen.getByText('Раздел в доске')).toBeInTheDocument());
+  });
+
+  it('переименование раздела сохраняется через updateSectionCommand', async () => {
+    const user = userEvent.setup();
+    const project = makeProject({ title: 'Проект Т3' });
+    const sec = section(project.id, 'Старое имя', initialRank());
+    const { getStorage } = renderProjectDetail(project, [sec], []);
+
+    await waitFor(() => expect(screen.getByText('Старое имя')).toBeInTheDocument());
+    await user.click(screen.getByText('Старое имя'));
+    const input = screen.getByLabelText(
+      t('projectDetail', 'sections.renameFieldLabel', { title: 'Старое имя' }),
+    );
+    await user.clear(input);
+    await user.type(input, 'Новое имя');
+    await user.tab();
+
+    await waitFor(async () => {
+      const stored = await getStorage().sections.findById(sec.id);
+      expect(stored?.title).toBe('Новое имя');
+    });
+    expect(screen.getByText('Новое имя')).toBeInTheDocument();
+  });
+
+  it('пустой заголовок при переименовании — блокирующая ошибка у поля, раздел не меняется', async () => {
+    const user = userEvent.setup();
+    const project = makeProject({ title: 'Проект Т4' });
+    const sec = section(project.id, 'Раздел', initialRank());
+    const { getStorage } = renderProjectDetail(project, [sec], []);
+
+    await waitFor(() => expect(screen.getByText('Раздел')).toBeInTheDocument());
+    await user.click(screen.getByText('Раздел'));
+    const input = screen.getByLabelText(
+      t('projectDetail', 'sections.renameFieldLabel', { title: 'Раздел' }),
+    );
+    await user.clear(input);
+    await user.tab();
+
+    await waitFor(() =>
+      expect(
+        screen.getByText(t('projectDetail', 'sections.errors.titleInvalid')),
+      ).toBeInTheDocument(),
+    );
+    const stored = await getStorage().sections.findById(sec.id);
+    expect(stored?.title).toBe('Раздел');
+  });
+
+  it('удаление раздела требует подтверждения — без подтверждения раздел остаётся', async () => {
+    const user = userEvent.setup();
+    const project = makeProject({ title: 'Проект Т5' });
+    const sec = section(project.id, 'Удаляемый', initialRank());
+    const { getStorage } = renderProjectDetail(project, [sec], []);
+
+    await waitFor(() => expect(screen.getByText('Удаляемый')).toBeInTheDocument());
+    await user.click(
+      screen.getByRole('button', {
+        name: t('projectDetail', 'sections.deleteLabel', { title: 'Удаляемый' }),
+      }),
+    );
+    await screen.findByRole('dialog', { name: t('projectDetail', 'sections.deleteConfirmTitle') });
+    await user.click(
+      screen.getByRole('button', { name: t('projectDetail', 'sections.deleteConfirmCancel') }),
+    );
+
+    expect(screen.getByText('Удаляемый')).toBeInTheDocument();
+    const stored = await getStorage().sections.findById(sec.id);
+    expect(stored?.deletedAt).toBeNull();
+  });
+
+  it('удаление раздела (после подтверждения) переносит задачи в «Без раздела»', async () => {
+    const user = userEvent.setup();
+    const project = makeProject({ title: 'Проект Т6' });
+    const sec = section(project.id, 'Раздел с задачей', initialRank());
+    const task = makeTask({ title: 'Задача внутри', projectId: project.id, sectionId: sec.id });
+    const { getStorage } = renderProjectDetail(project, [sec], [task]);
+
+    await waitFor(() => expect(screen.getByText('Задача внутри')).toBeInTheDocument());
+    await user.click(
+      screen.getByRole('button', {
+        name: t('projectDetail', 'sections.deleteLabel', { title: 'Раздел с задачей' }),
+      }),
+    );
+    await screen.findByRole('dialog', { name: t('projectDetail', 'sections.deleteConfirmTitle') });
+    await user.click(
+      screen.getByRole('button', { name: t('projectDetail', 'sections.deleteConfirmConfirm') }),
+    );
+
+    await waitFor(() => expect(screen.queryByText('Раздел с задачей')).not.toBeInTheDocument());
+    const storedTask = await getStorage().tasks.findById(task.id);
+    expect(storedTask?.sectionId).toBeNull();
+    const storedSection = await getStorage().sections.findById(sec.id);
+    expect(storedSection?.deletedAt).not.toBeNull();
+
+    const noneSection = screen.getByTestId('section-__none__');
+    expect(within(noneSection).getByText('Задача внутри')).toBeInTheDocument();
+  });
+
+  it('drag заголовка секции меняет порядок (новый rank в хранилище)', async () => {
+    const project = makeProject({ title: 'Проект Т7' });
+    const rankA = initialRank();
+    const rankB = rankAfter(rankA);
+    const sectionA = section(project.id, 'Раздел А', rankA);
+    const sectionB = section(project.id, 'Раздел Б', rankB);
+    const { getStorage } = renderProjectDetail(project, [sectionA, sectionB], []);
+
+    await waitFor(() => expect(screen.getByText('Раздел Б')).toBeInTheDocument());
+
+    const dragB = screen.getByTestId(`sectionDrag-${sectionB.id}`);
+    const dragA = screen.getByTestId(`sectionDrag-${sectionA.id}`);
+    fireEvent.dragStart(dragB);
+    fireEvent.dragOver(dragA);
+    fireEvent.drop(dragA);
+
+    await waitFor(async () => {
+      const storedB = await getStorage().sections.findById(sectionB.id);
+      const storedA = await getStorage().sections.findById(sectionA.id);
+      expect((storedB?.rank ?? '') < (storedA?.rank ?? '')).toBe(true);
+    });
+  });
+
+  it('кнопки «Переместить вверх/вниз» переставляют раздел с соседом', async () => {
+    const user = userEvent.setup();
+    const project = makeProject({ title: 'Проект Т8' });
+    const rankA = initialRank();
+    const rankB = rankAfter(rankA);
+    const rankC = rankAfter(rankB);
+    const sectionA = section(project.id, 'Раздел А', rankA);
+    const sectionB = section(project.id, 'Раздел Б', rankB);
+    const sectionC = section(project.id, 'Раздел В', rankC);
+    const { getStorage } = renderProjectDetail(project, [sectionA, sectionB, sectionC], []);
+
+    await waitFor(() => expect(screen.getByText('Раздел В')).toBeInTheDocument());
+
+    const rowA = screen.getByTestId(`section-${sectionA.id}`);
+    await user.click(
+      within(rowA).getByRole('button', { name: t('projectDetail', 'sections.moveDown') }),
+    );
+
+    await waitFor(async () => {
+      const storedA = await getStorage().sections.findById(sectionA.id);
+      const storedB = await getStorage().sections.findById(sectionB.id);
+      expect((storedA?.rank ?? '') > (storedB?.rank ?? '')).toBe(true);
+    });
+  });
+
+  it('«Без раздела» не имеет кнопок переименования/удаления/reorder', async () => {
+    const project = makeProject({ title: 'Проект Т9' });
+    const sec = section(project.id, 'Единственный раздел', initialRank());
+    const noSectionTask = makeTask({ title: 'Задача без раздела', projectId: project.id });
+    renderProjectDetail(project, [sec], [noSectionTask]);
+
+    await waitFor(() => expect(screen.getByText('Задача без раздела')).toBeInTheDocument());
+    const noneSection = screen.getByTestId('section-__none__');
+    expect(
+      within(noneSection).queryByRole('button', { name: t('projectDetail', 'sections.moveUp') }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(noneSection).queryByRole('button', {
+        name: t('projectDetail', 'sections.moveDown'),
+      }),
+    ).not.toBeInTheDocument();
+    expect(within(noneSection).queryByTestId(/^sectionDrag-/)).not.toBeInTheDocument();
+  });
+});

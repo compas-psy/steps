@@ -1,8 +1,11 @@
 /**
  * `ProjectDetail` — экран одного проекта, M17 List / M18 Board (плюс M19
  * Project Empty) из `docs/spec/SPEC/12_SCREEN_STATE_MATRIX.md`, эпик E09,
- * пакет работ E09.3. Источник поведения — `01_PRODUCT_BEHAVIOR_R1.md`
- * §12 «Sections»/«Delete section» и §13 «List / Board».
+ * пакеты работ E09.3 (рендер секций/задач, drag-and-drop задач, инлайн-
+ * добавление задачи) и E09.4 (CRUD секций: создание/переименование/
+ * удаление/reorder, см. блок «CRUD секций» ниже). Источник поведения —
+ * `01_PRODUCT_BEHAVIOR_R1.md` §12 «Sections»/«Delete section» и §13
+ * «List / Board».
  *
  * --- Секции: единый источник и порядок (§13) --------------------------
  *
@@ -59,8 +62,6 @@
  *
  * --- Не в объёме этого пакета работ (см. задание) ------------------------
  *
- * - Создание/переименование/удаление/reorder САМИХ секций через UI —
- *   командный слой готов (E09.1), интерфейса для него здесь нет.
  * - Запись переключения List/Board обратно в `project.defaultView` —
  *   переключатель ниже управляет только локальным видом экрана
  *   (`useState`), не мутирует проект.
@@ -117,15 +118,22 @@ import { Temporal } from '@js-temporal/polyfill';
 import { t } from '@shagi/i18n';
 import {
   completeTaskCommand,
+  createSectionCommand,
   createTaskCommand,
+  deleteSectionCommand,
   deleteTaskCommand,
   generateDeviceId,
   generateUuidV7,
   resolveRank,
+  updateSectionCommand,
   updateTaskCommand,
+  type DeleteSectionDeps,
   type NewRank,
   type Project,
+  type Rank,
   type Section,
+  type SectionCommandDeps,
+  type SectionCommandResult,
   type Task,
   type TaskCommandResult,
   type Uuid,
@@ -210,27 +218,43 @@ function buildSectionEntries(
 }
 
 // --- Расчёт ранга при перемещении (см. заголовок файла, блок «Drag-and-drop») -
+//
+// Обобщены до `Ranked` (пакет работ E09.4, CRUD секций): и Task, и Section
+// несут `id`/`rank` в одной и той же форме (`Rank` — не параметризованный по
+// сущности branded-тип, `project-rank.ts`), поэтому две функции ниже (уже
+// написанные под Task) переиспользуются для reorder Section буквально тем же
+// вызовом с другим списком — не копия логики под новым именем.
+
+interface Ranked {
+  readonly id: Uuid;
+  readonly rank: Rank;
+}
 
 /** Вставка в конец списка (drop на секцию/колонку целиком, «Переместить в
- * раздел») — `excludeId` убирает саму перемещаемую задачу из списка соседей,
- * если она уже была в этой же секции. */
-function appendRank(list: readonly Task[], excludeId: Uuid): NewRank {
-  const last = list.filter((task) => task.id !== excludeId).at(-1);
+ * раздел»; для Section — конец списка реальных секций при создании) —
+ * `excludeId` убирает сам перемещаемый элемент из списка соседей, если он
+ * уже был в этом же списке. */
+function appendRank<T extends Ranked>(list: readonly T[], excludeId: Uuid): NewRank {
+  const last = list.filter((item) => item.id !== excludeId).at(-1);
   return last === undefined
     ? { placement: 'empty-list' }
     : { placement: 'end', lastRank: last.rank };
 }
 
-/** Вставка непосредственно перед `targetTask` в её же списке (drop на
- * конкретную соседнюю карточку/строку). */
-function insertBeforeRank(list: readonly Task[], targetId: Uuid, excludeId: Uuid): NewRank {
-  const filtered = list.filter((task) => task.id !== excludeId);
-  const index = filtered.findIndex((task) => task.id === targetId);
+/** Вставка непосредственно перед `target` в его же списке (drop на
+ * конкретную соседнюю карточку/строку/секцию). */
+function insertBeforeRank<T extends Ranked>(
+  list: readonly T[],
+  targetId: Uuid,
+  excludeId: Uuid,
+): NewRank {
+  const filtered = list.filter((item) => item.id !== excludeId);
+  const index = filtered.findIndex((item) => item.id === targetId);
   const target = filtered[index];
   // Оборонительная ветка: цель не найдена в своём же списке (не должно
-  // случаться — вызывающий код всегда передаёт реальную соседнюю задачу) —
-  // не выдумываем `NewRank` с потенциально `undefined` полем, откатываемся
-  // на ту же стратегию «в конец», что и остальной код этого файла.
+  // случаться — вызывающий код всегда передаёт реального соседа) — не
+  // выдумываем `NewRank` с потенциально `undefined` полем, откатываемся на
+  // ту же стратегию «в конец», что и остальной код этого файла.
   if (target === undefined) return appendRank(list, excludeId);
   const prev = index > 0 ? filtered[index - 1] : undefined;
   return prev === undefined
@@ -321,6 +345,151 @@ function InlineAddForm({ sectionEntry, inputRef, onSubmit }: InlineAddFormProps)
         {t('projectDetail', 'inlineAdd.submit')}
       </Button>
     </form>
+  );
+}
+
+// --- CRUD секций (пакет работ E09.4) -----------------------------------------
+//
+// «Без раздела» (`sectionId: null`) — вне территории всех операций ниже (см.
+// заголовок файла и текст задания): у неё физически нет записи `Section`,
+// которую можно было бы патчить/тombstone-ить/двигать. Три компонента ниже
+// работают ТОЛЬКО с реальным `Section` (не `SectionEntry`) — ренд секции в
+// `sectionEntries.map` передаёт `section: Section | null`, `null` только для
+// синтетической записи, и в этом случае просто рендерит текст без органов
+// управления.
+
+/** Форма создания раздела — ОДНА над списком секций/колонок (не внутри
+ * каждой, в отличие от `InlineAddForm` для задач, см. текст задания), видна
+ * и в List, и в Board одинаково (рендерится один раз, выше переключателя
+ * вида). Тот же приём триминга/no-op-на-пустом, что `InlineAddForm`. */
+interface CreateSectionFormProps {
+  readonly value: string;
+  readonly error: string | null;
+  readonly onChange: (value: string) => void;
+  readonly onSubmit: (title: string) => void;
+}
+
+function CreateSectionForm({
+  value,
+  error,
+  onChange,
+  onSubmit,
+}: CreateSectionFormProps): ReactElement {
+  return (
+    <form
+      onSubmit={(event: FormEvent<HTMLFormElement>) => {
+        event.preventDefault();
+        const trimmed = value.trim();
+        if (trimmed.length === 0) return;
+        onSubmit(trimmed);
+      }}
+    >
+      <Input
+        aria-label={t('projectDetail', 'sections.createLabel')}
+        placeholder={t('projectDetail', 'sections.createPlaceholder')}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        errorMessage={error ?? undefined}
+      />
+      <Button type="submit" variant="secondary">
+        {t('projectDetail', 'sections.createSubmit')}
+      </Button>
+    </form>
+  );
+}
+
+/**
+ * Заголовок реальной секции + её органы управления — единственный узел,
+ * который передаётся как `title` в `Section`(`@shagi/ui`)/`BoardColumn`
+ * (оба принимают `title: ReactNode`, не только строку — задание того же
+ * рода, что уже использует этот файл для `sectionEntry.title`).
+ *
+ * Переименование (задание, п.2: "Клик по заголовку секции... превращает
+ * заголовок в редактируемое поле") — здесь выбран именно клик по заголовку,
+ * не отдельная кнопка-карандаш: в реестре иконок `@shagi/ui`
+ * (`packages/ui/src/icons/contours.ts`, вне территории этого пакета работ)
+ * нет иконки "редактировать"/карандаш, а задание явно разрешает выбор между
+ * двумя вариантами ("реши по обстоятельствам"). Autosave-по-blur — тот же
+ * приём, что `TaskDetail.tsx` `handleTitleBlur`; Enter — та же команда
+ * коммита, просто через программный `blur()` (не дублирует логику commit
+ * дважды под двумя разными обработчиками).
+ *
+ * Кнопки «вверх»/«вниз» — текстовые `Button`, не `IconButton` с `chevron`:
+ * `chevron` в реестре ровно один, без параметра направления (комментарий
+ * `contours.ts`: "поворот через CSS `transform` у потребителя" — но
+ * `IconButton` не даёт потребителю дотянуться до `className` самой иконки,
+ * только до кнопки целиком), а вращать иконку через CSS вне `packages/ui`
+ * ради недоступного-в-реестре второго глифа усложняет ровно то, что задание
+ * прямо разрешает сделать "просто и видимо" текстом.
+ */
+interface SectionTitleControlsProps {
+  readonly section: Section;
+  readonly isEditing: boolean;
+  readonly titleDraft: string;
+  readonly titleError: string | null;
+  readonly canMoveUp: boolean;
+  readonly canMoveDown: boolean;
+  readonly onStartEdit: () => void;
+  readonly onDraftChange: (value: string) => void;
+  readonly onCommit: () => void;
+  readonly onMoveUp: () => void;
+  readonly onMoveDown: () => void;
+  readonly onRequestDelete: () => void;
+}
+
+function SectionTitleControls({
+  section,
+  isEditing,
+  titleDraft,
+  titleError,
+  canMoveUp,
+  canMoveDown,
+  onStartEdit,
+  onDraftChange,
+  onCommit,
+  onMoveUp,
+  onMoveDown,
+  onRequestDelete,
+}: SectionTitleControlsProps): ReactElement {
+  return (
+    <span style={{ display: 'flex', alignItems: 'center' }}>
+      {isEditing ? (
+        <Input
+          aria-label={t('projectDetail', 'sections.renameFieldLabel', { title: section.title })}
+          value={titleDraft}
+          onChange={(event) => onDraftChange(event.target.value)}
+          onBlur={onCommit}
+          onKeyDown={(event) => {
+            if (event.key !== 'Enter') return;
+            event.preventDefault();
+            event.currentTarget.blur();
+          }}
+          errorMessage={titleError ?? undefined}
+          autoFocus
+        />
+      ) : (
+        <button
+          type="button"
+          onClick={onStartEdit}
+          data-testid={`sectionTitleButton-${section.id}`}
+        >
+          {section.title}
+        </button>
+      )}
+      <Button variant="ghost" size="sm" disabled={!canMoveUp} onClick={onMoveUp}>
+        {t('projectDetail', 'sections.moveUp')}
+      </Button>
+      <Button variant="ghost" size="sm" disabled={!canMoveDown} onClick={onMoveDown}>
+        {t('projectDetail', 'sections.moveDown')}
+      </Button>
+      <IconButton
+        icon="delete"
+        variant="destructive"
+        size="sm"
+        label={t('projectDetail', 'sections.deleteLabel', { title: section.title })}
+        onClick={onRequestDelete}
+      />
+    </span>
   );
 }
 
@@ -480,6 +649,15 @@ export function ProjectDetail(): ReactElement | null {
     readonly sectionEntry: SectionEntry;
   } | null>(null);
 
+  // --- CRUD секций (E09.4) — см. заголовок файла, блок «CRUD секций» -------
+  const [createSectionTitle, setCreateSectionTitle] = useState('');
+  const [createSectionError, setCreateSectionError] = useState<string | null>(null);
+  const [editingSectionId, setEditingSectionId] = useState<Uuid | null>(null);
+  const [sectionTitleDraft, setSectionTitleDraft] = useState('');
+  const [sectionTitleError, setSectionTitleError] = useState<string | null>(null);
+  const [deleteSectionConfirm, setDeleteSectionConfirm] = useState<Section | null>(null);
+  const [draggedSectionId, setDraggedSectionId] = useState<Uuid | null>(null);
+
   const inputRefs = useRef(new Map<string, HTMLInputElement>());
 
   async function loadAll(): Promise<void> {
@@ -526,6 +704,180 @@ export function ProjectDetail(): ReactElement | null {
       return;
     }
     setErrorMessage(t('projectDetail', 'errors.actionFailed'));
+  }
+
+  // --- CRUD секций (E09.4): зависимости команд ------------------------------
+  //
+  // `storage` (полный `StoragePort`, `@shagi/storage`) структурно подходит
+  // и под `SectionCommandDeps.storage` (`CommandSectionStoragePort`:
+  // `.sections`+`runTransaction`), и под `DeleteSectionDeps.tasks`
+  // (`CommandProjectTaskReader`: `storage.tasks.listByProjectSection`) и
+  // `.taskCommandStorage` (`CommandStoragePort` — тот же порт, что уже
+  // передаётся в task-команды этого экрана, `commandDeps().storage` выше) —
+  // без адаптера, тот же приём инверсии зависимости (ADR-0003), что уже
+  // работает для Task/Project.
+  function sectionCommandDeps(): SectionCommandDeps {
+    return { storage, now: Temporal.Now.instant(), deviceId: getLocalIdentity().deviceId };
+  }
+
+  function deleteSectionDeps(): DeleteSectionDeps {
+    return {
+      storage,
+      tasks: storage.tasks,
+      taskCommandStorage: storage,
+      now: Temporal.Now.instant(),
+      deviceId: getLocalIdentity().deviceId,
+    };
+  }
+
+  /** Общий разбор исхода Section-команд без полевой ошибки (reorder — `rank`
+   * не проходит через `validateSection`, `rejected` там практически
+   * недостижим) — та же дисциплина, что `runCommand` для Task. */
+  async function runSectionCommand(promise: Promise<SectionCommandResult>): Promise<void> {
+    const result = await promise;
+    if (result.status === 'ok') {
+      setErrorMessage(null);
+      await loadAll();
+      return;
+    }
+    setErrorMessage(t('projectDetail', 'errors.actionFailed'));
+  }
+
+  function handleCreateSection(title: string): void {
+    if (project === null || sections === null) return;
+    // `generateUuidV7()` как `excludeId` — та же уловка, что уже применяет
+    // `handleInlineAdd` для Task: у ещё не созданной сущности нет своего
+    // `id`, а `appendRank` фильтрует список по `excludeId`, никогда не
+    // совпадающему ни с одной реальной секцией — эффективно no-op фильтр.
+    const rank = appendRank(sections, generateUuidV7());
+    void (async () => {
+      const result = await createSectionCommand(
+        { projectId: project.id, title, rank },
+        sectionCommandDeps(),
+      );
+      if (result.status === 'ok') {
+        setCreateSectionTitle('');
+        setCreateSectionError(null);
+        await loadAll();
+        return;
+      }
+      if (result.status === 'rejected') {
+        setCreateSectionError(t('projectDetail', 'sections.errors.titleInvalid'));
+        return;
+      }
+      setErrorMessage(t('projectDetail', 'errors.actionFailed'));
+    })();
+  }
+
+  function startEditSection(section: Section): void {
+    setEditingSectionId(section.id);
+    setSectionTitleDraft(section.title);
+    setSectionTitleError(null);
+  }
+
+  /** Autosave-по-blur (задание, п.2: "тот же приём... что в TaskDetail.tsx
+   * для title/description задачи") — no-op без сети, если черновик не
+   * отличается от текущего заголовка (закрывает режим редактирования без
+   * вызова команды, тот же щадящий путь, что `handleTitleBlur`). Отклонение
+   * (`validateSection`, правило 23) — ошибка у поля, режим редактирования
+   * остаётся открытым, чтобы пользователь мог исправить (`01§17`-приём,
+   * применённый `TaskDetail.tsx` `savePlanningPatch` к Planning-полям). */
+  function handleCommitSectionTitle(section: Section): void {
+    const trimmed = sectionTitleDraft.trim();
+    if (trimmed === section.title) {
+      setEditingSectionId(null);
+      setSectionTitleError(null);
+      return;
+    }
+    void (async () => {
+      const result = await updateSectionCommand(
+        { id: section.id, patch: { title: trimmed } },
+        sectionCommandDeps(),
+      );
+      if (result.status === 'ok') {
+        setEditingSectionId(null);
+        setSectionTitleError(null);
+        await loadAll();
+        return;
+      }
+      if (result.status === 'rejected') {
+        setSectionTitleError(t('projectDetail', 'sections.errors.titleInvalid'));
+        return;
+      }
+      setEditingSectionId(null);
+      setErrorMessage(t('projectDetail', 'errors.actionFailed'));
+    })();
+  }
+
+  function handleConfirmDeleteSection(): void {
+    if (deleteSectionConfirm === null) return;
+    const target = deleteSectionConfirm;
+    setDeleteSectionConfirm(null);
+    void (async () => {
+      const result = await deleteSectionCommand({ id: target.id }, deleteSectionDeps());
+      if (result.status === 'ok') {
+        setErrorMessage(null);
+        await loadAll();
+        return;
+      }
+      setErrorMessage(t('projectDetail', 'errors.actionFailed'));
+    })();
+  }
+
+  /** Доступная альтернатива drag (задание, п.4; тот же принцип §13, что уже
+   * применён для задач этого экрана) — перестановка ровно с соседом, не
+   * произвольная позиция: у Section фиксированный список, соседняя
+   * перестановка исчерпывающе покрывает reorder (в отличие от задач, где
+   * между секциями движение произвольное). */
+  function handleMoveSectionUp(section: Section): void {
+    if (sections === null) return;
+    const index = sections.findIndex((candidate) => candidate.id === section.id);
+    const prev = index > 0 ? sections[index - 1] : undefined;
+    if (prev === undefined) return;
+    const rank = insertBeforeRank(sections, prev.id, section.id);
+    void runSectionCommand(
+      updateSectionCommand({ id: section.id, patch: { rank } }, sectionCommandDeps()),
+    );
+  }
+
+  function handleMoveSectionDown(section: Section): void {
+    if (sections === null) return;
+    const index = sections.findIndex((candidate) => candidate.id === section.id);
+    const next = sections[index + 1];
+    if (next === undefined) return;
+    const afterNext = sections[index + 2];
+    const rank =
+      afterNext === undefined
+        ? appendRank(sections, section.id)
+        : insertBeforeRank(sections, afterNext.id, section.id);
+    void runSectionCommand(
+      updateSectionCommand({ id: section.id, patch: { rank } }, sectionCommandDeps()),
+    );
+  }
+
+  function handleSectionDragStart(sectionId: Uuid): void {
+    setDraggedSectionId(sectionId);
+  }
+
+  /** Один диспетчер и на drop секции (reorder), и на существовавший ранее
+   * drop задачи в конец секции — оба используют один и тот же DOM-дропзон
+   * (заголовок/колонка секции), различаются только тем, какое состояние
+   * сейчас непусто (`draggedSectionId` vs `draggedTask`). */
+  function handleSectionOrTaskDrop(entry: SectionEntry, section: Section | null): void {
+    if (draggedSectionId !== null) {
+      if (section !== null && draggedSectionId !== section.id && sections !== null) {
+        const movedId = draggedSectionId;
+        const rank = insertBeforeRank(sections, section.id, movedId);
+        setDraggedSectionId(null);
+        void runSectionCommand(
+          updateSectionCommand({ id: movedId, patch: { rank } }, sectionCommandDeps()),
+        );
+        return;
+      }
+      setDraggedSectionId(null);
+      return;
+    }
+    handleDropOnSectionEnd(entry.sectionId);
   }
 
   const sectionEntries = useMemo(
@@ -686,85 +1038,173 @@ export function ProjectDetail(): ReactElement | null {
         />
       )}
 
+      {/* Создание раздела (задание, п.1) — ОДИН элемент управления над
+       * списком секций/колонок, общий для List и Board (не внутри каждой
+       * секции, в отличие от `InlineAddForm` для задач) — рендерится один
+       * раз здесь, выше переключателя вида, поэтому виден в обоих. */}
+      <CreateSectionForm
+        value={createSectionTitle}
+        error={createSectionError}
+        onChange={setCreateSectionTitle}
+        onSubmit={handleCreateSection}
+      />
+
       {view === 'list' ? (
         <div>
-          {sectionEntries.map((entry) => (
-            <div
-              key={sectionKeyOf(entry.sectionId)}
-              data-testid={`section-${sectionKeyOf(entry.sectionId)}`}
-              onDragOver={preventDefault}
-              onDrop={() => handleDropOnSectionEnd(entry.sectionId)}
-            >
-              <SectionHeader title={entry.title} count={taskCountLabel(entry.tasks.length)} />
-              {entry.tasks.map((task) => (
-                <TaskListRow
-                  key={task.id}
-                  task={task}
+          {sectionEntries.map((entry) => {
+            const section = sections.find((candidate) => candidate.id === entry.sectionId) ?? null;
+            const sectionIndex =
+              section === null
+                ? -1
+                : sections.findIndex((candidate) => candidate.id === section.id);
+            return (
+              <div
+                key={sectionKeyOf(entry.sectionId)}
+                data-testid={`section-${sectionKeyOf(entry.sectionId)}`}
+                onDragOver={preventDefault}
+                onDrop={() => handleSectionOrTaskDrop(entry, section)}
+              >
+                {section === null ? (
+                  <SectionHeader title={entry.title} count={taskCountLabel(entry.tasks.length)} />
+                ) : (
+                  <div
+                    data-testid={`sectionDrag-${section.id}`}
+                    draggable={editingSectionId !== section.id}
+                    onDragStart={() => handleSectionDragStart(section.id)}
+                    onDragOver={preventDefault}
+                    onDrop={(event) => {
+                      event.stopPropagation();
+                      handleSectionOrTaskDrop(entry, section);
+                    }}
+                  >
+                    <SectionHeader
+                      title={
+                        <SectionTitleControls
+                          section={section}
+                          isEditing={editingSectionId === section.id}
+                          titleDraft={sectionTitleDraft}
+                          titleError={editingSectionId === section.id ? sectionTitleError : null}
+                          canMoveUp={sectionIndex > 0}
+                          canMoveDown={sectionIndex >= 0 && sectionIndex < sections.length - 1}
+                          onStartEdit={() => startEditSection(section)}
+                          onDraftChange={setSectionTitleDraft}
+                          onCommit={() => handleCommitSectionTitle(section)}
+                          onMoveUp={() => handleMoveSectionUp(section)}
+                          onMoveDown={() => handleMoveSectionDown(section)}
+                          onRequestDelete={() => setDeleteSectionConfirm(section)}
+                        />
+                      }
+                      count={taskCountLabel(entry.tasks.length)}
+                    />
+                  </div>
+                )}
+                {entry.tasks.map((task) => (
+                  <TaskListRow
+                    key={task.id}
+                    task={task}
+                    sectionEntry={entry}
+                    dragging={draggedTask?.task.id === task.id}
+                    menuOpen={openMenuTaskId === task.id}
+                    onToggleMenu={() =>
+                      setOpenMenuTaskId((id) => (id === task.id ? null : task.id))
+                    }
+                    onCloseMenu={() => setOpenMenuTaskId(null)}
+                    handlers={{
+                      onComplete: handleComplete,
+                      onMoveToSection: handleMoveToSection,
+                      onDelete: handleDelete,
+                    }}
+                    onDragStart={handleDragStart}
+                    onDropOnTask={handleDropOnTask}
+                    onOpen={(openedTask) => controller.openTask(openedTask.id)}
+                  />
+                ))}
+                <InlineAddForm
                   sectionEntry={entry}
-                  dragging={draggedTask?.task.id === task.id}
-                  menuOpen={openMenuTaskId === task.id}
-                  onToggleMenu={() => setOpenMenuTaskId((id) => (id === task.id ? null : task.id))}
-                  onCloseMenu={() => setOpenMenuTaskId(null)}
-                  handlers={{
-                    onComplete: handleComplete,
-                    onMoveToSection: handleMoveToSection,
-                    onDelete: handleDelete,
+                  inputRef={(el) => {
+                    if (el === null) inputRefs.current.delete(sectionKeyOf(entry.sectionId));
+                    else inputRefs.current.set(sectionKeyOf(entry.sectionId), el);
                   }}
-                  onDragStart={handleDragStart}
-                  onDropOnTask={handleDropOnTask}
-                  onOpen={(openedTask) => controller.openTask(openedTask.id)}
+                  onSubmit={handleInlineAdd}
                 />
-              ))}
-              <InlineAddForm
-                sectionEntry={entry}
-                inputRef={(el) => {
-                  if (el === null) inputRefs.current.delete(sectionKeyOf(entry.sectionId));
-                  else inputRefs.current.set(sectionKeyOf(entry.sectionId), el);
-                }}
-                onSubmit={handleInlineAdd}
-              />
-            </div>
-          ))}
+              </div>
+            );
+          })}
         </div>
       ) : (
         <div style={{ display: 'flex' }}>
-          {sectionEntries.map((entry) => (
-            <BoardColumn
-              key={sectionKeyOf(entry.sectionId)}
-              title={entry.title}
-              count={taskCountLabel(entry.tasks.length)}
-              onDragOver={preventDefault}
-              onDrop={() => handleDropOnSectionEnd(entry.sectionId)}
-            >
-              {entry.tasks.map((task) => (
-                <TaskBoardCard
-                  key={task.id}
-                  task={task}
-                  sectionEntry={entry}
-                  dragging={draggedTask?.task.id === task.id}
-                  menuOpen={openMenuTaskId === task.id}
-                  onToggleMenu={() => setOpenMenuTaskId((id) => (id === task.id ? null : task.id))}
-                  onCloseMenu={() => setOpenMenuTaskId(null)}
-                  handlers={{
-                    onComplete: handleComplete,
-                    onMoveToSection: handleMoveToSection,
-                    onDelete: handleDelete,
-                  }}
-                  onDragStart={handleDragStart}
-                  onDropOnTask={handleDropOnTask}
-                  onOpen={(openedTask) => controller.openTask(openedTask.id)}
-                />
-              ))}
-              <InlineAddForm
-                sectionEntry={entry}
-                inputRef={(el) => {
-                  if (el === null) inputRefs.current.delete(sectionKeyOf(entry.sectionId));
-                  else inputRefs.current.set(sectionKeyOf(entry.sectionId), el);
+          {sectionEntries.map((entry) => {
+            const section = sections.find((candidate) => candidate.id === entry.sectionId) ?? null;
+            const sectionIndex =
+              section === null
+                ? -1
+                : sections.findIndex((candidate) => candidate.id === section.id);
+            return (
+              <div
+                key={sectionKeyOf(entry.sectionId)}
+                draggable={section !== null && editingSectionId !== section.id}
+                onDragStart={() => {
+                  if (section !== null) handleSectionDragStart(section.id);
                 }}
-                onSubmit={handleInlineAdd}
-              />
-            </BoardColumn>
-          ))}
+              >
+                <BoardColumn
+                  title={
+                    section === null ? (
+                      entry.title
+                    ) : (
+                      <SectionTitleControls
+                        section={section}
+                        isEditing={editingSectionId === section.id}
+                        titleDraft={sectionTitleDraft}
+                        titleError={editingSectionId === section.id ? sectionTitleError : null}
+                        canMoveUp={sectionIndex > 0}
+                        canMoveDown={sectionIndex >= 0 && sectionIndex < sections.length - 1}
+                        onStartEdit={() => startEditSection(section)}
+                        onDraftChange={setSectionTitleDraft}
+                        onCommit={() => handleCommitSectionTitle(section)}
+                        onMoveUp={() => handleMoveSectionUp(section)}
+                        onMoveDown={() => handleMoveSectionDown(section)}
+                        onRequestDelete={() => setDeleteSectionConfirm(section)}
+                      />
+                    )
+                  }
+                  count={taskCountLabel(entry.tasks.length)}
+                  onDragOver={preventDefault}
+                  onDrop={() => handleSectionOrTaskDrop(entry, section)}
+                >
+                  {entry.tasks.map((task) => (
+                    <TaskBoardCard
+                      key={task.id}
+                      task={task}
+                      sectionEntry={entry}
+                      dragging={draggedTask?.task.id === task.id}
+                      menuOpen={openMenuTaskId === task.id}
+                      onToggleMenu={() =>
+                        setOpenMenuTaskId((id) => (id === task.id ? null : task.id))
+                      }
+                      onCloseMenu={() => setOpenMenuTaskId(null)}
+                      handlers={{
+                        onComplete: handleComplete,
+                        onMoveToSection: handleMoveToSection,
+                        onDelete: handleDelete,
+                      }}
+                      onDragStart={handleDragStart}
+                      onDropOnTask={handleDropOnTask}
+                      onOpen={(openedTask) => controller.openTask(openedTask.id)}
+                    />
+                  ))}
+                  <InlineAddForm
+                    sectionEntry={entry}
+                    inputRef={(el) => {
+                      if (el === null) inputRefs.current.delete(sectionKeyOf(entry.sectionId));
+                      else inputRefs.current.set(sectionKeyOf(entry.sectionId), el);
+                    }}
+                    onSubmit={handleInlineAdd}
+                  />
+                </BoardColumn>
+              </div>
+            );
+          })}
         </div>
       )}
 
@@ -787,6 +1227,35 @@ export function ProjectDetail(): ReactElement | null {
               </li>
             ))}
           </ul>
+        </Modal>
+      )}
+
+      {/* Удаление раздела (задание, п.3) — подтверждение обязательно: раздел
+       * молча переносит все свои задачи в «Без раздела» (`deleteSectionCommand`,
+       * `01§12`), тот же паттерн `Modal`, что уже применяет `TaskDetail.tsx`
+       * для перевода подзадачи в чек-лист (ощутимая по последствиям, не
+       * мгновенно обратимая операция — этот пакет работ не строит Undo). */}
+      {deleteSectionConfirm !== null && (
+        <Modal
+          open
+          onClose={() => setDeleteSectionConfirm(null)}
+          title={t('projectDetail', 'sections.deleteConfirmTitle')}
+          footer={
+            <>
+              <Button variant="secondary" onClick={() => setDeleteSectionConfirm(null)}>
+                {t('projectDetail', 'sections.deleteConfirmCancel')}
+              </Button>
+              <Button variant="destructive" onClick={handleConfirmDeleteSection}>
+                {t('projectDetail', 'sections.deleteConfirmConfirm')}
+              </Button>
+            </>
+          }
+        >
+          <p>
+            {t('projectDetail', 'sections.deleteConfirmBody', {
+              title: deleteSectionConfirm.title,
+            })}
+          </p>
         </Modal>
       )}
     </div>
