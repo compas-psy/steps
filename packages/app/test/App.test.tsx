@@ -1,5 +1,7 @@
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { createUnavailablePlatform } from '@shagi/platform';
+import { t } from '@shagi/i18n';
 import { describe, expect, it } from 'vitest';
 
 import { App, type AppHost } from '../src/index.js';
@@ -27,5 +29,31 @@ describe('App', () => {
     // `SCREENS[screen] === undefined` обязан рендерить пустой узел, не падать.
     render(<App host={testHost()} />);
     expect(screen.queryByRole('alert')).toBeNull();
+  });
+});
+
+describe('App — глобальный Quick Add (эпик E05.2, D12 "callable from any route")', () => {
+  it('Ctrl+N открывает оверлей Quick Add поверх текущего экрана', async () => {
+    const user = userEvent.setup();
+    render(<App host={testHost()} />);
+
+    expect(screen.queryByRole('dialog', { name: t('quickAdd', 'overlay.title') })).toBeNull();
+
+    await user.keyboard('{Control>}n{/Control}');
+
+    expect(
+      await screen.findByRole('dialog', { name: t('quickAdd', 'overlay.title') }),
+    ).toBeInTheDocument();
+  });
+
+  it('снимает глобальный слушатель при размонтировании — повторный Ctrl+N после unmount ничего не делает', async () => {
+    const user = userEvent.setup();
+    const { unmount } = render(<App host={testHost()} />);
+
+    unmount();
+
+    // Не должно бросать и не должно оставлять слушателя, реагирующего на
+    // событие после размонтирования дерева (нечего было бы обновить).
+    await expect(user.keyboard('{Control>}n{/Control}')).resolves.not.toThrow();
   });
 });

@@ -63,7 +63,8 @@ describe('AppShell', () => {
     expect(controller.getState().screen).toBe('projects');
   });
 
-  it('центральная кнопка «Быстрое добавление» честно disabled — UI ещё не построен (эпик E05)', () => {
+  it('центральная кнопка «Быстрое добавление» открывает Quick Add с origin=global (эпик E05.2)', async () => {
+    const user = userEvent.setup();
     const controller = createAppController({ screen: 'todayEmpty' });
     render(
       <AppProvider host={testHost()} controller={controller}>
@@ -73,9 +74,13 @@ describe('AppShell', () => {
       </AppProvider>,
     );
 
-    const centerButton = screen.getByRole('button', {
-      name: t('shell', 'bottomNav.quickAddUnavailable'),
-    });
-    expect(centerButton).toBeDisabled();
+    const centerButton = screen.getByRole('button', { name: t('shell', 'bottomNav.quickAdd') });
+    expect(centerButton).not.toBeDisabled();
+
+    await user.click(centerButton);
+
+    expect(controller.getState().quickAdd).toEqual({ origin: 'global' });
+    // Экран под низом не меняется — оверлей не подменяет `screen` (D12).
+    expect(controller.getState().screen).toBe('todayEmpty');
   });
 });

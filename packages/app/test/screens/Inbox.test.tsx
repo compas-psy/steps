@@ -335,3 +335,15 @@ describe('Inbox — клик по карточке открывает Task Detai
     expect(controller.getState().selectedTaskId).toBeNull();
   });
 });
+
+describe('Inbox — кнопка Quick Add (эпик E05.2)', () => {
+  it('открывает оверлей Quick Add с origin=inbox, не меняя экран под низом', async () => {
+    const user = userEvent.setup();
+    const { controller } = renderInboxCapturingStorage([]);
+
+    await user.click(await screen.findByRole('button', { name: t('inbox', 'quickAdd.button') }));
+
+    expect(controller.getState().quickAdd).toEqual({ origin: 'inbox' });
+    expect(controller.getState().screen).toBe('inbox');
+  });
+});

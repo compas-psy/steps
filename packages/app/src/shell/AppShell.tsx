@@ -25,6 +25,12 @@
  * (эпик E07) и остаётся вне `AppShell` — экран-карточка с собственной
  * кнопкой «Назад», не равноправная вкладка (в отличие от Today/Projects,
  * возврат с Inbox всегда идёт на Today, не «куда угодно»).
+ *
+ * Центральная кнопка «Быстрое добавление» была честно `disabled` до пакета
+ * работ E05.2 (UI Quick Add не существовал) — теперь открывает оверлей
+ * `controller.openQuickAdd('global')` (`state/store.ts`, `origin='global'`
+ * → `01§3`: "Global/widget: inbox, no date/project"). Не `controller.goTo`:
+ * оверлей — не `ScreenId`, см. заголовок `store.ts`, блок про `quickAdd`.
  */
 import type { ReactElement, ReactNode } from 'react';
 
@@ -70,13 +76,8 @@ export function AppShell({ children }: { children: ReactNode }): ReactElement {
         onChange={(value) => controller.goTo(value)}
         centerAction={{
           icon: 'add',
-          // Доступное имя описывает недоступность честно (не «Быстрое
-          // добавление», как если бы кнопка работала) — единственный слот
-          // именования у `disabled`-кнопки, отдельного тултипа компонент
-          // не предоставляет.
-          label: t('shell', 'bottomNav.quickAddUnavailable'),
-          disabled: true,
-          onClick: () => {},
+          label: t('shell', 'bottomNav.quickAdd'),
+          onClick: () => controller.openQuickAdd('global'),
         }}
       />
     </div>

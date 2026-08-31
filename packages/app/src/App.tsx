@@ -11,15 +11,29 @@
  *
  * `data-shagi-app-root` — устойчивый крючок для smoke-теста оболочки
  * (Playwright у `apps/web`), сохранён неизменным.
+ *
+ * --- Оверлей Quick Add и `Ctrl/Cmd+N` (эпик E05.2) ---------------------------
+ *
+ * `<QuickAddOverlay>` рендерится рядом с `<Screens>` (не вместо), условно на
+ * `quickAdd !== null` (`state/store.ts`) — см. заголовок `store.ts`, блок
+ * про `quickAdd`, за полным обоснованием "оверлей, не `ScreenId`" (D12
+ * "callable from any app route"). Глобальный `Ctrl/Cmd+N` (`01§3`, раздел
+ * "Desktop") — один `keydown`-слушатель на `window` внутри `Bootstrap`
+ * (единственное место под `AppProvider`, где уже есть доступ к
+ * `useAppController()`), снимается при размонтировании тем же эффектом,
+ * что и boot-последовательность `localDb` рядом. `preventDefault()` —
+ * `Ctrl+N`/`Cmd+N` иначе открыли бы новое окно браузера/приложения.
  */
 import { useEffect, type ReactElement } from 'react';
 
 import { isAvailable, type PlatformCapabilitiesRegistry } from '@shagi/platform';
 
-import { AppProvider, useAppState } from './state/context.js';
+import { AppProvider, useAppController, useAppState } from './state/context.js';
 import type { StorageBackend } from './state/storage-backend.js';
+import { QuickAdd } from './screens/QuickAdd.js';
 import { SCREENS } from './screens/index.js';
 import { AppShell, isMainTabScreen } from './shell/AppShell.js';
+import type { AppController } from './state/store.js';
 
 /**
  * Контракт между оболочкой (`apps/*`) и продуктом (`@shagi/app`).
@@ -70,9 +84,29 @@ function useBootstrapLocalDb(platform: PlatformCapabilitiesRegistry): void {
   }, []);
 }
 
+/** См. заголовок файла, блок «Оверлей Quick Add и `Ctrl/Cmd+N`». */
+function useGlobalQuickAddShortcut(controller: AppController): void {
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent): void {
+      const isShortcut = (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'n';
+      if (!isShortcut) return;
+      event.preventDefault();
+      controller.openQuickAdd('global');
+    }
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [controller]);
+}
+
 function Bootstrap({ host }: { host: AppHost }): ReactElement {
   useBootstrapLocalDb(host.platform);
-  return <Screens />;
+  useGlobalQuickAddShortcut(useAppController());
+  return (
+    <>
+      <Screens />
+      <QuickAdd />
+    </>
+  );
 }
 
 export function App({ host }: { host: AppHost }): ReactElement {

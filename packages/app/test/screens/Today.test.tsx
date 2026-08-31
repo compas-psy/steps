@@ -894,3 +894,15 @@ describe('Today — клик по строке открывает Task Detail (E
     expect(controller.getState().selectedTaskId).toBeNull();
   });
 });
+
+describe('Today — кнопка Quick Add (эпик E05.2)', () => {
+  it('открывает оверлей Quick Add с origin=today, не меняя экран под низом', async () => {
+    const user = userEvent.setup();
+    const { controller } = renderTodayWithController([]);
+
+    await user.click(await screen.findByRole('button', { name: t('today', 'quickAdd.button') }));
+
+    expect(controller.getState().quickAdd).toEqual({ origin: 'today' });
+    expect(controller.getState().screen).toBe('todayEmpty');
+  });
+});

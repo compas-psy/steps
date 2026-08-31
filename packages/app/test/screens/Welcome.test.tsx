@@ -31,6 +31,7 @@ describe('Welcome (M02)', () => {
       selectedProjectId: null,
       selectedTaskId: null,
       returnScreen: null,
+      quickAdd: null,
     });
   });
 
@@ -51,6 +52,7 @@ describe('Welcome (M02)', () => {
       selectedProjectId: null,
       selectedTaskId: null,
       returnScreen: null,
+      quickAdd: null,
     });
   });
 });

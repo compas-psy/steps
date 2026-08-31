@@ -149,6 +149,15 @@
  * узкое дублирование сейчас, а не рефакторинг в общий модуль вне рамок
  * этого пакета работ.
  *
+ * --- Кнопка Quick Add (эпик E05.2) ------------------------------------------
+ *
+ * `01§3`, таблица «Origin → Inherited values»: "Inbox | inbox, no date" —
+ * кнопка в заголовке вызывает `controller.openQuickAdd('inbox')`, тем же
+ * приёмом, что и `Today.tsx` (см. блок «Кнопка Quick Add» там за полным
+ * обоснованием): НЕ `goTo`, экран под низом не подменяется. Очередь этого
+ * экрана (`tasks`) не перезапрашивается при открытии/закрытии оверлея — та
+ * же граница объёма, что и `Today.tsx`.
+ *
  * --- Открытие Task Detail по клику на карточку (эпик E10.2) ----------------
  *
  * Клик по `<section>` карточки → `controller.openTask(current.id)` (M24/M25,
@@ -399,6 +408,9 @@ export function Inbox(): ReactElement {
           onClick={() => controller.goTo('todayEmpty')}
         />
         <h1>{t('inbox', 'pageTitle')}</h1>
+        <Button variant="secondary" onClick={() => controller.openQuickAdd('inbox')}>
+          {t('inbox', 'quickAdd.button')}
+        </Button>
       </div>
 
       {errorMessage !== null && (

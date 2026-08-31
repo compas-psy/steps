@@ -38,6 +38,22 @@
  * сохраняет (`01§17`, дословно: "`Готово` closes, not saves") — сохранение
  * уже случилось автосейвом по ходу редактирования полей, кнопка только
  * навигация, поэтому `closeTask` не принимает и не проверяет никаких данных.
+ *
+ * `quickAdd` (M20–M23, пакет работ E05.2) — сознательно НЕ седьмая строка
+ * `ScreenId` по образцу `projectDetail`/`taskDetail`. D12 «Global Quick Add
+ * | callable from any app route/global shortcut capability» (`01§3`)
+ * означает, что Composer обязан открываться ПОВЕРХ любого текущего экрана
+ * (Today, Inbox, ProjectDetail, …), не заменяя его — заводить отдельный
+ * `ScreenId` означало бы терять текущий экран под низом при открытии, что
+ * прямо противоречит духу "callable from any route". Поэтому `quickAdd` —
+ * параллельное состояние оверлея (не `screen`): `null` — закрыт, `{origin}`
+ * — открыт с конкретным унаследованным контекстом (`01§3`, таблица «Origin →
+ * Inherited values» — из неё в объёме этого пакета работ только три строки:
+ * `'today'` → planned_date=today, processed; `'inbox'` → inbox, без даты;
+ * `'global'` → inbox, без даты/проекта, см. `screens/QuickAdd.tsx`).
+ * `App.tsx` рендерит оверлей `<QuickAdd>` поверх `<Screens>`, когда
+ * `quickAdd !== null` — экран под низом продолжает существовать в дереве и
+ * в состоянии `AppState.screen`, не подменяется.
  */
 import type { Uuid } from '@shagi/core';
 
@@ -52,6 +68,14 @@ export type ScreenId =
   | 'projects'
   | 'projectDetail'
   | 'taskDetail';
+
+/** Откуда открыт Quick Add — см. блок про `quickAdd` в заголовке файла.
+ * Только три из семи строк таблицы «Origin → Inherited values» (`01§3`) —
+ * остальные (`Plan selected date`/`Project`/`Section`/`Board column`) вне
+ * объёма этого пакета работ (нет точки входа в дереве экранов: `Plan` не
+ * существует, `Project`/`Section`/`Board column` уже имеют свой собственный
+ * путь добавления задачи без NLP — `InlineAddForm`, `ProjectDetail.tsx`). */
+export type QuickAddOrigin = 'global' | 'today' | 'inbox';
 
 /**
  * `localMode` — пользователь выбрал «Начать локально» (M02 Welcome) без
@@ -72,6 +96,9 @@ export interface AppState {
   /** Экран, на который вернёт «Готово» в Task Detail — см. блок про
    * `'taskDetail'` выше. `null` вне этого экрана и до первого перехода. */
   readonly returnScreen: ScreenId | null;
+  /** Оверлей Quick Add — см. блок про `quickAdd` в заголовке файла. `null`,
+   * пока оверлей закрыт. НЕ влияет на `screen` — экран под низом не меняется. */
+  readonly quickAdd: { readonly origin: QuickAddOrigin } | null;
 }
 
 export type AppStateListener = (state: AppState) => void;
@@ -82,6 +109,7 @@ const INITIAL_STATE: AppState = {
   selectedProjectId: null,
   selectedTaskId: null,
   returnScreen: null,
+  quickAdd: null,
 };
 
 /**
@@ -146,6 +174,23 @@ export class AppController {
       selectedTaskId: null,
       returnScreen: null,
     });
+  };
+
+  /** Открывает оверлей Quick Add поверх текущего экрана — см. блок про
+   * `quickAdd` в заголовке файла. Три реальных источника вызова:
+   * `AppShell` (центральная кнопка, `origin='global'`), `Today.tsx`
+   * (`origin='today'`), `Inbox.tsx` (`origin='inbox'`), плюс глобальный
+   * `Ctrl/Cmd+N` (`App.tsx`, `origin='global'`) — не меняет `screen`. */
+  openQuickAdd = (origin: QuickAddOrigin): void => {
+    this.#setState({ quickAdd: { origin } });
+  };
+
+  /** Закрывает оверлей Quick Add (Escape/крестик/успешное создание) —
+   * ТОЛЬКО навигация, тот же принцип, что `closeTask`: черновик (draft
+   * safety, `01§3`) — забота самого `screens/QuickAdd.tsx`, не контроллера,
+   * этот метод его не трогает и не обязан ничего о нём знать. */
+  closeQuickAdd = (): void => {
+    this.#setState({ quickAdd: null });
   };
 }
 

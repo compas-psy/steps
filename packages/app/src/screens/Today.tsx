@@ -215,6 +215,19 @@
  * возвращается назад через `controller.goTo('todayEmpty')` — см. его
  * заголовок за объяснением имени `'todayEmpty'`.
  *
+ * --- Кнопка Quick Add (эпик E05.2) ------------------------------------------
+ *
+ * `01§3`, таблица «Origin → Inherited values»: "Today | planned_date=today,
+ * processed" — кнопка рядом с заголовком (M06 "date + Quick Add + calm
+ * empty state" буквально требует эту кнопку на этом экране) вызывает
+ * `controller.openQuickAdd('today')` (`state/store.ts`), НЕ `goTo` — оверлей
+ * не подменяет экран под собой (см. заголовок `store.ts`, блок про
+ * `quickAdd`), список Today не перезапрашивается при открытии/закрытии
+ * (создание задачи закрывает оверлей, а не возвращает управление сюда
+ * напрямую — свежий список подхватится обычным перемонтированием `Today`
+ * при следующем заходе; синхронный рефреш после создания вне объёма этого
+ * пакета работ, тот же принцип «минимально достаточная реализация»).
+ *
  * --- Открытие Task Detail по клику на строку (эпик E10.2) ------------------
  *
  * Клик по строке задачи → `controller.openTask(task.id)` (M24/M25,
@@ -975,6 +988,9 @@ export function Today(): ReactElement {
     <div>
       <h1>{t('today', 'pageTitle')}</h1>
       <p>{formatDate(today, { weekday: 'long' })}</p>
+      <Button variant="secondary" onClick={() => controller.openQuickAdd('today')}>
+        {t('today', 'quickAdd.button')}
+      </Button>
       {/* Бейдж Входящих — скрыт при нуле (см. заголовок файла, блок
        * «Бейдж Входящих»), не рендерится, пока `inboxCount` не разрешился
        * (`null`) — та же семантика "ещё не знаем", что `groups === null`. */}

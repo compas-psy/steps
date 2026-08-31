@@ -13,6 +13,7 @@ describe('AppController', () => {
       selectedProjectId: null,
       selectedTaskId: null,
       returnScreen: null,
+      quickAdd: null,
     });
   });
 
@@ -38,6 +39,7 @@ describe('AppController', () => {
       selectedProjectId: null,
       selectedTaskId: null,
       returnScreen: null,
+      quickAdd: null,
     });
   });
 
@@ -60,6 +62,7 @@ describe('AppController', () => {
       selectedProjectId: null,
       selectedTaskId: null,
       returnScreen: null,
+      quickAdd: null,
     });
   });
 
@@ -77,6 +80,7 @@ describe('AppController', () => {
       selectedProjectId: projectId,
       selectedTaskId: null,
       returnScreen: null,
+      quickAdd: null,
     });
     expect(listener).toHaveBeenCalledWith(
       expect.objectContaining({ screen: 'projectDetail', selectedProjectId: projectId }),
@@ -97,6 +101,7 @@ describe('AppController', () => {
       selectedProjectId: null,
       selectedTaskId: taskId,
       returnScreen: 'inbox',
+      quickAdd: null,
     });
     expect(listener).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -120,6 +125,7 @@ describe('AppController', () => {
       selectedProjectId: null,
       selectedTaskId: null,
       returnScreen: null,
+      quickAdd: null,
     });
   });
 
@@ -134,6 +140,43 @@ describe('AppController', () => {
       selectedProjectId: null,
       selectedTaskId: null,
       returnScreen: null,
+      quickAdd: null,
+    });
+  });
+
+  it('openQuickAdd открывает оверлей с указанным origin, не меняя screen (D12 — callable from any route)', () => {
+    const controller = createAppController({ screen: 'projectDetail' });
+    const listener = vi.fn();
+    controller.subscribe(listener);
+
+    controller.openQuickAdd('today');
+
+    expect(controller.getState()).toEqual({
+      screen: 'projectDetail',
+      localMode: false,
+      selectedProjectId: null,
+      selectedTaskId: null,
+      returnScreen: null,
+      quickAdd: { origin: 'today' },
+    });
+    expect(listener).toHaveBeenCalledWith(
+      expect.objectContaining({ quickAdd: { origin: 'today' } }),
+    );
+  });
+
+  it('closeQuickAdd закрывает оверлей, не меняя screen под ним', () => {
+    const controller = createAppController({ screen: 'inbox' });
+    controller.openQuickAdd('inbox');
+
+    controller.closeQuickAdd();
+
+    expect(controller.getState()).toEqual({
+      screen: 'inbox',
+      localMode: false,
+      selectedProjectId: null,
+      selectedTaskId: null,
+      returnScreen: null,
+      quickAdd: null,
     });
   });
 });
