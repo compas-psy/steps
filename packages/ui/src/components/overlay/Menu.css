@@ -71,7 +71,13 @@
 
 .shagi-menu__item--destructive {
   font-weight: var(--fw-semibold);
-  color: var(--destructive);
+  /* `--destructive` как текст на `--popover` был нечитаем в обеих темах
+     (3.53 light / 4.29 dark) — `--destructive` зафиксирован SPEC и
+     корректно используется как ФОН в других местах (`Button--destructive`
+     и т.п.), трогать нельзя. `--red-500` — тот же красный, уже
+     темизированный под текстовое использование (см. `colors.css`,
+     заголовок файла). */
+  color: var(--red-500);
 }
 
 @media (hover: hover) {

@@ -50,8 +50,12 @@
 }
 .shagi-badge--new {
   background: var(--amber-soft);
-  color: var(--gold-500);
-  border-color: color-mix(in srgb, var(--gold-500) 25%, transparent);
+  /* `--gold-500` как текст на `--amber-soft` — 2.22 в светлой теме, ниже
+     AA (SPEC-инвариантный токен, трогать нельзя, см. `colors.css`).
+     `--amber-500` — та же тёплая пара `X-soft`/`X-500`, что и у соседних
+     вариантов (`success`/`pending`/`info`/`destructive` ниже). */
+  color: var(--amber-500);
+  border-color: color-mix(in srgb, var(--amber-500) 25%, transparent);
 }
 .shagi-badge--destructive {
   background: var(--red-soft);

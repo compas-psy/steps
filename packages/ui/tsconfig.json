@@ -3,5 +3,10 @@
   "compilerOptions": {
     "rootDir": "."
   },
-  "include": ["src", "test"]
+  // `dev`/`e2e`/`vite.config.ts`/`playwright.config.ts` добавлены для E03
+  // «харнесс a11y и визрегрессии» (тот же список, что `apps/web/tsconfig.json`
+  // уже держит для своего `e2e`/`playwright.config.ts`) — без этого
+  // `pnpm --filter @shagi/ui typecheck` не видел бы харнесс вообще, и
+  // мандатная проверка перед сдачей ничего бы там не ловила.
+  "include": ["src", "test", "dev", "e2e", "vite.config.ts", "playwright.config.ts"]
 }

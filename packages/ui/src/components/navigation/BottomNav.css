@@ -48,9 +48,11 @@
 }
 
 /* Активный пункт — не только цвет: точка-индикатор над иконкой плюс более
-   жирная подпись (§11 «state never color-only»). */
+   жирная подпись (§11 «state never color-only»). Текст — `--primary-on-surface`,
+   не `--primary`: последний как текст на `--card` недостаточно контрастен
+   в тёмной теме (см. `colors.css`, заголовок файла). */
 .shagi-bottom-nav__item--active {
-  color: var(--primary);
+  color: var(--primary-on-surface);
 }
 .shagi-bottom-nav__item--active .shagi-bottom-nav__icon::after {
   content: '';

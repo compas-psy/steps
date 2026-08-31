@@ -35,10 +35,24 @@
  * строке (задача, которую пользователь выделил как текущий приоритет —
  * семантика `aria-current` подходит лучше, чем `aria-selected`, который
  * ARIA резервирует за списками с выбором). Selected — `aria-selected` на
- * строке (это и есть выбор для массового действия). Completed выражен
- * нативно через `checked` вложенного `<input type="checkbox">` —
- * отдельный `aria-checked` не нужен, нативный чекбокс уже даёт его
- * ассистивным технологиям бесплатно.
+ * строке (это и есть выбор для массового действия), НО ARIA разрешает
+ * `aria-selected` только на элементах с ролью `option`/`row`/`gridcell`/
+ * `tab`/`treeitem`/`columnheader`/`rowheader` (axe: `aria-allowed-attr`) —
+ * а корневой `<div>` этого компонента без роли ей не является, и сам
+ * компонент не знает, во что его оборачивает вызывающий код (`packages/app`,
+ * которого ещё нет): обернуть его в `role="option"` здесь самостоятельно
+ * значило бы либо навязать конкретный ARIA-паттерн списка (`listbox`),
+ * который вызывающий код может не использовать (например `grid`/`table`
+ * с `role="row"`), либо породить новое нарушение `aria-required-parent`
+ * при рендере без соответствующего родителя (`role="listbox"`/`role="grid"`).
+ * Поэтому роль — явный опциональный проп `role` (`'option' | 'row'`),
+ * который вызывающий код проставляет по факту реальной структуры списка;
+ * `aria-selected` эмитится только когда `role` задан (а `state==='selected'`)
+ * — без роли компонент вообще не трогает `aria-selected`, ответственность
+ * за корректный ARIA-паттерн списка (сама роль строки + подходящий
+ * родитель) остаётся на вызывающем коде. Completed выражен нативно через
+ * `checked` вложенного `<input type="checkbox">` — отдельный `aria-checked`
+ * не нужен, нативный чекбокс уже даёт его ассистивным технологиям бесплатно.
  */
 import { type HTMLAttributes, type ReactElement, type ReactNode, forwardRef } from 'react';
 
@@ -66,11 +80,24 @@ const TASK_ROW_STATE_ICON: Partial<Record<TaskRowState, IconName>> = {
   recurring: 'repeat',
 };
 
-export interface TaskRowProps extends Omit<HTMLAttributes<HTMLDivElement>, 'title'> {
+/**
+ * ARIA-роль корневого `<div>` строки — существует ТОЛЬКО чтобы легально
+ * включить `aria-selected` (ARIA разрешает его лишь на этих ролях, см.
+ * заголовок файла). Задаёт вызывающий код по факту реальной структуры
+ * списка: `'option'` — список-`role="listbox"`, `'row'` — таблица/сетка
+ * `role="grid"`/`role="table"`. Без родителя нужной роли не проставляйте
+ * этот проп вовсе (иначе получите `aria-required-parent`).
+ */
+export type TaskRowAriaRole = 'option' | 'row';
+
+export interface TaskRowProps extends Omit<HTMLAttributes<HTMLDivElement>, 'title' | 'role'> {
   /** Заголовок задачи. `ReactNode`, не `string` — вызывающий код волен
    * выделить в нём распознанные NLP-токены и т.п. */
   readonly title: ReactNode;
   readonly state?: TaskRowState;
+  /** См. `TaskRowAriaRole` — без него `aria-selected` не эмитится, даже
+   * при `state="selected"` (axe `aria-allowed-attr`). */
+  readonly role?: TaskRowAriaRole;
   readonly checked: boolean;
   readonly onCheckedChange?: (checked: boolean) => void;
   /** Обязательное доступное имя чекбокса (см. `TaskCheckbox.label`) —
@@ -91,6 +118,7 @@ export const TaskRow = forwardRef<HTMLDivElement, TaskRowProps>(function TaskRow
   {
     title,
     state = 'normal',
+    role,
     checked,
     onCheckedChange,
     checkboxLabel,
@@ -119,9 +147,10 @@ export const TaskRow = forwardRef<HTMLDivElement, TaskRowProps>(function TaskRow
     <div
       {...rest}
       ref={ref}
+      role={role}
       className={classes}
       aria-current={state === 'focus' ? 'true' : undefined}
-      aria-selected={state === 'selected' ? true : undefined}
+      aria-selected={role !== undefined && state === 'selected' ? true : undefined}
     >
       {state === 'dragging' && (
         <span className="shagi-task-row__drag-handle" aria-hidden="true">

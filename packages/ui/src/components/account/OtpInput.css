@@ -48,7 +48,13 @@
 
 .shagi-otp-input__error {
   margin: 0;
-  color: var(--destructive);
+  /* Тот же паттерн, что `Input.css`/`Textarea.css` (`--destructive` как
+     текст не проходит WCAG AA, `--red-500` — темизированная под текст
+     пара, см. `colors.css`). `OtpInput` пока не подключён в
+     `packages/ui/dev/` харнесс (значит и не в отчёте axe), но баг тот же —
+     правится тем же способом на всякий случай, не только там, где поймал
+     сканер. */
+  color: var(--red-500);
   font-family: var(--font-sans);
   font-size: var(--text-small-meta);
   line-height: var(--lh-small-meta);

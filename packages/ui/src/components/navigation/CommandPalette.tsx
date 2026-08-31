@@ -15,6 +15,28 @@
  * листают варианты, а не Tab), в отличие от `Tabs`/`SegmentedControl`, где
  * сам виджет и есть контент, а не фильтр над списком.
  *
+ * Доступное имя поля `role="combobox"` — отдельный `aria-label={label}` на
+ * самом `<input>` (тот же текст, что и `aria-label` диалога/`aria-label`
+ * списка): input не окружён `<label>` и не имеет видимого текста внутри
+ * себя, значит без `aria-label`/`aria-labelledby` у него вообще нет
+ * доступного имени (axe: `label`) — назначение всего диалога и есть
+ * назначение единственного интерактивного поля в нём, так что одна и та же
+ * строка `label` уместна на всех трёх ролях (`dialog`/`combobox`/`listbox`).
+ *
+ * `aria-controls` на `<input>` указывает на `<ul id="{baseId}-listbox">` —
+ * при пустом `items` список раньше не рендерился вовсе (вместо него
+ * `emptyState`), и `aria-controls` целил в несуществующий id (axe:
+ * `aria-valid-attr-value`). Первая попытка чинить это — не проставлять
+ * `aria-controls`, пока список пуст — сама оказалась нарушением: `input`
+ * несёт `aria-expanded="true"` постоянно (палитра открыта — открыт и
+ * попап), а по ARIA `aria-expanded="true"` на `combobox` ТРЕБУЕТ
+ * `aria-controls`, указывающий на реально существующий элемент (axe:
+ * `aria-required-attr`) — «пусто, поэтому нет атрибута» чинит одно
+ * нарушение и тут же ловит другое. Рабочее решение — `<ul>` рендерится
+ * ВСЕГДА (id всегда адресуем), при пустом `items` скрыт нативным `hidden`
+ * (не в рендере, не в accessibility tree — не просто «visibility»), а
+ * `emptyState` рендерится отдельным соседним блоком.
+ *
  * Фокус-ловушка диалога (готового паттерна для этого в пакете не было —
  * ни `Tooltip`, ни другой компонент модальный фокус не ловит, реализовано
  * с нуля): при открытии запоминается `document.activeElement` (кнопка,
@@ -199,6 +221,7 @@ export function CommandPalette<V extends string = string>({
             type="text"
             role="combobox"
             aria-expanded="true"
+            aria-label={label}
             aria-controls={`${baseId}-listbox`}
             aria-activedescendant={
               activeItem !== undefined ? optionId(activeItem.value) : undefined
@@ -219,52 +242,60 @@ export function CommandPalette<V extends string = string>({
             <Icon name="close" size={16} />
           </button>
         </div>
-        {items.length === 0 ? (
-          <div className="shagi-command-palette__empty">{emptyState}</div>
-        ) : (
-          <ul
-            id={`${baseId}-listbox`}
-            role="listbox"
-            aria-label={label}
-            className="shagi-command-palette__list"
-          >
-            {items.map((item, index) => {
-              const active = index === activeIndex;
-              return (
-                <li
-                  key={item.value}
-                  id={optionId(item.value)}
-                  role="option"
-                  aria-selected={active}
-                  aria-disabled={item.disabled === true || undefined}
-                  className={[
-                    'shagi-command-palette__option',
-                    active ? 'shagi-command-palette__option--active' : null,
-                    item.disabled === true ? 'shagi-command-palette__option--disabled' : null,
-                  ]
-                    .filter(Boolean)
-                    .join(' ')}
-                  onMouseEnter={() => setActiveIndex(index)}
-                  onClick={() => {
-                    if (!(item.disabled ?? false)) {
-                      onSelect(item.value);
-                    }
-                  }}
-                >
-                  {item.icon !== undefined && (
-                    <span className="shagi-command-palette__option-icon">
-                      <Icon name={item.icon} size={16} />
-                    </span>
-                  )}
-                  <span className="shagi-command-palette__option-label">{item.label}</span>
-                  {item.hint !== undefined && (
-                    <span className="shagi-command-palette__option-hint">{item.hint}</span>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
-        )}
+        {items.length === 0 && <div className="shagi-command-palette__empty">{emptyState}</div>}
+        {/* Всегда в DOM (не только когда `items` не пуст) — `aria-controls`
+            на `<input>` выше указывает на этот id, ПОКА `aria-expanded="true"`
+            (он у нас статичен, палитра открыта — открыт и попап), а
+            `role="combobox"` с `aria-expanded="true"` без указывающего на
+            реальный элемент `aria-controls` — отдельное ARIA-нарушение
+            (axe: `aria-required-attr`), не то, что чинили здесь изначально
+            (`aria-valid-attr-value`, dangling id). `hidden` при пустом
+            `items` держит список вне видимого рендера и вне accessibility
+            tree (не просто `display:none` руками — нативный атрибут даёт
+            оба эффекта бесплатно), но id остаётся адресуемым. */}
+        <ul
+          id={`${baseId}-listbox`}
+          role="listbox"
+          aria-label={label}
+          hidden={items.length === 0}
+          className="shagi-command-palette__list"
+        >
+          {items.map((item, index) => {
+            const active = index === activeIndex;
+            return (
+              <li
+                key={item.value}
+                id={optionId(item.value)}
+                role="option"
+                aria-selected={active}
+                aria-disabled={item.disabled === true || undefined}
+                className={[
+                  'shagi-command-palette__option',
+                  active ? 'shagi-command-palette__option--active' : null,
+                  item.disabled === true ? 'shagi-command-palette__option--disabled' : null,
+                ]
+                  .filter(Boolean)
+                  .join(' ')}
+                onMouseEnter={() => setActiveIndex(index)}
+                onClick={() => {
+                  if (!(item.disabled ?? false)) {
+                    onSelect(item.value);
+                  }
+                }}
+              >
+                {item.icon !== undefined && (
+                  <span className="shagi-command-palette__option-icon">
+                    <Icon name={item.icon} size={16} />
+                  </span>
+                )}
+                <span className="shagi-command-palette__option-label">{item.label}</span>
+                {item.hint !== undefined && (
+                  <span className="shagi-command-palette__option-hint">{item.hint}</span>
+                )}
+              </li>
+            );
+          })}
+        </ul>
       </div>
     </div>
   );

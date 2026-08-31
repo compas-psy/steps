@@ -50,7 +50,11 @@
 }
 
 .shagi-tabs__tab--active {
-  color: var(--primary);
+  /* Текст — `--primary-on-surface`: `--primary` как текст на поверхности
+     таблиста недостаточно контрастен в тёмной теме (см. `colors.css`,
+     заголовок файла). Подчёркивание — декоративная граница (не текст, порог
+     WCAG non-text 3:1, не 4.5:1), `--primary` для него остаётся уместным. */
+  color: var(--primary-on-surface);
   font-weight: var(--fw-semibold);
   border-bottom-color: var(--primary);
 }

@@ -1,0 +1,207 @@
+/**
+ * Вёрстка каталога-харнесса (не публикуется как часть `@shagi/ui` — см.
+ * заголовок `vite.config.ts`). Гейт адгезии дизайн-системы
+ * (`../.oxlintrc.json`) сканирует JS/TS AST на сырые hex/px — CSS-файлы вне
+ * его области (правило само об этом пишет в `spacing.css`, комментарий у
+ * `--board-column-width`), но здесь всё равно почти везде `var(--...)`, где
+ * токен есть по смыслу: layout-константы харнесса (ширина колонки каталога,
+ * высоты рамок под фиксированно позиционированные оверлеи) — не продуктовые
+ * величины ни одного экрана ШАГОВ, поэтому им намеренно не заведены токены.
+ */
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  font-size: var(--text-body-primary);
+  line-height: var(--lh-body-primary);
+}
+
+.dev-page {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: var(--space-6) var(--space-6) var(--space-12);
+}
+
+.dev-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin: 0 calc(var(--space-6) * -1) var(--space-8);
+  padding: var(--space-4) var(--space-6);
+  background: var(--card);
+  border-bottom: 1px solid var(--border);
+}
+
+.dev-header__title {
+  margin: 0;
+  font-size: var(--text-hero-title);
+  line-height: var(--lh-hero-title);
+  font-weight: var(--fw-bold);
+  color: var(--foreground);
+}
+
+.dev-theme-switch {
+  display: flex;
+  gap: var(--space-1);
+  padding: var(--space-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--muted);
+}
+
+.dev-theme-switch button {
+  border: none;
+  background: transparent;
+  color: var(--muted-foreground);
+  font-family: var(--font-sans);
+  font-size: var(--text-body-secondary);
+  line-height: var(--lh-body-secondary);
+  font-weight: var(--fw-medium);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.dev-theme-switch button[aria-pressed='true'] {
+  background: var(--card);
+  color: var(--foreground);
+  box-shadow: var(--shadow-xs);
+}
+
+.dev-section {
+  margin-bottom: var(--space-12);
+}
+
+.dev-section__title {
+  font-size: var(--text-page-title);
+  line-height: var(--lh-page-title);
+  font-weight: var(--fw-bold);
+  letter-spacing: var(--ls-page-title);
+  color: var(--foreground);
+  border-bottom: 1px solid var(--border);
+  padding-bottom: var(--space-3);
+  margin: 0 0 var(--space-6);
+}
+
+.dev-section__grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-6);
+  align-items: flex-start;
+}
+
+.dev-example {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--card);
+  min-width: calc(var(--space-12) * 5);
+}
+
+.dev-example--wide {
+  flex: 1 1 100%;
+}
+
+.dev-example__label {
+  margin: 0;
+  font-size: var(--text-caption);
+  line-height: var(--lh-caption);
+  letter-spacing: var(--ls-caption);
+  text-transform: uppercase;
+  font-weight: var(--fw-bold);
+  color: var(--muted-foreground);
+}
+
+.dev-example__body {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+
+.dev-frame {
+  position: relative;
+  overflow: hidden;
+  transform: translateZ(0);
+  width: 100%;
+  border-radius: var(--radius-lg);
+  border: 1px dashed var(--border);
+  background: var(--muted);
+}
+
+.dev-frame--center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.dev-icon-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(calc(var(--space-12) * 2), 1fr));
+  gap: var(--space-4);
+  width: 100%;
+}
+
+.dev-icon-grid__item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--card);
+  color: var(--foreground);
+}
+
+.dev-icon-grid__item span {
+  font-size: var(--text-caption);
+  line-height: var(--lh-caption);
+  color: var(--muted-foreground);
+  text-align: center;
+}
+
+.dev-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  width: 100%;
+}
+
+.dev-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+/* `Menu`/`TaskMenu` открыты постоянно в харнессе (`position: absolute`,
+   `top: calc(100% + …)` относительно ближайшего позиционированного предка —
+   см. `Menu.css`) — обёртка вокруг триггера должна быть ровно того же
+   размера, что и сам триггер (не растянута паддингом), иначе выпадающее
+   меню окажется смещено вниз на высоту паддинга, а не сразу под кнопкой.
+   Достаточную высоту под сам попап даёт внешний `Frame` (см. `Example.tsx`),
+   не эта обёртка. */
+.dev-menu-anchor {
+  position: relative;
+  display: inline-block;
+  margin: var(--space-6);
+}
+
+.dev-popover-anchor {
+  position: relative;
+  display: inline-flex;
+  margin: calc(var(--space-12) * 1.5) auto;
+}

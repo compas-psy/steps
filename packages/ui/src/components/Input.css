@@ -78,5 +78,9 @@
   font-size: var(--text-small-meta);
   line-height: var(--lh-small-meta);
   font-weight: var(--fw-medium);
-  color: var(--destructive);
+  /* `--destructive` как текст рядом с полем (на `--card`/`--background`)
+     не проходил WCAG AA в обеих темах — зафиксирован SPEC как ФОН-роль,
+     трогать нельзя. `--red-500` — тот же красный, темизированный под
+     текстовое использование (см. `colors.css`, заголовок файла). */
+  color: var(--red-500);
 }

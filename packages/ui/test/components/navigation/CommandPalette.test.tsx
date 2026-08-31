@@ -64,6 +64,44 @@ describe('CommandPalette', () => {
     expect(screen.getByRole('combobox')).toHaveFocus();
   });
 
+  it('поле ввода (role="combobox") имеет доступное имя через aria-label (axe: label)', async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+
+    await user.click(screen.getByRole('button', { name: 'Открыть палитру' }));
+
+    expect(screen.getByRole('combobox', { name: 'Командная палитра' })).toBeInTheDocument();
+  });
+
+  it('aria-controls на поле ввода указывает на реально существующий id listbox, когда items не пуст', async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+
+    await user.click(screen.getByRole('button', { name: 'Открыть палитру' }));
+
+    const input = screen.getByRole('combobox');
+    const listbox = screen.getByRole('listbox');
+    expect(input).toHaveAttribute('aria-controls', listbox.id);
+  });
+
+  it('aria-controls указывает на существующий (но скрытый) listbox даже при пустом items — aria-expanded="true" требует валидный aria-controls (axe: aria-required-attr), а не его отсутствие', async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+
+    await user.click(screen.getByRole('button', { name: 'Открыть палитру' }));
+    await user.type(screen.getByRole('combobox'), 'нет такой команды');
+
+    const input = screen.getByRole('combobox');
+    expect(input).toHaveAttribute('aria-expanded', 'true');
+    // `getByRole('listbox')` не находит скрытый (`hidden`) элемент — id всё
+    // равно в DOM и адресуем через `document.getElementById`.
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+    const controlsId = input.getAttribute('aria-controls');
+    expect(controlsId).not.toBeNull();
+    // eslint-disable-next-line testing-library/no-node-access -- проверяем именно то, что не проверяет getByRole: скрытый элемент с этим id реально существует в DOM (axe: aria-required-attr/aria-valid-attr-value смотрят на DOM, не на роль видимого дерева).
+    expect(document.getElementById(controlsId as string)).toBeInTheDocument();
+  });
+
   it('Escape закрывает диалог и возвращает фокус на элемент, который его открыл', async () => {
     const user = userEvent.setup();
     render(<Harness />);

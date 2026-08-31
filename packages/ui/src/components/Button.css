@@ -81,14 +81,19 @@
   color: var(--accent-foreground);
   box-shadow: var(--shadow-sm);
 }
+/* `secondary`/`ghost` — текст `--primary` на нейтральной поверхности
+   (`--card`/просвечивающий `--background`), не на самом `--primary`-фоне —
+   в тёмной теме давал 3.42–4.16, ниже AA (см. `colors.css`, заголовок
+   файла). `--primary-on-surface` — тот же корень, что чинит тот же паттерн
+   в `SegmentedControl`/`BottomNav`/`Tabs`/`Chip--forest`. */
 .shagi-button--secondary {
   background: var(--card);
-  color: var(--primary);
+  color: var(--primary-on-surface);
   border-color: var(--border);
 }
 .shagi-button--ghost {
   background: transparent;
-  color: var(--primary);
+  color: var(--primary-on-surface);
 }
 .shagi-button--destructive {
   background: var(--destructive);
@@ -127,9 +132,25 @@
 
 /* Loading прячет текст визуально, но не из дерева доступности — кнопка
    сохраняет то же accessible name, что и в покое (aria-busy сообщает о
-   процессе поверх него), а не подменяет его текстом спиннера. */
+   процессе поверх него), а не подменяет его текстом спиннера.
+   `visibility: hidden` для этого не годится (было здесь раньше и реально
+   ЛОМАЛО доступное имя, axe `button-name`): в отличие от `opacity`,
+   `visibility: hidden` убирает узел из accessibility tree, а не только
+   из визуального рендера — значит и текста в имени кнопки не остаётся.
+   Вместо этого — стандартная sr-only-техника: элемент физически виден
+   (не `display:none`/`visibility:hidden`), но схлопнут в точку 1×1px без
+   переполнения и вынесен из визуального потока — читается программами
+   чтения с экрана, не виден глазу. */
 .shagi-button[aria-busy='true'] .shagi-button__label {
-  visibility: hidden;
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 .shagi-button__spinner-wrap {
   position: absolute;

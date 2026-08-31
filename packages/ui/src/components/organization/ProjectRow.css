@@ -10,8 +10,12 @@
   list-style: none;
 }
 
+/* `opacity: 0.5` (было) блендит текст и (прозрачный) фон строки в
+   один и тот же окружающий фон — контраст текста при такой глубокой
+   прозрачности проседал ниже WCAG AA (измерено 3.26 light / 4.21 dark).
+   0.8 — тот же порог, что `BoardCard.css` для того же состояния «Dragging». */
 .shagi-project-row--dragging {
-  opacity: 0.5;
+  opacity: 0.8;
 }
 
 .shagi-project-row__button {

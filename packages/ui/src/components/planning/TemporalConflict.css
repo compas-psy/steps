@@ -1,8 +1,11 @@
 /**
  * `TemporalConflict` — компактный тревожный баннер под полем даты/дедлайна
- * (см. `TemporalConflict.tsx`). Тревожный тон — `--red-soft`/`--destructive`,
- * тот же выбор, что и `ErrorState.css`, здесь просто в компактной строчной
- * форме, а не полноэкранном состоянии.
+ * (см. `TemporalConflict.tsx`). Тревожный тон — `--red-soft`/`--red-500`,
+ * тот же выбор, что и остальные soft/500-пары (`Chip--red`/`Badge--destructive`/
+ * `Priority--p1`), не `--destructive` — тот как текст на `--red-soft` не
+ * проходил WCAG AA (3.19 в светлой теме) и зафиксирован SPEC как ФОН-роль
+ * (`Button--destructive` и т.п.), трогать нельзя (см. `colors.css`,
+ * заголовок файла).
  */
 
 .shagi-temporal-conflict {
@@ -12,7 +15,7 @@
   padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-md);
   background: var(--red-soft);
-  color: var(--destructive);
+  color: var(--red-500);
 }
 
 .shagi-temporal-conflict__icon {
@@ -26,5 +29,5 @@
   font-size: var(--text-body-secondary);
   line-height: var(--lh-body-secondary);
   font-weight: var(--fw-medium);
-  color: var(--destructive);
+  color: var(--red-500);
 }

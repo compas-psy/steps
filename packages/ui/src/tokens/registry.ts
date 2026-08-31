@@ -263,6 +263,12 @@ export const TOKENS: readonly TokenDescriptor[] = [
   { name: '--popover-foreground', kind: 'color', definedIn: 'src/tokens/colors.css', themed: true },
   { name: '--primary', kind: 'color', definedIn: 'src/tokens/colors.css', themed: true },
   { name: '--primary-foreground', kind: 'color', definedIn: 'src/tokens/colors.css', themed: true },
+  {
+    name: '--primary-on-surface',
+    kind: 'color',
+    definedIn: 'src/tokens/colors.css',
+    themed: true,
+  },
   { name: '--radius-2xl', kind: 'radius', definedIn: 'src/tokens/radius.css', themed: false },
   { name: '--radius-full', kind: 'radius', definedIn: 'src/tokens/radius.css', themed: false },
   { name: '--radius-lg', kind: 'radius', definedIn: 'src/tokens/radius.css', themed: false },

@@ -47,11 +47,18 @@ button.shagi-chip[aria-pressed='true'] {
 }
 .shagi-chip--forest {
   background: color-mix(in srgb, var(--primary) 12%, transparent);
-  color: var(--primary);
+  /* `--primary` как текст на нейтральной/12%-tint поверхности недостаточно
+     контрастен в тёмной теме (WCAG AA, см. `colors.css`) — `--primary`
+     остаётся источником фона (12%-tint), но текст — `--primary-on-surface`. */
+  color: var(--primary-on-surface);
 }
 .shagi-chip--gold {
   background: var(--amber-soft);
-  color: var(--gold-500);
+  /* `--gold-500` (SPEC §3, инвариантный) как текст на `--amber-soft` даёт
+     2.22 в светлой теме — ниже AA. Заголовок файла уже называет пару
+     «amber-soft/amber-500» как задуманную — здесь она восстановлена
+     (`--gold-500` не трогаем, он зафиксирован SPEC и не про текст). */
+  color: var(--amber-500);
 }
 .shagi-chip--blue {
   background: var(--blue-soft);

@@ -41,9 +41,12 @@
   box-shadow: var(--shadow-xs);
 }
 
+/* `--primary` как текст на `--card` недостаточно контрастен в тёмной теме
+   (3.42), `--gold-500` — недостаточно контрастен в светлой (2.45); оба —
+   тот же корневой разбор, что в `colors.css` (заголовок файла). */
 .shagi-segmented--forest .shagi-segmented__option--active {
-  color: var(--primary);
+  color: var(--primary-on-surface);
 }
 .shagi-segmented--gold .shagi-segmented__option--active {
-  color: var(--gold-500);
+  color: var(--amber-500);
 }

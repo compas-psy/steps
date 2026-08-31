@@ -133,19 +133,42 @@ describe('TaskRow', () => {
       expect(screen.getByRole('checkbox', { name: 'Задача' })).toBeChecked();
     });
 
-    it('selected — фон + принудительно заполненный чекбокс, aria-selected на строке', () => {
+    it('selected без явного role — не эмитит aria-selected (axe aria-allowed-attr: атрибут запрещён на <div> без role option/row/…)', () => {
       const { container } = render(
         <TaskRow title="Задача" checked={false} checkboxLabel="Задача" state="selected" />,
       );
-      expect(container.querySelector('.shagi-task-row--selected')).toHaveAttribute(
-        'aria-selected',
-        'true',
-      );
+      const row = container.querySelector('.shagi-task-row--selected');
+      expect(row).not.toHaveAttribute('aria-selected');
+      expect(row).not.toHaveAttribute('role');
       // Заливка чекбокса форсируется CSS-классом строки — сам чекбокс не checked.
       expect(screen.getByRole('checkbox', { name: 'Задача' })).not.toBeChecked();
       expect(
         container.querySelector('.shagi-task-row--selected .shagi-task-checkbox__box'),
       ).toBeInTheDocument();
+    });
+
+    it('selected с role="option" (вызывающий код диктует ARIA-паттерн списка) — aria-selected на строке', () => {
+      const { container } = render(
+        <TaskRow
+          title="Задача"
+          checked={false}
+          checkboxLabel="Задача"
+          state="selected"
+          role="option"
+        />,
+      );
+      const row = container.querySelector('.shagi-task-row--selected');
+      expect(row).toHaveAttribute('role', 'option');
+      expect(row).toHaveAttribute('aria-selected', 'true');
+    });
+
+    it('role="row" без state="selected" — role проставлен, aria-selected нет (нечего выбирать)', () => {
+      const { container } = render(
+        <TaskRow title="Задача" checked={false} checkboxLabel="Задача" role="row" />,
+      );
+      const row = container.querySelector('.shagi-task-row--normal');
+      expect(row).toHaveAttribute('role', 'row');
+      expect(row).not.toHaveAttribute('aria-selected');
     });
 
     it('dragging — виден drag-handle, отличный от простого снижения непрозрачности', () => {
