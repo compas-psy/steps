@@ -65,32 +65,45 @@ jobs:
         run: pnpm test:e2e
 
   # ─────────────────────────────────────────────────────────────────────
-  # Визуальная регрессия — SPEC/06 §10: golden-состояния (Welcome, Sign in,
-  # First Task, Today normal/missed, Quick Add parsed, Task detail,
-  # Inbox list/process, Plan, Project list/board, Data & Privacy,
-  # multi-select, Undo, context menu, command palette, Desktop
-  # Today/Board/Settings — production, без showcase-обвязки).
-  #
-  # Место зарезервировано, а не запущено: харнесс визрегрессии — предмет
-  # эпика E03 («Продакшн дизайн-система… харнесс a11y и визрегрессии»,
-  # .ultraplan/plan.md), которого на пакете работ E00.6 ещё нет. Условие —
-  # переменная репозитория `ENABLE_VISUAL_REGRESSION`, не заведённая нигде
-  # сейчас (значит false) — job виден в списке как честный "skipped", не
-  # подделанный "passed" и не буквальная константа `if: false` (её ловит
-  # actionlint как мёртвый код). Когда E03 добавит харнесс: завести
-  # переменную репозитория в true и вписать реальные шаги вместо TODO —
-  # не заводить job заново.
+  # Визуальная регрессия + a11y дизайн-системы — эпик E03 «Продакшн
+  # дизайн-система… харнесс a11y и визрегрессии» (.ultraplan/plan.md).
+  # Харнесс (`packages/ui/dev/` — витрина всех 65 компонентов пакета, не
+  # продуктовые экраны SPEC/06 §10 — тех ещё нет, они приезжают вместе с
+  # соответствующими эпиками E04–E12) и Playwright-спеки
+  # (`packages/ui/e2e/{a11y,visual}.spec.ts`) уже реализованы и зелёные
+  # локально (axe WCAG 2.2 AA + 16 скриншот-baseline, обе темы). Условие —
+  # переменная репозитория `ENABLE_VISUAL_REGRESSION`: TODO(владелец) —
+  # завести её в `true` в настройках репозитория, чтобы этот job реально
+  # начал исполняться (сам workflow этого сделать не может). До этого job
+  # виден в списке как честный "skipped", не подделанный "passed".
   # ─────────────────────────────────────────────────────────────────────
   visual-regression:
-    name: Визуальная регрессия (ожидает E03)
+    name: Визуальная регрессия + a11y дизайн-системы (E03)
     runs-on: ubuntu-latest
     if: ${{ vars.ENABLE_VISUAL_REGRESSION == 'true' }}
     timeout-minutes: 30
     steps:
-      - name: Место зарезервировано под харнесс визрегрессии эпика E03
-        run: |
-          echo "TODO(E03): golden-состояния — SPEC/06 §10; production build, без device frames."
-          exit 1
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Установить pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Установить Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+
+      - name: pnpm install --frozen-lockfile
+        run: pnpm install --frozen-lockfile
+
+      - name: Установить браузер Playwright (Chromium)
+        working-directory: packages/ui
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: axe (WCAG 2.2 AA) + визрегрессия дизайн-системы
+        working-directory: packages/ui
+        run: pnpm exec playwright test
 
   # ─────────────────────────────────────────────────────────────────────
   # Перф-бюджеты — SPEC/06 §8: датасеты 10k/100k задач, 500 карточек доски,
