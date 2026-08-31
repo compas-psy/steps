@@ -11,13 +11,19 @@
  * nav, 5 позиций: Сегодня · План · (+ по центру) · Проекты · Поиск» — это
  * продуктовое решение формы `BottomNav` (`@shagi/ui`, уже фиксирует ровно
  * такую структуру: боковые пункты вокруг одной центральной кнопки). Из
- * пяти сегодня реализовано два (Today, Projects) — «План» и «Поиск» ждут
- * своих эпиков (E12), центральная кнопка «Быстрое добавление» — своего
- * (E05, UI Quick Add сознательно не построен ни в одном пакете работ,
- * см. историю `.ultraplan/plan.md`). Компонент не притворяется, что этих
- * возможностей больше, чем есть: `items` — только два реальных пункта (не
- * пять с тремя недостижимыми), центральная кнопка — честно `disabled` с
- * причиной в подписи, не скрыта и не изображает рабочей.
+ * пяти сегодня реализовано три (Today, Projects, Search — пакет работ
+ * E12.1) — «План» ждёт своего пакета работ (тот же эпик E12, следующий за
+ * этим), центральная кнопка «Быстрое добавление» — своего (E05, UI Quick
+ * Add сознательно не построен ни в одном пакете работ, см. историю
+ * `.ultraplan/plan.md`). Компонент не притворяется, что этих возможностей
+ * больше, чем есть: `items` — только три реальных пункта (не пять с двумя
+ * недостижимыми), центральная кнопка — честно `disabled` с причиной в
+ * подписи, не скрыта и не изображает рабочей.
+ *
+ * «Поиск» (M34/M35, эпик E12.1) — обычный пункт `items`, не оверлей: клик
+ * → `controller.goTo('search')` (`state/store.ts`, блок про `'search'` в
+ * заголовке файла) — тот же путь, что уже есть у «Проекты», Search тоже
+ * «главный» экран, на который возвращаются, не шаг разового потока.
  *
  * «Входящие» НЕ входит в `items` — уже задокументированное дизайн-решение
  * (см. `BottomNav.tsx`, заголовок: «Вход во Входящие сюда не включён…
@@ -44,17 +50,22 @@ import type { ScreenId } from '../state/store.js';
  * мере поступления новых «главных» экранов (План/Поиск, E12), тем же
  * приёмом, что уже растёт `ScreenId`/`SCREENS` (не декларируется наперёд
  * списком экранов, которых ещё нет). */
-const MAIN_TAB_SCREENS: ReadonlySet<ScreenId> = new Set<ScreenId>(['todayEmpty', 'projects']);
+const MAIN_TAB_SCREENS: ReadonlySet<ScreenId> = new Set<ScreenId>([
+  'todayEmpty',
+  'projects',
+  'search',
+]);
 
 export function isMainTabScreen(screen: ScreenId): boolean {
   return MAIN_TAB_SCREENS.has(screen);
 }
 
-type MainTabValue = 'todayEmpty' | 'projects';
+type MainTabValue = 'todayEmpty' | 'projects' | 'search';
 
 const NAV_ITEMS: readonly BottomNavItem<MainTabValue>[] = [
   { value: 'todayEmpty', label: t('shell', 'bottomNav.today'), icon: 'calendar' },
   { value: 'projects', label: t('shell', 'bottomNav.projects'), icon: 'folder' },
+  { value: 'search', label: t('shell', 'bottomNav.search'), icon: 'search' },
 ];
 
 export function AppShell({ children }: { children: ReactNode }): ReactElement {

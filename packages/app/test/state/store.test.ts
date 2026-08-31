@@ -164,6 +164,24 @@ describe('AppController', () => {
     );
   });
 
+  it('goTo("search") переводит контроллер на экран Search (M34/M35, эпик E12.1) — обычный переход, не оверлей', () => {
+    const controller = createAppController({ screen: 'projects' });
+    const listener = vi.fn();
+    controller.subscribe(listener);
+
+    controller.goTo('search');
+
+    expect(controller.getState()).toEqual({
+      screen: 'search',
+      localMode: false,
+      selectedProjectId: null,
+      selectedTaskId: null,
+      returnScreen: null,
+      quickAdd: null,
+    });
+    expect(listener).toHaveBeenCalledWith(expect.objectContaining({ screen: 'search' }));
+  });
+
   it('closeQuickAdd закрывает оверлей, не меняя screen под ним', () => {
     const controller = createAppController({ screen: 'inbox' });
     controller.openQuickAdd('inbox');

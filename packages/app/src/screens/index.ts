@@ -14,6 +14,10 @@
  * пакет работ E06.1 добавляет для него запись `Today` — сам компонент
  * решает по факту данных (`selectTodayTasks`), показать M06 Empty или
  * M07 Normal, имя экрана в реестре не переименовано (уже согласовано).
+ *
+ * `search` (M34 Empty / M35 Results) — эпик E12, пакет работ E12.1: см.
+ * заголовок `state/store.ts`, блок про `'search'`, за обоснованием
+ * «обычный `ScreenId`, не оверлей».
  */
 import type { ComponentType } from 'react';
 
@@ -24,6 +28,7 @@ import { Launch } from './Launch.js';
 import { NlpOnboarding } from './NlpOnboarding.js';
 import { ProjectDetail } from './ProjectDetail.js';
 import { Projects } from './Projects.js';
+import { Search } from './Search.js';
 import { SignIn } from './SignIn.js';
 import { TaskDetail } from './TaskDetail.js';
 import { Today } from './Today.js';
@@ -35,6 +40,7 @@ export { Launch } from './Launch.js';
 export { NlpOnboarding } from './NlpOnboarding.js';
 export { ProjectDetail } from './ProjectDetail.js';
 export { Projects } from './Projects.js';
+export { Search } from './Search.js';
 export { SignIn } from './SignIn.js';
 export { TaskDetail } from './TaskDetail.js';
 export { Today } from './Today.js';
@@ -51,4 +57,5 @@ export const SCREENS: Partial<Record<ScreenId, ComponentType>> = {
   projects: Projects,
   projectDetail: ProjectDetail,
   taskDetail: TaskDetail,
+  search: Search,
 };

@@ -54,6 +54,17 @@
  * `App.tsx` рендерит оверлей `<QuickAdd>` поверх `<Screens>`, когда
  * `quickAdd !== null` — экран под низом продолжает существовать в дереве и
  * в состоянии `AppState.screen`, не подменяется.
+ *
+ * `'search'` (M34 Search Empty / M35 Search Results, эпик E12 «План, поиск,
+ * фильтры, завершённые», первый пакет работ E12.1) — ОБЫЧНЫЙ `ScreenId`, не
+ * оверлей (в отличие от `quickAdd` выше): пользователь явно "переходит в
+ * поиск" и заменяет им текущий главный экран (тот же принцип, что
+ * `'projects'`), не работает поверх произвольного контекста, откуда его
+ * вызвали (D12 "callable from any route" — про Quick Add, не про Search,
+ * `01§3`). Не параметризован (в отличие от `'projectDetail'`/`'taskDetail'`)
+ * — у Search нет «какой именно» сущности, экран сам держит текст запроса
+ * локальным состоянием (`screens/Search.tsx`), поэтому обычная запись в
+ * `goTo`, без отдельного метода контроллера.
  */
 import type { Uuid } from '@shagi/core';
 
@@ -67,7 +78,8 @@ export type ScreenId =
   | 'inbox'
   | 'projects'
   | 'projectDetail'
-  | 'taskDetail';
+  | 'taskDetail'
+  | 'search';
 
 /** Откуда открыт Quick Add — см. блок про `quickAdd` в заголовке файла.
  * Только три из семи строк таблицы «Origin → Inherited values» (`01§3`) —

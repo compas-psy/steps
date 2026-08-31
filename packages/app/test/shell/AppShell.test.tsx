@@ -14,9 +14,10 @@ function testHost(): AppHost {
 }
 
 describe('isMainTabScreen', () => {
-  it('todayEmpty и projects — главные экраны с постоянной навигацией', () => {
+  it('todayEmpty, projects и search — главные экраны с постоянной навигацией', () => {
     expect(isMainTabScreen('todayEmpty')).toBe(true);
     expect(isMainTabScreen('projects')).toBe(true);
+    expect(isMainTabScreen('search')).toBe(true);
   });
 
   it('остальные экраны (онбординг, Inbox) — не главные вкладки', () => {
@@ -61,6 +62,22 @@ describe('AppShell', () => {
     await user.click(screen.getByRole('button', { name: t('shell', 'bottomNav.projects') }));
 
     expect(controller.getState().screen).toBe('projects');
+  });
+
+  it('клик по «Поиск» переводит контроллер на экран search (эпик E12.1)', async () => {
+    const user = userEvent.setup();
+    const controller = createAppController({ screen: 'todayEmpty' });
+    render(
+      <AppProvider host={testHost()} controller={controller}>
+        <AppShell>
+          <div>контент</div>
+        </AppShell>
+      </AppProvider>,
+    );
+
+    await user.click(screen.getByRole('button', { name: t('shell', 'bottomNav.search') }));
+
+    expect(controller.getState().screen).toBe('search');
   });
 
   it('центральная кнопка «Быстрое добавление» открывает Quick Add с origin=global (эпик E05.2)', async () => {

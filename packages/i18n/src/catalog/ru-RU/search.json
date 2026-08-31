@@ -1,0 +1,13 @@
+{
+  "pageTitle": "Поиск",
+  "input.label": "Поиск по задачам, проектам и меткам",
+  "input.placeholder": "Начните вводить запрос…",
+  "empty.title": "Найдите задачу, проект или метку.",
+  "empty.description": "Начните вводить запрос — результаты появятся сразу, без отдельной кнопки.",
+  "noResults.title": "Ничего не найдено.",
+  "noResults.description": "Проверьте написание или попробуйте другое слово.",
+  "sections.tasks": "Задачи",
+  "sections.projects": "Проекты",
+  "sections.labels": "Метки",
+  "status.completed": "Завершена"
+}
