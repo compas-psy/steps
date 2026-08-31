@@ -188,6 +188,11 @@ describe('Inbox — действия карточки', () => {
     const stored = await getStorage().tasks.findById(task.id);
     expect(stored?.projectId).toBe(project.id);
     expect(stored?.captureState).toBe('processed');
+    // Найдено при приёмке E09.1 (см. update-task.ts): единственный сегодня
+    // реальный путь назначить проект ПОСЛЕ создания — без явной передачи
+    // снимка здесь он остался бы `null` навсегда (01§12 "keeps project-name
+    // snapshot after project deletion").
+    expect(stored?.originalProjectNameSnapshot).toBe('Мой проект');
   });
 
   it('«Проект» при пустом списке проектов показывает недоступный пункт «Проектов пока нет», задача не тронута', async () => {

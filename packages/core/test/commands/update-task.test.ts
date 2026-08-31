@@ -150,6 +150,46 @@ describe('updateTaskCommand — успешный путь', () => {
 
     expect(result.task.description).toBe('исходное описание');
   });
+
+  // Найдено при приёмке E09.1 (project-delete.ts полагается на то, что
+  // снимок имени проекта актуален) — до этого исправления `updateTaskCommand`
+  // не умел трогать originalProjectNameSnapshot/originalSectionNameSnapshot
+  // вовсе: единственный сегодня реальный путь назначить проект ПОСЛЕ
+  // создания (Inbox.tsx «Проект») молча оставлял снимок null навсегда.
+  it('originalProjectNameSnapshot: назначается патчем при смене projectId, тикает HLC и попадает в outbox-патч', async () => {
+    const priorClock = { physical: NOW.subtract({ hours: 24 }), logical: 0, deviceId: DEVICE_ID };
+    const { storage, task } = await withSeeded({
+      projectId: null,
+      originalProjectNameSnapshot: null,
+      clocks: { title: priorClock },
+    });
+
+    const projectId = uuid('900');
+    const result = await updateTaskCommand(
+      { id: task.id, patch: { projectId, originalProjectNameSnapshot: 'Ремонт' } },
+      deps(storage),
+    );
+    if (result.status !== 'ok') throw new Error('ожидался успех');
+
+    expect(result.task.originalProjectNameSnapshot).toBe('Ремонт');
+    expect(result.task.clocks.originalProjectNameSnapshot?.physical.equals(NOW)).toBe(true);
+    // Заголовок этим патчем не тронут — его клок обязан остаться прежним.
+    expect(result.task.clocks.title?.physical.equals(priorClock.physical)).toBe(true);
+
+    const patchJson = storage.outboxEntries()[0]?.patchJson;
+    expect(patchJson).toHaveProperty('originalProjectNameSnapshot', 'Ремонт');
+  });
+
+  it('originalProjectNameSnapshot: отсутствие ключа в патче не трогает уже сохранённый снимок', async () => {
+    const { storage, task } = await withSeeded({
+      originalProjectNameSnapshot: 'Старое имя проекта',
+    });
+
+    const result = await updateTaskCommand({ id: task.id, patch: { title: 'X' } }, deps(storage));
+    if (result.status !== 'ok') throw new Error('ожидался успех');
+
+    expect(result.task.originalProjectNameSnapshot).toBe('Старое имя проекта');
+  });
 });
 
 describe('updateTaskCommand — путь отклонения на блокирующем нарушении', () => {

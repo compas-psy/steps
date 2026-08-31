@@ -330,11 +330,23 @@ export function Inbox(): ReactElement {
     );
   }
 
-  function handleAssignProject(task: Task, projectId: Uuid): void {
+  // `originalProjectNameSnapshot` в патче (E09.1 приёмка, fix update-task.ts):
+  // это единственное сегодня реальное место в дереве пакетов, где задаче
+  // назначается проект ПОСЛЕ создания — без явной передачи снимка здесь он
+  // остался бы `null` навсегда (CLAUDE.md п.7 / 01§12 "keeps project-name
+  // snapshot after project deletion").
+  function handleAssignProject(task: Task, project: Project): void {
     setProjectMenuOpen(false);
     void runCommand(
       updateTaskCommand(
-        { id: task.id, patch: { projectId, captureState: 'processed' } },
+        {
+          id: task.id,
+          patch: {
+            projectId: project.id,
+            originalProjectNameSnapshot: project.title,
+            captureState: 'processed',
+          },
+        },
         commandDeps(),
       ),
     );
@@ -362,7 +374,7 @@ export function Inbox(): ReactElement {
           key: project.id,
           label: project.title,
           onSelect: () => {
-            if (current !== null) handleAssignProject(current, project.id);
+            if (current !== null) handleAssignProject(current, project);
           },
         }));
 

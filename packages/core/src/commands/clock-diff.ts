@@ -31,6 +31,14 @@ const MUTABLE_TASK_FIELDS = [
   'dayBucket',
   'deadlineDate',
   'deadlineTime',
+  // Добавлены при приёмке E09.1: изначально set-once поля создания
+  // (`createTaskCommand`), но `updateTaskCommand` теперь тоже умеет их
+  // менять (снимок имени проекта/секции при назначении ПОСЛЕ создания —
+  // см. `UpdateTaskPatch.originalProjectNameSnapshot`) — без записи в этом
+  // списке изменение не попало бы ни под HLC, ни в outbox-патч синка,
+  // осталось бы только в локальной записи.
+  'originalProjectNameSnapshot',
+  'originalSectionNameSnapshot',
   'status',
   'completedAt',
   'completionKind',

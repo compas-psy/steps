@@ -44,6 +44,26 @@ export interface UpdateTaskPatch {
   readonly priority?: Priority;
   readonly projectId?: Uuid | null;
   readonly sectionId?: Uuid | null;
+  /**
+   * Снимок имени проекта/секции на момент ЭТОГО изменения `projectId`/
+   * `sectionId` (CLAUDE.md, п.7 «снимок имени проекта на Task»; `01§12`
+   * «Completed task history keeps project-name snapshot after project
+   * deletion»). Опциональны и независимы от `projectId`/`sectionId` в этом
+   * же патче намеренно: у `updateTaskCommand` нет доступа к
+   * `ProjectRepository` (только Task-хранилище, `storage-port.ts`), поэтому
+   * актуальное имя проекта на момент назначения обязан передать вызывающий
+   * код (тот же принцип, что уже применён в `createTaskCommand` — снимок
+   * там тоже вход, не вычисление команды). Найдено при приёмке E09.1:
+   * `originalProjectNameSnapshot` уже существовал на `Task`/в
+   * `createTaskCommand`, но не был доступен через `updateTaskCommand` —
+   * единственный сегодня реальный путь назначить проект ПОСЛЕ создания
+   * (`Inbox.tsx` «Проект», обработка Входящих) молча оставлял снимок
+   * `null` навсегда, у задач, захваченных без проекта. Отсутствие ключа —
+   * "не трогать снимок" (та же семантика `'field' in patch`, что у
+   * остальных полей этого патча), не "очистить его".
+   */
+  readonly originalProjectNameSnapshot?: string | null;
+  readonly originalSectionNameSnapshot?: string | null;
   readonly parentTaskId?: Uuid | null;
   readonly captureState?: CaptureState;
   readonly availableFrom?: Temporal.PlainDate | null;
@@ -198,6 +218,14 @@ export async function updateTaskCommand(
   const captureState = patch.captureState ?? current.captureState;
   const projectId = 'projectId' in patch ? (patch.projectId ?? null) : current.projectId;
   const sectionId = 'sectionId' in patch ? (patch.sectionId ?? null) : current.sectionId;
+  const originalProjectNameSnapshot =
+    'originalProjectNameSnapshot' in patch
+      ? (patch.originalProjectNameSnapshot ?? null)
+      : current.originalProjectNameSnapshot;
+  const originalSectionNameSnapshot =
+    'originalSectionNameSnapshot' in patch
+      ? (patch.originalSectionNameSnapshot ?? null)
+      : current.originalSectionNameSnapshot;
   const parentTaskId =
     'parentTaskId' in patch ? (patch.parentTaskId ?? null) : current.parentTaskId;
 
@@ -261,8 +289,8 @@ export async function updateTaskCommand(
     sourceChannel: current.sourceChannel,
     sourceCaptureBatchId: current.sourceCaptureBatchId,
     sourceIntentId: current.sourceIntentId,
-    originalProjectNameSnapshot: current.originalProjectNameSnapshot,
-    originalSectionNameSnapshot: current.originalSectionNameSnapshot,
+    originalProjectNameSnapshot,
+    originalSectionNameSnapshot,
     createdAt: current.createdAt,
     updatedAt: deps.now,
     deletedAt: null,
