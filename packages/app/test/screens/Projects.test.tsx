@@ -68,6 +68,7 @@ function SeedThenProjectsCapturing({
 
 function renderProjectsCapturingStorage(projects: readonly Project[] = []): {
   getStorage: () => StoragePort;
+  controller: ReturnType<typeof createAppController>;
 } {
   const controller = createAppController({ screen: 'projects' });
   let capturedStorage: StoragePort | undefined;
@@ -85,6 +86,7 @@ function renderProjectsCapturingStorage(projects: readonly Project[] = []): {
         throw new Error('storage не захвачен — компонент не смонтировался');
       return capturedStorage;
     },
+    controller,
   };
 }
 
@@ -107,6 +109,18 @@ describe('Projects (M16) — список', () => {
     expect(
       screen.getByRole('button', { name: t('projects', 'actions.create') }),
     ).toBeInTheDocument();
+  });
+
+  it('клик по строке проекта открывает его — controller.openProject (единственная разрешённая правка E09.3)', async () => {
+    const user = userEvent.setup();
+    const project = makeProject({ title: 'Открываемый проект' });
+    const { controller } = renderProjectsCapturingStorage([project]);
+
+    await waitFor(() => expect(screen.getByText('Открываемый проект')).toBeInTheDocument());
+    await user.click(screen.getByRole('button', { name: 'Открываемый проект' }));
+
+    expect(controller.getState().screen).toBe('projectDetail');
+    expect(controller.getState().selectedProjectId).toBe(project.id);
   });
 });
 

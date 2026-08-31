@@ -8,10 +8,10 @@
  *
  * Территория этого пакета работ — ТОЛЬКО список проектов (M16) и его пустое
  * состояние (M19) плюс форма создания. Экран одного проекта (Список/Доска
- * задач внутри проекта, M17/M18) — следующий пакет работ: клик по строке
- * проекта здесь сознательно БЕЗ `onClick` (`ProjectRow.onClick` —
- * необязательный проп) — вести пока действительно некуда, честная заглушка
- * вместо изобретения временного экрана-затычки.
+ * задач внутри проекта, M17/M18) — пакет работ E09.3: `ProjectRow.onClick`
+ * ниже — ЕДИНСТВЕННАЯ разрешённая правка этого файла со стороны E09.3
+ * (`controller.openProject(project.id)`, `state/store.ts`) — сам экран
+ * `ProjectDetail.tsx` живёт отдельным файлом, этот компонент не растёт.
  *
  * Тот же паттерн, что уже установлен `Today.tsx`/`Inbox.tsx`: список грузится
  * `useEffect` при монтировании, провал команды не проглатывается (`Toast`),
@@ -125,7 +125,7 @@ import {
   type MarkerColor,
 } from '@shagi/ui';
 
-import { useStorage } from '../state/context.js';
+import { useAppController, useStorage } from '../state/context.js';
 
 /** См. заголовок файла, блок «Свотчи цвета» — копия палитры `MarkerColor`,
  * не импорт (публичная точка входа `@shagi/ui` не экспортирует значения). */
@@ -216,6 +216,7 @@ const INITIAL_FORM_STATE: ProjectFormState = {
 
 export function Projects(): ReactElement {
   const storage = useStorage();
+  const controller = useAppController();
   const [projects, setProjects] = useState<readonly Project[] | null>(null);
   const [formOpen, setFormOpen] = useState(false);
   const [form, setForm] = useState<ProjectFormState>(INITIAL_FORM_STATE);
@@ -355,12 +356,11 @@ export function Projects(): ReactElement {
           </Button>
           <ul aria-label={t('projects', 'list.ariaLabel')}>
             {projects.map((project) => (
-              // Клик по строке — сознательно без `onClick` (см. заголовок
-              // файла): экрана проекта (M17/M18) в дереве пакетов ещё нет.
               <ProjectRow
                 key={project.id}
                 name={project.title}
                 color={toMarkerColor(project.colorToken)}
+                onClick={() => controller.openProject(project.id)}
               />
             ))}
           </ul>

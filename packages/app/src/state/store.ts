@@ -17,7 +17,16 @@
  * экранов, не декларируется наперёд списком, который никто не реализует.
  * `'projects'` добавлен эпиком E09 (M16 «Projects» — список всех проектов
  * пользователя с доступом к созданию/архиву, `12_SCREEN_STATE_MATRIX.md`).
+ *
+ * `'projectDetail'` (M17 List / M18 Board / M19 Project Empty, пакет работ
+ * E09.3) — первый ПАРАМЕТРИЗОВАННЫЙ экран: одного `screen` недостаточно,
+ * нужно ещё и «какой именно проект открыт» — `selectedProjectId` ниже.
+ * Именно поэтому это не просто седьмая строка в `ScreenId` с записью в
+ * `goTo`, а отдельный метод `openProject` (по образцу `continueLocally` —
+ * тоже переход, меняющий больше одного поля состояния разом одной
+ * атомарной операцией, не два последовательных вызова `goTo`+сеттер).
  */
+import type { Uuid } from '@shagi/core';
 
 export type ScreenId =
   | 'launch'
@@ -27,7 +36,8 @@ export type ScreenId =
   | 'nlpOnboarding'
   | 'todayEmpty'
   | 'inbox'
-  | 'projects';
+  | 'projects'
+  | 'projectDetail';
 
 /**
  * `localMode` — пользователь выбрал «Начать локально» (M02 Welcome) без
@@ -39,6 +49,9 @@ export type ScreenId =
 export interface AppState {
   readonly screen: ScreenId;
   readonly localMode: boolean;
+  /** Проект, открытый на экране `projectDetail` (см. блок про `openProject`
+   * выше) — `null` вне этого экрана и до первого перехода. */
+  readonly selectedProjectId: Uuid | null;
 }
 
 export type AppStateListener = (state: AppState) => void;
@@ -46,6 +59,7 @@ export type AppStateListener = (state: AppState) => void;
 const INITIAL_STATE: AppState = {
   screen: 'launch',
   localMode: false,
+  selectedProjectId: null,
 };
 
 /**
@@ -80,6 +94,12 @@ export class AppController {
   /** M02 Welcome → «Начать» локально (без входа) — ТЗ §1.3. */
   continueLocally = (): void => {
     this.#setState({ localMode: true, screen: 'firstTask' });
+  };
+
+  /** Клик по строке проекта (`Projects.tsx`, `ProjectRow.onClick`) → экран
+   * проекта M17/M18/M19 — см. блок про `'projectDetail'` в заголовке файла. */
+  openProject = (projectId: Uuid): void => {
+    this.#setState({ screen: 'projectDetail', selectedProjectId: projectId });
   };
 }
 

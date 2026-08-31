@@ -25,7 +25,11 @@ describe('Welcome (M02)', () => {
 
     await user.click(screen.getByRole('button', { name: t('onboarding', 'welcome.startLocal') }));
 
-    expect(controller.getState()).toEqual({ screen: 'firstTask', localMode: true });
+    expect(controller.getState()).toEqual({
+      screen: 'firstTask',
+      localMode: true,
+      selectedProjectId: null,
+    });
   });
 
   it('«Войти» ведёт на signIn, не включая localMode — вход не обязателен, но и не локальный режим сам по себе', async () => {
@@ -39,6 +43,10 @@ describe('Welcome (M02)', () => {
 
     await user.click(screen.getByRole('button', { name: t('onboarding', 'welcome.signIn') }));
 
-    expect(controller.getState()).toEqual({ screen: 'signIn', localMode: false });
+    expect(controller.getState()).toEqual({
+      screen: 'signIn',
+      localMode: false,
+      selectedProjectId: null,
+    });
   });
 });

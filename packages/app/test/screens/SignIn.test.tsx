@@ -61,6 +61,10 @@ describe('SignIn (M03)', () => {
       screen.getByRole('button', { name: t('onboarding', 'signIn.continueLocalLabel') }),
     );
 
-    expect(controller.getState()).toEqual({ screen: 'firstTask', localMode: true });
+    expect(controller.getState()).toEqual({
+      screen: 'firstTask',
+      localMode: true,
+      selectedProjectId: null,
+    });
   });
 });

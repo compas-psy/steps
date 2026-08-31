@@ -13,6 +13,12 @@
 import ruCommon from './catalog/ru-RU/common.json' with { type: 'json' };
 import ruInbox from './catalog/ru-RU/inbox.json' with { type: 'json' };
 import ruOnboarding from './catalog/ru-RU/onboarding.json' with { type: 'json' };
+// Имя файла — `projectDetail.json`, НЕ `project-detail.json`: гейт
+// `scripts/check-i18n-catalog.mjs` берёт имя namespace прямо из имени файла
+// (`entry.name.slice(0, -'.json'.length)`) и сверяет его буквально со
+// строковым литералом `t('projectDetail', …)` в коде — дефис в имени файла
+// не совпал бы с этим литералом и гейт бы падал на каждый вызов `t()`.
+import ruProjectDetail from './catalog/ru-RU/projectDetail.json' with { type: 'json' };
 import ruProjects from './catalog/ru-RU/projects.json' with { type: 'json' };
 import ruShell from './catalog/ru-RU/shell.json' with { type: 'json' };
 import ruTasks from './catalog/ru-RU/tasks.json' with { type: 'json' };
@@ -24,6 +30,7 @@ export const CATALOG_RU_RU = {
   common: ruCommon,
   inbox: ruInbox,
   onboarding: ruOnboarding,
+  projectDetail: ruProjectDetail,
   projects: ruProjects,
   shell: ruShell,
   tasks: ruTasks,
