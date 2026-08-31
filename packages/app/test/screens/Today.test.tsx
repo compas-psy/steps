@@ -532,6 +532,203 @@ describe('Today — «Добавить в Главное» (M11 Focus)', () => {
   });
 });
 
+describe('Today — bulk Today/Tomorrow («Не по плану», M09)', () => {
+  it('режим выбора «Не по плану» не влияет на чекбоксы остальных групп — они по-прежнему завершают задачу по клику', async () => {
+    const user = userEvent.setup();
+    const missedPlanTask = makeTask({ title: 'Забытая А', plannedDate: YESTERDAY });
+    const todayTask = makeTask({ title: 'Обычная сегодняшняя Б', plannedDate: TODAY });
+    const getStorage = renderTodayCapturingStorage([missedPlanTask, todayTask]);
+
+    await waitFor(() =>
+      expect(
+        within(
+          groupHeading(t('today', 'groups.missedPlan')).closest('section') as HTMLElement,
+        ).getByText('Забытая А'),
+      ).toBeInTheDocument(),
+    );
+
+    await user.click(screen.getByRole('button', { name: t('today', 'selection.enter') }));
+
+    // Чекбокс "Не по плану" в режиме выбора переключает выбор, не завершает задачу.
+    await user.click(screen.getByRole('checkbox', { name: 'Забытая А' }));
+    expect(screen.getByRole('checkbox', { name: 'Забытая А' })).toBeChecked();
+    const missedPlanStored = await getStorage().tasks.findById(missedPlanTask.id);
+    expect(missedPlanStored?.status).toBe('active');
+
+    // Чекбокс "Сегодня" (другая группа) продолжает работать как раньше — Complete.
+    await user.click(screen.getByRole('checkbox', { name: 'Обычная сегодняшняя Б' }));
+    await waitFor(() =>
+      expect(screen.queryByText('Обычная сегодняшняя Б')).not.toBeInTheDocument(),
+    );
+    const todayStored = await getStorage().tasks.findById(todayTask.id);
+    expect(todayStored?.status).toBe('completed');
+  });
+
+  it('выбор 2 из 3 задач «Не по плану» → «Сегодня» переносит plannedDate только у выбранных, невыбранная остаётся на месте', async () => {
+    const user = userEvent.setup();
+    const taskA = makeTask({ title: 'Bulk А', plannedDate: YESTERDAY });
+    const taskB = makeTask({ title: 'Bulk Б', plannedDate: YESTERDAY });
+    const taskC = makeTask({ title: 'Bulk В', plannedDate: YESTERDAY });
+    const getStorage = renderTodayCapturingStorage([taskA, taskB, taskC]);
+
+    await waitFor(() =>
+      expect(
+        within(
+          groupHeading(t('today', 'groups.missedPlan')).closest('section') as HTMLElement,
+        ).getByText('Bulk А'),
+      ).toBeInTheDocument(),
+    );
+
+    await user.click(screen.getByRole('button', { name: t('today', 'selection.enter') }));
+    await user.click(screen.getByRole('checkbox', { name: 'Bulk А' }));
+    await user.click(screen.getByRole('checkbox', { name: 'Bulk Б' }));
+
+    expect(screen.getByText(t('today', 'bulk.selectedCount', { count: 2 }))).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: t('today', 'bulk.today') }));
+
+    // Выбранные ушли из "Не по плану" в "Сегодня", невыбранная осталась в "Не по плану".
+    await waitFor(() =>
+      expect(
+        within(
+          groupHeading(t('today', 'groups.today')).closest('section') as HTMLElement,
+        ).getByText('Bulk А'),
+      ).toBeInTheDocument(),
+    );
+    expect(
+      within(groupHeading(t('today', 'groups.today')).closest('section') as HTMLElement).getByText(
+        'Bulk Б',
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(
+        groupHeading(t('today', 'groups.missedPlan')).closest('section') as HTMLElement,
+      ).getByText('Bulk В'),
+    ).toBeInTheDocument();
+    expect(
+      within(
+        groupHeading(t('today', 'groups.missedPlan')).closest('section') as HTMLElement,
+      ).queryByText('Bulk А'),
+    ).not.toBeInTheDocument();
+
+    // Режим выбора завершился — кнопка "Выбрать" снова доступна, панель массовых действий скрыта.
+    expect(screen.getByRole('button', { name: t('today', 'selection.enter') })).toBeInTheDocument();
+    expect(
+      screen.queryByText(t('today', 'bulk.selectedCount', { count: 2 })),
+    ).not.toBeInTheDocument();
+
+    const storedA = await getStorage().tasks.findById(taskA.id);
+    const storedB = await getStorage().tasks.findById(taskB.id);
+    const storedC = await getStorage().tasks.findById(taskC.id);
+    expect(storedA?.plannedDate).toEqual(TODAY);
+    expect(storedB?.plannedDate).toEqual(TODAY);
+    expect(storedC?.plannedDate).toEqual(YESTERDAY);
+    // "Bulk never changes Deadline" — дедлайн не тронут ни у одной задачи.
+    expect(storedA?.deadlineDate).toBeNull();
+  });
+
+  it('«Не по плану» → «Завтра» переносит выбранные задачи на завтра, задачи уходят с Today', async () => {
+    const user = userEvent.setup();
+    const taskA = makeTask({ title: 'Bulk-завтра А', plannedDate: YESTERDAY });
+    const taskB = makeTask({ title: 'Bulk-завтра Б', plannedDate: YESTERDAY });
+    const getStorage = renderTodayCapturingStorage([taskA, taskB]);
+
+    await waitFor(() =>
+      expect(
+        within(
+          groupHeading(t('today', 'groups.missedPlan')).closest('section') as HTMLElement,
+        ).getByText('Bulk-завтра А'),
+      ).toBeInTheDocument(),
+    );
+
+    await user.click(screen.getByRole('button', { name: t('today', 'selection.enter') }));
+    await user.click(screen.getByRole('checkbox', { name: 'Bulk-завтра А' }));
+    await user.click(screen.getByRole('checkbox', { name: 'Bulk-завтра Б' }));
+    await user.click(screen.getByRole('button', { name: t('today', 'bulk.tomorrow') }));
+
+    await waitFor(() => expect(screen.getByText(t('common', 'today.doneAll'))).toBeInTheDocument());
+
+    const storedA = await getStorage().tasks.findById(taskA.id);
+    const storedB = await getStorage().tasks.findById(taskB.id);
+    expect(storedA?.plannedDate).toEqual(TOMORROW);
+    expect(storedB?.plannedDate).toEqual(TOMORROW);
+  });
+
+  it('повторный клик «Готово» выходит из режима выбора и сбрасывает выбор без применения действия', async () => {
+    const user = userEvent.setup();
+    const taskA = makeTask({ title: 'Отменённый выбор', plannedDate: YESTERDAY });
+    const getStorage = renderTodayCapturingStorage([taskA]);
+
+    await waitFor(() =>
+      expect(
+        within(
+          groupHeading(t('today', 'groups.missedPlan')).closest('section') as HTMLElement,
+        ).getByText('Отменённый выбор'),
+      ).toBeInTheDocument(),
+    );
+
+    await user.click(screen.getByRole('button', { name: t('today', 'selection.enter') }));
+    await user.click(screen.getByRole('checkbox', { name: 'Отменённый выбор' }));
+    expect(screen.getByRole('checkbox', { name: 'Отменённый выбор' })).toBeChecked();
+
+    await user.click(screen.getByRole('button', { name: t('today', 'selection.exit') }));
+
+    expect(screen.getByRole('button', { name: t('today', 'selection.enter') })).toBeInTheDocument();
+    // Задача не тронута — perенос не применялся, чекбокс снова невыбран (Complete-режим).
+    const stored = await getStorage().tasks.findById(taskA.id);
+    expect(stored?.plannedDate).toEqual(YESTERDAY);
+    expect(screen.getByRole('checkbox', { name: 'Отменённый выбор' })).not.toBeChecked();
+  });
+
+  it('одна из N bulk-команд отклонена валидатором (нечитаемый заголовок) — Toast с ошибкой, список обновлён по факту частичного успеха', async () => {
+    const user = userEvent.setup();
+    // "..." — только пунктуация, `hasReadableContent` (правило 14) её отклоняет;
+    // seedTasks пишет напрямую в storage, минуя валидатор, поэтому невалидная
+    // задача спокойно попадает в список — и отклоняется только при попытке
+    // `updateTaskCommand` её тронуть (правило 14 проверяет ВЕСЬ заголовок заново,
+    // не только патч).
+    const invalid = makeTask({ title: '...', plannedDate: YESTERDAY });
+    const valid = makeTask({ title: 'Валидная задача', plannedDate: YESTERDAY });
+    const getStorage = renderTodayCapturingStorage([invalid, valid]);
+
+    await waitFor(() =>
+      expect(
+        within(
+          groupHeading(t('today', 'groups.missedPlan')).closest('section') as HTMLElement,
+        ).getByText('...'),
+      ).toBeInTheDocument(),
+    );
+
+    await user.click(screen.getByRole('button', { name: t('today', 'selection.enter') }));
+    await user.click(screen.getByRole('checkbox', { name: '...' }));
+    await user.click(screen.getByRole('checkbox', { name: 'Валидная задача' }));
+    await user.click(screen.getByRole('button', { name: t('today', 'bulk.today') }));
+
+    await waitFor(() =>
+      expect(screen.getByText(t('today', 'errors.bulkPartialFailure'))).toBeInTheDocument(),
+    );
+    expect(screen.getByRole('alert')).toBeInTheDocument();
+
+    // Частичный успех виден по факту в списке: валидная ушла в "Сегодня",
+    // невалидная осталась в "Не по плану" — не проглочено молча.
+    expect(
+      within(groupHeading(t('today', 'groups.today')).closest('section') as HTMLElement).getByText(
+        'Валидная задача',
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(
+        groupHeading(t('today', 'groups.missedPlan')).closest('section') as HTMLElement,
+      ).getByText('...'),
+    ).toBeInTheDocument();
+
+    const storedInvalid = await getStorage().tasks.findById(invalid.id);
+    const storedValid = await getStorage().tasks.findById(valid.id);
+    expect(storedInvalid?.plannedDate).toEqual(YESTERDAY);
+    expect(storedValid?.plannedDate).toEqual(TODAY);
+  });
+});
+
 describe('Today — M08 свёртываемые группы', () => {
   it('группа с 21 задачей (>20) стартует свёрнутой — заголовок кликабелен и разворачивает список', async () => {
     const user = userEvent.setup();

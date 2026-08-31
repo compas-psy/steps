@@ -25,5 +25,11 @@
   "focusDialog.replaceTitle": "Главное уже заполнено — выберите, какую задачу заменить",
   "focusDialog.replaceListLabel": "Текущие задачи в Главном",
   "errors.actionFailed": "Не удалось выполнить действие. Попробуйте ещё раз.",
-  "errors.dismiss": "Закрыть"
+  "errors.bulkPartialFailure": "Часть выбранных задач не удалось перенести. Список обновлён — проверьте, что изменилось.",
+  "errors.dismiss": "Закрыть",
+  "selection.enter": "Выбрать",
+  "selection.exit": "Готово",
+  "bulk.selectedCount": "Выбрано: {count}",
+  "bulk.today": "Сегодня",
+  "bulk.tomorrow": "Завтра"
 }

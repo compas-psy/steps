@@ -11,10 +11,11 @@
  *
  * Явно вне охвата (следующие пакеты работ, см. задание): Focus-промпт для
  * **undated**-задачи (ТЗ описывает его для будущих Inbox/Project list — на
- * Today такой задачи в принципе не бывает, см. блок «M11» ниже),
- * bulk-действия/мультивыбор (M09 «bulk Today/Tomorrow» для «Не по плану» —
- * здесь только per-task reschedule) и переход в Task Detail («Open»,
- * M24/M25 — экрана ещё нет, эпик E10).
+ * Today такой задачи в принципе не бывает, см. блок «M11» ниже) и переход в
+ * Task Detail («Open», M24/M25 — экрана ещё нет, эпик E10). Bulk Today/
+ * Tomorrow для «Не по плану» (M09) — этим пакетом работ, см. блок «M09»
+ * ниже (был вне охвата в E06.2/E06.3, закрыт здесь, последним пакетом
+ * эпика).
  *
  * --- Действия по группам (`01§6`, дословно) -----------------------------
  *
@@ -127,6 +128,65 @@
  * названо проблемным). Состояние свёрнутости — `useState` на экране,
  * непостоянное (не персистентное между заходами) — задание прямо просит не
  * выходить за эти рамки в этом пакете работ.
+ *
+ * --- M09: bulk Today/Tomorrow — только «Не по плану» ----------------------
+ *
+ * `01§6`, дословно про «Не по плану»: "Actions: per-task reschedule; bulk
+ * Today/Tomorrow. Bulk never changes Deadline." Пер-таск reschedule — уже
+ * E06.2 (меню строки, см. блок действий выше). Этот пакет работ добавляет
+ * bulk: множественный выбор ТОЛЬКО внутри `missed_plan` — ТЗ прописывает это
+ * действие именно для этой группы среди всех шести, остальные пять
+ * мультивыбором не оборудованы.
+ *
+ * Вход/выход — кнопка в заголовке секции (`missedPlanSelection`, по образцу
+ * уже существующей кнопки сворачивания той же секции): «Выбрать» включает
+ * режим, повторный клик по той же кнопке («Готово») выключает и ОБНУЛЯЕТ
+ * множество выбранных — отменённый режим выбора не должен "запоминать"
+ * частичный выбор до следующего входа, лишняя скрытая память в UI-состоянии
+ * без пользы.
+ *
+ * Чекбокс строки в режиме выбора — переключатель ВЫБОРА, не Complete: тот же
+ * `TaskRow`/`TaskCheckbox`, что и везде на экране (задание — не трогать
+ * компоненты `packages/ui`, они уже поддерживают `state='selected'`, см.
+ * `TaskRow.tsx`), только у `missed_plan` при активном режиме подменяется
+ * `checked`/`onCheckedChange`: `checked` = членство в множестве выбранных
+ * (не факт завершения — задача остаётся `active` до применения bulk),
+ * `onCheckedChange` пишет/стирает id в множестве, `completeTaskCommand` не
+ * вызывается вовсе, пока режим активен. Вне режима выбора и во всех
+ * остальных пяти группах — прежнее поведение чекбокса (Complete), без
+ * изменений. `state` строки — `'selected'` для выбранных (форсирует заливку
+ * чекбокса через CSS класса, задание/JSDoc `TaskRow.tsx`), иначе обычный
+ * `groupRowState('missed_plan')` — визуально ничего не меняется у
+ * невыбранных строк, кроме рабочего чекбокса-переключателя.
+ *
+ * Панель массовых действий («Выбрано: N», кнопки «Сегодня»/«Завтра») видна,
+ * пока выбрана хотя бы одна задача — простая инлайн-панель внутри секции
+ * группы, не floating/sticky (задание: «минимально достаточная
+ * реализация»). Клик применяет `updateTaskCommand({id, patch:
+ * {plannedDate}}, deps)` к каждому выбранному id ПОСЛЕДОВАТЕЛЬНО (цикл
+ * `for..of` с `await`, не `Promise.all`) — тот же приём, что уже применён в
+ * этом файле для двух последовательных вызовов при замене Focus
+ * (`handleReplaceFocus`): ни `@shagi/storage`, ни этот пакет работ не
+ * проверяли параллельную безопасность нескольких одновременных
+ * `runTransaction` по разным задачам на реальных адаптерах (SQLite/
+ * IndexedDB) — последовательный порядок детерминирован и не полагается на
+ * недоказанное предположение. Патч — **только** `plannedDate`: "Bulk never
+ * changes Deadline" тем самым выполняется структурно (в патче физически нет
+ * `deadlineDate`), не отдельной проверкой поверх.
+ *
+ * `refreshGroups()` — ровно ОДИН раз, после всех N вызовов, не после
+ * каждого по отдельности (задание: иначе список мигал бы N раз за один
+ * клик). Провал части команд (`status !== 'ok'`) не проглатывается —
+ * `Toast` с отдельным сообщением (`errors.bulkPartialFailure`, не общий
+ * `actionFailed`: пользователю важно понять, что произошёл ЧАСТИЧНЫЙ, а не
+ * полный провал), и список ВСЁ РАВНО обновляется после частичного успеха —
+ * то же соображение, что и `handleReplaceFocus` выше: не притворяться, что
+ * ничего не произошло, когда часть задач реально изменилась в хранилище.
+ * Режим выбора выключается и множество выбранных обнуляется после bulk
+ * безусловно (успех или частичный провал) — задание не просит оставлять
+ * пользователя в режиме выбора для повторной попытки на проваленных, а
+ * список уже показывает, что именно не применилось (проваленная задача
+ * осталась в «Не по плану», не переехала).
  */
 import { useEffect, useState, type ReactElement } from 'react';
 import { Temporal } from '@js-temporal/polyfill';
@@ -409,6 +469,15 @@ function buildTaskMenuActions(
   return { frequent, rare };
 }
 
+/** Переопределение поведения чекбокса строки, пока активен режим
+ * множественного выбора «Не по плану» (см. заголовок файла, блок «M09») —
+ * `undefined` означает обычное поведение (Complete), задано только когда
+ * строка принадлежит `missed_plan` И режим выбора активен. */
+interface RowSelectionOverride {
+  readonly selected: boolean;
+  readonly onToggle: (selected: boolean) => void;
+}
+
 interface TodayTaskRowProps {
   readonly task: Task;
   readonly group: TodayGroup;
@@ -416,6 +485,7 @@ interface TodayTaskRowProps {
   readonly onToggleMenu: () => void;
   readonly onCloseMenu: () => void;
   readonly handlers: RowActionHandlers;
+  readonly selectionOverride?: RowSelectionOverride | undefined;
 }
 
 /** Слот `statusLabel` (`TaskRow`, "форматирует вызывающий код через
@@ -433,18 +503,30 @@ function TodayTaskRow({
   onToggleMenu,
   onCloseMenu,
   handlers,
+  selectionOverride,
 }: TodayTaskRowProps): ReactElement {
   const { frequent, rare } = buildTaskMenuActions(group, task, handlers);
+
+  // Режим выбора «Не по плану» (M09, см. заголовок файла) подменяет
+  // checked/onCheckedChange на переключатель ВЫБОРА — `completeTaskCommand`
+  // не вызывается, пока `selectionOverride` задан. Без него (все остальные
+  // пять групп, и сама `missed_plan` вне режима выбора) — прежнее поведение.
+  const checked = selectionOverride !== undefined ? selectionOverride.selected : false;
+  const state = selectionOverride?.selected === true ? 'selected' : groupRowState(group);
+  const onCheckedChange =
+    selectionOverride !== undefined
+      ? (nextChecked: boolean) => selectionOverride.onToggle(nextChecked)
+      : (nextChecked: boolean) => {
+          if (nextChecked) handlers.onComplete(task.id);
+        };
 
   return (
     <TaskRow
       title={task.title}
       checkboxLabel={task.title}
-      checked={false}
-      state={groupRowState(group)}
-      onCheckedChange={(checked) => {
-        if (checked) handlers.onComplete(task.id);
-      }}
+      checked={checked}
+      state={state}
+      onCheckedChange={onCheckedChange}
       {...(group === 'timed' && task.plannedTime !== null
         ? { statusLabel: formatTime(task.plannedTime) }
         : {})}
@@ -475,6 +557,19 @@ function TodayTaskRow({
   );
 }
 
+/** Управление режимом множественного выбора «Не по плану» (M09, см.
+ * заголовок файла) — `undefined` у пяти остальных групп: они мультивыбором
+ * не оборудованы, `TodayGroupSection` для них рендерится без кнопки
+ * «Выбрать» и без панели массовых действий вовсе. */
+interface MissedPlanSelectionControls {
+  readonly active: boolean;
+  readonly selectedIds: ReadonlySet<Uuid>;
+  readonly onToggleMode: () => void;
+  readonly onToggleTask: (id: Uuid, selected: boolean) => void;
+  readonly onBulkToday: () => void;
+  readonly onBulkTomorrow: () => void;
+}
+
 interface TodayGroupSectionProps {
   readonly group: TodayGroup;
   readonly tasks: readonly Task[];
@@ -484,6 +579,7 @@ interface TodayGroupSectionProps {
   readonly onToggleMenu: (id: Uuid) => void;
   readonly onCloseMenu: () => void;
   readonly handlers: RowActionHandlers;
+  readonly selection?: MissedPlanSelectionControls | undefined;
 }
 
 /** Заголовок группы — кликабельная кнопка (не просто `<h2>`), сворачивает/
@@ -502,6 +598,7 @@ function TodayGroupSection({
   onToggleMenu,
   onCloseMenu,
   handlers,
+  selection,
 }: TodayGroupSectionProps): ReactElement {
   const listId = `today-group-${group}-list`;
 
@@ -517,6 +614,27 @@ function TodayGroupSection({
           {groupLabel(group)}
         </button>
       </h2>
+      {/* Кнопка входа/выхода из режима выбора — только «Не по плану» (M09,
+       * см. заголовок файла), по образцу кнопки сворачивания секции выше:
+       * тот же native `<button>`, тот же уровень визуальной весомости. */}
+      {selection !== undefined && (
+        <button type="button" onClick={selection.onToggleMode}>
+          {selection.active ? t('today', 'selection.exit') : t('today', 'selection.enter')}
+        </button>
+      )}
+      {/* Панель массовых действий — видна, пока выбрана хотя бы одна задача
+       * (задание: не floating/sticky, минимально достаточная реализация). */}
+      {selection !== undefined && selection.active && selection.selectedIds.size > 0 && (
+        <div>
+          <span>{t('today', 'bulk.selectedCount', { count: selection.selectedIds.size })}</span>
+          <Button variant="secondary" onClick={selection.onBulkToday}>
+            {t('today', 'bulk.today')}
+          </Button>
+          <Button variant="secondary" onClick={selection.onBulkTomorrow}>
+            {t('today', 'bulk.tomorrow')}
+          </Button>
+        </div>
+      )}
       {!collapsed && (
         <div id={listId}>
           {tasks.map((task) => (
@@ -528,6 +646,14 @@ function TodayGroupSection({
               onToggleMenu={() => onToggleMenu(task.id)}
               onCloseMenu={onCloseMenu}
               handlers={handlers}
+              selectionOverride={
+                selection !== undefined && selection.active
+                  ? {
+                      selected: selection.selectedIds.has(task.id),
+                      onToggle: (selected) => selection.onToggleTask(task.id, selected),
+                    }
+                  : undefined
+              }
             />
           ))}
         </div>
@@ -584,6 +710,14 @@ export function Today(): ReactElement {
   const [focusConfirm, setFocusConfirm] = useState<FocusConfirmState | null>(null);
   const [focusReplace, setFocusReplace] = useState<FocusReplaceState | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  /** Режим множественного выбора «Не по плану» (M09, см. заголовок файла) —
+   * `selectedIds` пуст, пока `active === false`; вход и выход всегда идут
+   * через `toggleMissedPlanSelectionMode`, которая сама следит, чтобы
+   * выбор не пережил выход из режима. */
+  const [missedPlanSelection, setMissedPlanSelection] = useState<{
+    readonly active: boolean;
+    readonly selectedIds: ReadonlySet<Uuid>;
+  }>({ active: false, selectedIds: new Set() });
 
   useEffect(() => {
     let cancelled = false;
@@ -621,6 +755,45 @@ export function Today(): ReactElement {
 
   function commandDeps(): { storage: typeof storage; now: Temporal.Instant; deviceId: Uuid } {
     return { storage, now: Temporal.Now.instant(), deviceId: getDeviceId() };
+  }
+
+  /** «Выбрать» / «Готово» — вход и выход из режима выбора «Не по плану»
+   * (M09, см. заголовок файла). Выход ВСЕГДА обнуляет `selectedIds`, а не
+   * только когда панель массовых действий уже применилась — незавершённый
+   * выбор не переживает выход из режима (проверено тестом «повторный клик
+   * «Готово» ... сбрасывает выбор»). */
+  function toggleMissedPlanSelectionMode(): void {
+    setMissedPlanSelection((current) =>
+      current.active
+        ? { active: false, selectedIds: new Set() }
+        : { active: true, selectedIds: new Set() },
+    );
+  }
+
+  function toggleMissedPlanTaskSelected(id: Uuid, selected: boolean): void {
+    setMissedPlanSelection((current) => {
+      const nextIds = new Set(current.selectedIds);
+      if (selected) nextIds.add(id);
+      else nextIds.delete(id);
+      return { ...current, selectedIds: nextIds };
+    });
+  }
+
+  /** Bulk «Сегодня»/«Завтра» — см. заголовок файла, блок «M09» за полным
+   * разбором решений (последовательные вызовы, единственный `refreshGroups`
+   * в конце, отдельное сообщение `Toast` для частичного провала). Патч —
+   * буквально только `plannedDate`: "Bulk never changes Deadline" (`01§6`)
+   * выполняется тем, что в патче физически нет `deadlineDate`. */
+  async function runMissedPlanBulkReschedule(plannedDate: Temporal.PlainDate): Promise<void> {
+    const ids = [...missedPlanSelection.selectedIds];
+    let anyFailed = false;
+    for (const id of ids) {
+      const result = await updateTaskCommand({ id, patch: { plannedDate } }, commandDeps());
+      if (result.status !== 'ok') anyFailed = true;
+    }
+    await refreshGroups();
+    setMissedPlanSelection({ active: false, selectedIds: new Set() });
+    setErrorMessage(anyFailed ? t('today', 'errors.bulkPartialFailure') : null);
   }
 
   const handlers: RowActionHandlers = {
@@ -751,6 +924,27 @@ export function Today(): ReactElement {
               onToggleMenu={(id) => setOpenMenuTaskId((current) => (current === id ? null : id))}
               onCloseMenu={() => setOpenMenuTaskId(null)}
               handlers={handlers}
+              // Мультивыбор — только «Не по плану» (`01§6`, см. заголовок
+              // файла блок «M09»); остальные пять групп получают `undefined`
+              // и рендерятся без кнопки «Выбрать»/панели массовых действий.
+              selection={
+                group === 'missed_plan'
+                  ? {
+                      active: missedPlanSelection.active,
+                      selectedIds: missedPlanSelection.selectedIds,
+                      onToggleMode: toggleMissedPlanSelectionMode,
+                      onToggleTask: toggleMissedPlanTaskSelected,
+                      onBulkToday: () => {
+                        void runMissedPlanBulkReschedule(Temporal.Now.plainDateISO());
+                      },
+                      onBulkTomorrow: () => {
+                        void runMissedPlanBulkReschedule(
+                          Temporal.Now.plainDateISO().add({ days: 1 }),
+                        );
+                      },
+                    }
+                  : undefined
+              }
             />
           );
         })}
