@@ -1,0 +1,55 @@
+/**
+ * `OtpInput` (§10 «Account/Data»). Ячейки — квадраты по touch-таргету
+ * (`--touch-target-min`), а не произвольная ширина — тот же минимум, что и
+ * любой другой интерактивный элемент дизайн-системы (§6 «Spacing»).
+ */
+
+.shagi-otp-input {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.shagi-otp-input__cells {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.shagi-otp-input__cell {
+  width: var(--touch-target-min);
+  height: var(--touch-target-min);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--input);
+  color: var(--foreground);
+  font-family: var(--font-mono);
+  font-size: var(--text-section-title);
+  line-height: var(--lh-section-title);
+  text-align: center;
+  transition:
+    border-color var(--motion-duration-fast) var(--motion-easing-standard),
+    box-shadow var(--motion-duration-fast) var(--motion-easing-standard);
+}
+
+.shagi-otp-input__cell:focus-visible {
+  outline: none;
+  border-color: var(--ring);
+  box-shadow: 0 0 0 var(--space-1) color-mix(in srgb, var(--ring) 24%, transparent);
+}
+
+.shagi-otp-input__cell:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.shagi-otp-input__cells--error .shagi-otp-input__cell {
+  border-color: var(--destructive);
+}
+
+.shagi-otp-input__error {
+  margin: 0;
+  color: var(--destructive);
+  font-family: var(--font-sans);
+  font-size: var(--text-small-meta);
+  line-height: var(--lh-small-meta);
+}

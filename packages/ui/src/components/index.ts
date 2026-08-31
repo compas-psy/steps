@@ -108,6 +108,17 @@ export {
 } from './task/TaskMetadata.js';
 export { TaskRow, type TaskRowProps, type TaskRowState } from './task/TaskRow.js';
 
+// --- Аккаунт/данные (E03.8) -------------------------------------------------
+export {
+  DataPrivacyRow,
+  type DataPrivacyRowAction,
+  type DataPrivacyRowProps,
+} from './account/DataPrivacyRow.js';
+export { Entitlement, type EntitlementProps, type EntitlementTone } from './account/Entitlement.js';
+export { SignIn, type SignInProps } from './account/SignIn.js';
+export { OtpInput, type OtpInputProps } from './account/OtpInput.js';
+export { SyncStatus, type SyncStatusProps, type SyncStatusValue } from './account/SyncStatus.js';
+
 // --- Планирование (E03.5) --------------------------------------------------
 export { DateChip, type DateChipProps } from './planning/DateChip.js';
 export { TimeChip, type TimeChipProps } from './planning/TimeChip.js';

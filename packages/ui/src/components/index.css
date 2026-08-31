@@ -54,6 +54,8 @@
 
 @import './task/index.css';
 
+@import './account/index.css';
+
 @import './planning/DatePicker.css';
 @import './planning/TemporalConflict.css';
 @import './planning/TimePicker.css';

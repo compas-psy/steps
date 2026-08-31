@@ -1,0 +1,72 @@
+/**
+ * `SyncStatus` (§10 «Account/Data», §7 «Motion»). Вращение `syncing` —
+ * тот же приём и та же длительность, что `feedback/SyncState.css`
+ * (`--motion-duration-slow` * 4, останавливается под
+ * `prefers-reduced-motion`) — сознательно не переиспользован общий класс,
+ * потому что это два разных компонента (см. заголовок `SyncStatus.tsx`),
+ * но раз уж анимация внутри одна и та же по смыслу, значения совпадают
+ * дословно, а не выдуманы заново.
+ */
+
+.shagi-sync-status {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.shagi-sync-status__icon {
+  display: inline-flex;
+  flex-shrink: 0;
+}
+
+.shagi-sync-status--synced .shagi-sync-status__icon {
+  color: var(--success-500);
+}
+.shagi-sync-status--syncing .shagi-sync-status__icon {
+  color: var(--primary);
+}
+.shagi-sync-status--offline .shagi-sync-status__icon {
+  color: var(--muted-foreground);
+}
+.shagi-sync-status--error .shagi-sync-status__icon {
+  color: var(--destructive);
+}
+
+.shagi-sync-status--syncing .shagi-sync-status__icon {
+  animation: shagi-sync-status-spin calc(var(--motion-duration-slow) * 4) linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .shagi-sync-status--syncing .shagi-sync-status__icon {
+    animation: none;
+  }
+}
+@keyframes shagi-sync-status-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.shagi-sync-status__text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.shagi-sync-status__label {
+  font-family: var(--font-sans);
+  font-size: var(--text-body-secondary);
+  line-height: var(--lh-body-secondary);
+  font-weight: var(--fw-medium);
+  color: var(--foreground);
+}
+
+.shagi-sync-status__timestamp {
+  font-family: var(--font-sans);
+  font-size: var(--text-small-meta);
+  line-height: var(--lh-small-meta);
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+}

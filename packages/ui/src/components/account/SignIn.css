@@ -1,0 +1,45 @@
+/**
+ * `SignIn` (§10 «Account/Data»). Ширина формы — тот же `--modal-max-width`,
+ * что уже заведён под компактные диалоговые поверхности (E03.3,
+ * `tokens/spacing.css`) — форма входа визуально та же категория «узкая
+ * центрированная поверхность», новый токен под это заводить незачем.
+ */
+
+.shagi-sign-in {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  width: 100%;
+  max-width: var(--modal-max-width);
+}
+
+.shagi-sign-in__title {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: var(--text-section-title);
+  line-height: var(--lh-section-title);
+  font-weight: var(--fw-bold);
+  color: var(--foreground);
+}
+
+.shagi-sign-in__description {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: var(--text-body-secondary);
+  line-height: var(--lh-body-secondary);
+  color: var(--muted-foreground);
+}
+
+.shagi-sign-in__form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.shagi-sign-in__divider {
+  padding: var(--space-1) 0;
+}
+
+.shagi-sign-in__continue-local {
+  color: var(--muted-foreground);
+}

@@ -1,0 +1,59 @@
+/**
+ * `Entitlement` (§10 «Account/Data»). `tone="accent"` подсвечивает
+ * карточку тёплой рамкой/подложкой цвета `--accent` — та же пара ролей,
+ * что использует `Chip`/`Badge` для акцентных вариантов, не выдуманная
+ * заново.
+ */
+
+.shagi-entitlement__body {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  position: relative;
+}
+
+.shagi-entitlement--accent {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, var(--card));
+}
+
+.shagi-entitlement__icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  color: var(--accent);
+}
+
+.shagi-entitlement__text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+  flex: 1;
+}
+
+.shagi-entitlement__title {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: var(--text-body-primary);
+  line-height: var(--lh-body-primary);
+  font-weight: var(--fw-bold);
+  color: var(--card-foreground);
+}
+
+.shagi-entitlement__description {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: var(--text-body-secondary);
+  line-height: var(--lh-body-secondary);
+  color: var(--muted-foreground);
+}
+
+.shagi-entitlement__cta {
+  flex-shrink: 0;
+}
+
+.shagi-entitlement__dismiss {
+  position: absolute;
+  top: calc(var(--space-1) * -1);
+  right: calc(var(--space-1) * -1);
+}

@@ -1,0 +1,12 @@
+/**
+ * Барель стилей подкаталога `account/` (E03.8), по образцу
+ * `capture/index.css` (E03.7) — на приёмке пакета работ оркестратору
+ * достаточно добавить один `@import './account/index.css';` в
+ * `components/index.css`.
+ */
+
+@import './DataPrivacyRow.css';
+@import './Entitlement.css';
+@import './OtpInput.css';
+@import './SignIn.css';
+@import './SyncStatus.css';

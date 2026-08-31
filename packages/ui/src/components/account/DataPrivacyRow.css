@@ -1,0 +1,68 @@
+/**
+ * `DataPrivacyRow` (§10 «Account/Data»). Структура ряда — та же тройка
+ * «иконка / текстовый блок / действие», что `organization/ProjectRow`, тот
+ * же touch-таргет по вертикали (§6).
+ */
+
+.shagi-data-privacy-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  min-height: var(--touch-target-min);
+  padding: var(--space-3) var(--space-1);
+  border: none;
+  background: transparent;
+  font-family: var(--font-sans);
+  text-align: left;
+}
+
+button.shagi-data-privacy-row {
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: background-color var(--motion-duration-fast) var(--motion-easing-standard);
+}
+@media (hover: hover) {
+  button.shagi-data-privacy-row:hover {
+    background: var(--muted);
+  }
+}
+
+.shagi-data-privacy-row__icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  color: var(--muted-foreground);
+}
+
+.shagi-data-privacy-row__text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+
+.shagi-data-privacy-row__title {
+  font-size: var(--text-body-primary);
+  line-height: var(--lh-body-primary);
+  font-weight: var(--fw-medium);
+  color: var(--foreground);
+}
+
+.shagi-data-privacy-row__description {
+  font-size: var(--text-small-meta);
+  line-height: var(--lh-small-meta);
+  color: var(--muted-foreground);
+}
+
+.shagi-data-privacy-row__action {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+}
+
+.shagi-data-privacy-row__chevron {
+  display: inline-flex;
+  flex-shrink: 0;
+  color: var(--muted-foreground);
+  transform: rotate(-90deg);
+}
