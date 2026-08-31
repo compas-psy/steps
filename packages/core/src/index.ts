@@ -110,6 +110,12 @@ export {
   type TodayTaskReader,
 } from './rules/select-today-tasks.js';
 export { selectPlanAgenda, type PlanDayGroup } from './rules/select-plan-agenda.js';
+export {
+  selectSystemFilters,
+  SYSTEM_FILTER_IDS,
+  type SystemFilterGroups,
+  type SystemFilterId,
+} from './rules/select-system-filters.js';
 
 // --- Идентификаторы (§6, конспект §4) ----------------------------------------
 // Сведено вручную при приёмке: пакеты работ E01.2 и E01.3 шли параллельно и

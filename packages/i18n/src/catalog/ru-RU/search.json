@@ -9,5 +9,13 @@
   "sections.tasks": "Задачи",
   "sections.projects": "Проекты",
   "sections.labels": "Метки",
-  "status.completed": "Завершена"
+  "status.completed": "Завершена",
+  "filters.groupLabel": "Системные фильтры",
+  "filters.noDate": "Без даты",
+  "filters.p1": "P1 / Критичные",
+  "filters.missedPlan": "Не по плану",
+  "filters.missedDeadline": "Просрочен срок",
+  "filters.recurring": "Повторяющиеся",
+  "filters.empty.title": "Пусто.",
+  "filters.empty.description": "Активных задач с таким условием сейчас нет."
 }

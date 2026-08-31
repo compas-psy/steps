@@ -80,11 +80,164 @@
  * заголовок): управления метками нигде в дереве пакетов ещё нет, клик по
  * метке — прямо вне объёма этого пакета работ (задание запрещает выдумывать
  * несуществующий экран).
+ *
+ * --- E12.3: Системные фильтры (§16) — решение о размещении --------------
+ *
+ * `01_PRODUCT_BEHAVIOR_R1.md` §16 «System filters R1» (раздел прочитан
+ * целиком): "Без даты / P1 Критичные / Не по плану / Просрочен срок /
+ * Повторяющиеся. Read-only predefined." Ни одного слова про то, ГДЕ в UI
+ * они живут — задание пакета работ E12.3 прямо потребовало исследовать это
+ * ПЕРЕД реализацией, а не угадывать. Разбор, что было прочитано и почему
+ * выбран именно этот экран:
+ *
+ * 1. `docs/spec/SPEC/12_SCREEN_STATE_MATRIX.md` прочитана целиком, все
+ *    M01–M52 и D01–D20 — ни одна строка не про «Фильтры». В отличие от
+ *    Search (M34/M35) и Plan (M14/M15), у фильтров нет своего M-номера.
+ *    Вывод: это не отдельный полноэкранный маршрут матрицы — заводить
+ *    новый `ScreenId` под то, чего матрица не называет, значило бы
+ *    придумывать экран, которого нет в контракте (тот же принцип, по
+ *    которому выше отклонён клик по метке).
+ *
+ * 2. `Filter` (`@shagi/ui`, `components/organization/Filter.tsx`) уже
+ *    существует и построен design-system эпиком (E03.6) — прочитан целиком.
+ *    Его собственный заголовок цитирует ИМЕННО этот раздел ТЗ (§16) как
+ *    причину существования: "Read-only предустановленные фильтры". Тонкая
+ *    обёртка над `Chip` с фиксированным `tone='neutral'`. Компонент собран
+ *    и ждёт использования — это сильный сигнал НАМЕРЕНИЯ, что фильтры
+ *    рендерятся как ряд чипов внутри уже существующего экрана, а не как
+ *    вёрстка нового.
+ *
+ * 3. Три кандидата на размещение проверены чтением кода:
+ *    - `Today.tsx` — отклонён. У него уже есть `missed_plan`/`missed_deadline`
+ *      (`classifyTaskForToday`, `@shagi/core`), которые ПОХОЖИ на два из
+ *      пяти фильтров, но три оставшихся ("Без даты"/"P1"/"Повторяющиеся")
+ *      никак не связаны с окном Today: критичная задача вовсе без единой
+ *      даты (кандидат "Без даты" И "P1" одновременно) никогда не попадёт ни
+ *      в одну из шести групп Today (`classifyTaskForToday` вернёт `null` —
+ *      см. её заголовок, "на Today задачи без ни одного из
+ *      plannedDate/deadlineDate/focusDate не бывает"). Встроить фильтры в
+ *      Today означало бы либо молча терять 3 из 5 фильтров, либо городить
+ *      второй, несвязанный с шестью группами Today режим поверх экрана,
+ *      который уже несёт мультивыбор/bulk/меню строк/четыре модалки —
+ *      добавлять пятый независимый режим переключения было бы явной
+ *      перегрузкой одного файла двумя расходящимися задачами.
+ *    - Новый отдельный `ScreenId`/маршрут — отклонён по п.1 выше (матрица
+ *      не называет такой экран) и потому, что фильтры — ТОЛЬКО просмотр
+ *      (без действий, задание) величиной в пять маленьких списков, а не
+ *      самостоятельный экран со своей навигацией/раскладкой — заводить
+ *      отдельный `ScreenId` ради этого означало бы новую точку входа в
+ *      `SCREENS`/`ScreenId` (`state/store.ts`), которую ничто в продукте не
+ *      просит открывать напрямую.
+ *    - `Search.tsx` (этот файл, эпик E12, предыдущий пакет работ E12.1) —
+ *      ВЫБРАН. M34 "Search Empty" — уже единственный существующий в дереве
+ *      пакетов экран вида "открыл → сразу видишь read-only список задач,
+ *      кликабельный в Task Detail, без единого действия над строкой", то
+ *      есть ровно тот же жанр UI, что нужен пяти фильтрам (задание: "без
+ *      действий... то же решение, что уже принято Search.tsx/Plan.tsx для
+ *      декоративного чекбокса TaskRow"). Сейчас M34 показывает только
+ *      спокойное приглашение ввести запрос — пустое место, где пользователь
+ *      УЖЕ находится в намерении "найти задачу", просто ещё не начал
+ *      печатать. Показать там пять чипов быстрых фильтров — естественное
+ *      расширение того же намерения ("найти" не только через текст, но и
+ *      через готовый предопределённый критерий), не новая точка входа.
+ *
+ * --- Видимость: только пока запрос пуст --------------------------------
+ *
+ * Фильтры и их результаты рендерятся ТОЛЬКО при `isEmptyQuery` — как
+ * только пользователь начинает печатать, обычный поиск (уровни 1–7,
+ * `01§15`) забирает экран целиком, чипы и результат активного фильтра
+ * скрываются. Это два независимых способа найти задачу, не один
+ * комбинированный (пересечение "фильтр И текстовый запрос" — задание не
+ * просит, YAGNI): печать запроса — однозначный сигнал, что пользователь
+ * переключился на текстовый поиск. `activeFilter` при этом НЕ обнуляется
+ * (только скрывается) — если запрос стереть обратно до пустого, ранее
+ * выбранный фильтр возвращается сам, без дополнительного клика; это
+ * побочный эффект отсутствия лишнего сброса состояния, не отдельная
+ * фича.
+ *
+ * --- Переключение и снятие фильтра — `Chip`/`Filter` `aria-pressed` -----
+ *
+ * `activeFilter: SystemFilterId | null`. Клик по чипу переключает: другой
+ * id — заменяет `activeFilter` (список подставляется мгновенно, без
+ * повторного похода в `@shagi/core`, см. следующий блок); тот же id
+ * повторно — снимает выбор (`null`), возвращая спокойное приглашение M34.
+ * Такой toggle — стандартное поведение переключаемого `Chip`
+ * (`aria-pressed`, см. её заголовок: "селект/тег с возможностью снять
+ * выбор"), Filter ничего здесь не переопределяет.
+ *
+ * --- Источник данных: `selectSystemFilters` (`@shagi/core`), один запрос --
+ *
+ * Реализация предиката — целиком в `@shagi/core`
+ * (`rules/select-system-filters.ts`, прочитан целиком за полным разбором:
+ * "Не по плану"/"Просрочен срок" переиспользуют `classifyTaskForToday`
+ * буквально, не копируют условие "просрочена" второй раз — задание прямо
+ * этого требует). Этот экран только запрашивает у хранилища список
+ * активных задач и передаёт его туда — тот же принцип разделения
+ * ответственности, что уже применяет сам файл для `rankCandidates`
+ * (поиск) и что `Plan.tsx` применяет для `selectPlanAgenda`.
+ *
+ * `storage.tasks.listByStatusAndPlannedDate('active')` — тот же индекс,
+ * что уже использует `Plan.tsx` (см. её заголовок: подтверждено чтением
+ * `packages/storage/src/memory/repositories.ts`, что он возвращает ВСЕ
+ * живые активные задачи, не только с заданным `plannedDate` — сортировка
+ * по полю, не фильтр по нему). Запрошен ВТОРЫМ отдельным вызовом в ТОМ ЖЕ
+ * `useEffect`, что уже грузит `loadCandidates` (`Promise.all`, не второй
+ * эффект) — тот же приём, что `inboxCount` в `Today.tsx` (см. её
+ * заголовок, блок «Бейдж Входящих»): один лишний, но дешёвый локальный
+ * запрос вместо второго асинхронного захода в жизненный цикл компонента.
+ * Он технически дублирует один из четырёх запросов, которые уже делает
+ * `loadCandidates` внутри себя (та же самая `activeTasks`) — цена этого
+ * дублирования признана меньше цены трогать сигнатуру уже протестированной
+ * `loadCandidates` (которая тестируется отдельно и не должна знать о нуждах
+ * фильтров) ради экономии одного локального чтения IndexedDB/SQLite
+ * (CLAUDE.md, YAGNI — не порядки величины, на которых это имело бы
+ * значение).
+ *
+ * `now` — `Temporal.Now.plainDateTimeISO()`, вычислено ОДИН раз внутри
+ * этого эффекта на монтирование (не хук, не пересчитывается на каждый
+ * рендер) — тот же принцип, что `Today.tsx` использует для своего `now`
+ * внутри эффекта загрузки: `selectSystemFilters` — чистая функция, ей
+ * нужен явный снимок момента (CLAUDE.md «Время»), не системные часы,
+ * прочитанные заново при каждом клике по чипу.
+ *
+ * --- Результат фильтра: `TaskRow`, декоративный чекбокс, клик → Task Detail
+ *
+ * Тот же приём, что `TaskResultRow` выше и `PlanDayGroupSection` в
+ * `Plan.tsx`: `checked={false}`, `disabled`, `state='normal'` — фильтр
+ * показывает только активные задачи (`selectSystemFilters` — защита в
+ * глубину на `status`, см. её заголовок), состояние "завершена" здесь
+ * структурно невозможно, в отличие от секции "Задачи" обычного поиска
+ * (та ищет и по завершённым). Действий (Complete/Reschedule) нет — задание
+ * пакета работ прямо исключает их из объёма, тот же выбор, что уже
+ * закреплён в этом файле для секции "Задачи" и в `Plan.tsx` целиком.
+ *
+ * Пустой список выбранного фильтра — отдельный `EmptyState`
+ * (`filters.empty.*`, не переиспользует `noResults.*` M35: разный контекст,
+ * "нет активных задач под условие" — это не то же самое сообщение, что
+ * "ничего не нашлось по вашему запросу").
+ *
+ * --- Вне объёма (задание, дословно) --------------------------------------
+ *
+ * Custom filters (R1.1) — не строятся, задание прямо исключает волну 1.
+ * Любые действия над задачей из результата фильтра, кроме перехода в Task
+ * Detail — не строятся (см. блок выше). Персистентность "последний открытый
+ * фильтр" между сессиями (перезагрузка страницы/новый заход) — не строится:
+ * `activeFilter` — обычный `useState`, обнуляется при размонтировании
+ * экрана, как и `query`.
  */
 import { useEffect, useMemo, useState, type ReactElement } from 'react';
 
+import { Temporal } from '@js-temporal/polyfill';
+
 import { t } from '@shagi/i18n';
-import { isTaskLabelActive } from '@shagi/core';
+import {
+  isTaskLabelActive,
+  selectSystemFilters,
+  SYSTEM_FILTER_IDS,
+  type SystemFilterGroups,
+  type SystemFilterId,
+  type Task,
+} from '@shagi/core';
 import {
   rankCandidates,
   type RankedSearchResult,
@@ -94,7 +247,7 @@ import {
   type SearchCandidate,
 } from '@shagi/storage';
 import type { StoragePort } from '@shagi/storage';
-import { EmptyState, Icon, Input, Label, ProjectRow, TaskRow } from '@shagi/ui';
+import { EmptyState, Filter, Icon, Input, Label, ProjectRow, TaskRow } from '@shagi/ui';
 
 import { useAppController, useStorage } from '../state/context.js';
 
@@ -204,16 +357,74 @@ function TaskResultRow({ task, onOpen }: TaskResultRowProps): ReactElement {
   );
 }
 
+/** Подпись чипа — см. заголовок файла, блок «E12.3». Каждая ветка вызывает
+ * `t` с литеральными строковыми аргументами (не переменной с вычисленным
+ * ключом), тот же приём, что `groupLabel` в `Today.tsx` — так
+ * `check-i18n-catalog.mjs` (статический разбор регулярным выражением)
+ * видит все пять ключей. */
+function systemFilterLabel(id: SystemFilterId): string {
+  switch (id) {
+    case 'noDate':
+      return t('search', 'filters.noDate');
+    case 'p1':
+      return t('search', 'filters.p1');
+    case 'missedPlan':
+      return t('search', 'filters.missedPlan');
+    case 'missedDeadline':
+      return t('search', 'filters.missedDeadline');
+    case 'recurring':
+      return t('search', 'filters.recurring');
+  }
+}
+
+interface FilterResultRowProps {
+  readonly task: Task;
+  readonly onOpen: (id: Task['id']) => void;
+}
+
+/** Строка результата системного фильтра — см. заголовок файла, блок «E12.3»,
+ * раздел «Результат фильтра». `selectSystemFilters` отдаёт только активные
+ * задачи (защита в глубину на `status`), поэтому `checked`/`state` здесь не
+ * ветвятся на завершённость, в отличие от `TaskResultRow` выше. */
+function FilterResultRow({ task, onOpen }: FilterResultRowProps): ReactElement {
+  return (
+    <TaskRow
+      title={task.title}
+      checkboxLabel={task.title}
+      checked={false}
+      disabled
+      state="normal"
+      onClick={(event) => {
+        if (isInteractiveRowClick(event.target)) return;
+        onOpen(task.id);
+      }}
+    />
+  );
+}
+
 export function Search(): ReactElement {
   const storage = useStorage();
   const controller = useAppController();
   const [query, setQuery] = useState('');
   const [candidates, setCandidates] = useState<readonly SearchCandidate[] | null>(null);
+  /** Пять готовых списков системных фильтров (см. заголовок файла, блок
+   * «E12.3») — `null` до разрешения эффекта ниже, та же семантика "ещё не
+   * знаем", что `candidates === null`. */
+  const [systemFilterGroups, setSystemFilterGroups] = useState<SystemFilterGroups | null>(null);
+  const [activeFilter, setActiveFilter] = useState<SystemFilterId | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    void loadCandidates(storage).then((next) => {
-      if (!cancelled) setCandidates(next);
+    const now = Temporal.Now.plainDateTimeISO();
+    // Оба запроса — в одном эффекте (см. заголовок файла, блок «Источник
+    // данных»), тот же приём, что `Today.tsx` делает для `inboxCount`.
+    void Promise.all([
+      loadCandidates(storage),
+      storage.tasks.listByStatusAndPlannedDate('active'),
+    ]).then(([nextCandidates, activeTasks]) => {
+      if (cancelled) return;
+      setCandidates(nextCandidates);
+      setSystemFilterGroups(selectSystemFilters(activeTasks, now));
     });
     return () => {
       cancelled = true;
@@ -249,12 +460,44 @@ export function Search(): ReactElement {
         onChange={(event) => setQuery(event.target.value)}
       />
 
+      {/* Системные фильтры (§16) — только пока запрос пуст, см. заголовок
+       * файла, блок «E12.3». */}
       {isEmptyQuery && (
+        <div role="group" aria-label={t('search', 'filters.groupLabel')}>
+          {SYSTEM_FILTER_IDS.map((id) => (
+            <Filter
+              key={id}
+              selected={activeFilter === id}
+              onClick={() => setActiveFilter((current) => (current === id ? null : id))}
+            >
+              {systemFilterLabel(id)}
+            </Filter>
+          ))}
+        </div>
+      )}
+
+      {isEmptyQuery && activeFilter === null && (
         <EmptyState
           icon={<Icon name="search" size={32} />}
           title={t('search', 'empty.title')}
           description={t('search', 'empty.description')}
         />
+      )}
+
+      {isEmptyQuery && activeFilter !== null && systemFilterGroups !== null && (
+        <section aria-label={systemFilterLabel(activeFilter)}>
+          {systemFilterGroups[activeFilter].length === 0 ? (
+            <EmptyState
+              icon={<Icon name="search" size={32} />}
+              title={t('search', 'filters.empty.title')}
+              description={t('search', 'filters.empty.description')}
+            />
+          ) : (
+            systemFilterGroups[activeFilter].map((task) => (
+              <FilterResultRow key={task.id} task={task} onOpen={controller.openTask} />
+            ))
+          )}
+        </section>
       )}
 
       {hasNoResults && (

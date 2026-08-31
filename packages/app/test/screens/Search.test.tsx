@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactElement } from 'react';
 
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { Temporal } from '@js-temporal/polyfill';
 import { createUnavailablePlatform } from '@shagi/platform';
 import { t } from '@shagi/i18n';
 import {
@@ -12,7 +13,7 @@ import {
   makeTaskLabel,
 } from '@shagi/storage/contract';
 import type { StoragePort } from '@shagi/storage';
-import type { Label, Project, Task } from '@shagi/core';
+import { makePriority, type Label, type Project, type Task } from '@shagi/core';
 import { describe, expect, it } from 'vitest';
 
 import type { AppHost } from '../../src/App.js';
@@ -255,6 +256,196 @@ describe('Search — денормализация project/label задачи (т
 
     await waitFor(() =>
       expect(screen.getByText('Задача без совпадения в заголовке')).toBeInTheDocument(),
+    );
+  });
+});
+
+// --- Системные фильтры (01§16, пакет работ E12.3) ---------------------------
+//
+// Размещение — встроено в M34 (calm empty state ДО ввода запроса), см.
+// заголовок `Search.tsx`, блок «E12.3: Системные фильтры» за полным
+// разбором решения. Пять чипов-фильтров видны только пока запрос пуст —
+// те же условия, что уже проверяет `describe('Search — M34 Empty')` выше.
+
+const NOW = Temporal.Now.plainDateTimeISO();
+const TODAY = NOW.toPlainDate();
+const YESTERDAY = TODAY.subtract({ days: 1 });
+
+function filterChip(label: string): HTMLElement {
+  return screen.getByRole('button', { name: label });
+}
+
+/** Дожидается, что чипы фильтров смонтированы — тот же класс гонки, что
+ * `searchInput()` выше (async-загрузка кандидатов ещё не гарантирует, что
+ * ЭТОТ конкретный компонент уже в DOM на первом кадре). */
+async function waitForFilterChips(): Promise<void> {
+  await waitFor(() => expect(filterChip(t('search', 'filters.noDate'))).toBeInTheDocument());
+}
+
+describe('Search — Системные фильтры, M34 (01§16, E12.3)', () => {
+  it('в пустом состоянии видны все пять предопределённых фильтров', async () => {
+    renderSearch();
+
+    await waitForFilterChips();
+
+    expect(filterChip(t('search', 'filters.noDate'))).toBeInTheDocument();
+    expect(filterChip(t('search', 'filters.p1'))).toBeInTheDocument();
+    expect(filterChip(t('search', 'filters.missedPlan'))).toBeInTheDocument();
+    expect(filterChip(t('search', 'filters.missedDeadline'))).toBeInTheDocument();
+    expect(filterChip(t('search', 'filters.recurring'))).toBeInTheDocument();
+  });
+
+  it('фильтры скрыты, как только запрос непустой — печать текста переключает на обычный поиск', async () => {
+    const user = userEvent.setup();
+    renderSearch();
+    await waitForFilterChips();
+
+    await user.type(await searchInput(), 'что угодно');
+
+    expect(
+      screen.queryByRole('button', { name: t('search', 'filters.noDate') }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('«Без даты» — активная задача без plannedDate и без deadlineDate', async () => {
+    const user = userEvent.setup();
+    const bare = makeTask({ title: 'Задача без дат' });
+    const withDate = makeTask({ title: 'Задача с датой', plannedDate: TODAY.add({ days: 1 }) });
+    renderSearch({ tasks: [bare, withDate] });
+    await waitForFilterChips();
+
+    await user.click(filterChip(t('search', 'filters.noDate')));
+
+    await waitFor(() => expect(screen.getByText('Задача без дат')).toBeInTheDocument());
+    expect(screen.queryByText('Задача с датой')).not.toBeInTheDocument();
+  });
+
+  it('«P1 / Критичные» — активная задача с priority=1', async () => {
+    const user = userEvent.setup();
+    const critical = { ...makeTask({ title: 'Критичная задача' }), priority: makePriority(1) };
+    const normal = { ...makeTask({ title: 'Обычная задача' }), priority: makePriority(3) };
+    renderSearch({ tasks: [critical, normal] });
+    await waitForFilterChips();
+
+    await user.click(filterChip(t('search', 'filters.p1')));
+
+    await waitFor(() => expect(screen.getByText('Критичная задача')).toBeInTheDocument());
+    expect(screen.queryByText('Обычная задача')).not.toBeInTheDocument();
+  });
+
+  it('«Не по плану» — активная задача с plannedDate в прошлом (переиспользует classifyTaskForToday)', async () => {
+    const user = userEvent.setup();
+    const missedPlan = makeTask({ title: 'Просроченный план', plannedDate: YESTERDAY });
+    const onTrack = makeTask({ title: 'Задача в срок', plannedDate: TODAY });
+    renderSearch({ tasks: [missedPlan, onTrack] });
+    await waitForFilterChips();
+
+    await user.click(filterChip(t('search', 'filters.missedPlan')));
+
+    await waitFor(() => expect(screen.getByText('Просроченный план')).toBeInTheDocument());
+    expect(screen.queryByText('Задача в срок')).not.toBeInTheDocument();
+  });
+
+  it('«Просрочен срок» — активная задача с deadlineDate в прошлом', async () => {
+    const user = userEvent.setup();
+    const missedDeadline = makeTask({ title: 'Просроченный срок', deadlineDate: YESTERDAY });
+    const notYet = makeTask({ title: 'Ещё не просрочена', deadlineDate: TODAY.add({ days: 3 }) });
+    renderSearch({ tasks: [missedDeadline, notYet] });
+    await waitForFilterChips();
+
+    await user.click(filterChip(t('search', 'filters.missedDeadline')));
+
+    await waitFor(() => expect(screen.getByText('Просроченный срок')).toBeInTheDocument());
+    expect(screen.queryByText('Ещё не просрочена')).not.toBeInTheDocument();
+  });
+
+  it('«Повторяющиеся» — активная задача с seriesId !== null', async () => {
+    const user = userEvent.setup();
+    const seriesId = makeTask().id; // произвольный, но валидный Uuid для seriesId.
+    const recurring = makeTask({ title: 'Повторяющаяся задача', seriesId });
+    const single = makeTask({ title: 'Обычная одноразовая' });
+    renderSearch({ tasks: [recurring, single] });
+    await waitForFilterChips();
+
+    await user.click(filterChip(t('search', 'filters.recurring')));
+
+    await waitFor(() => expect(screen.getByText('Повторяющаяся задача')).toBeInTheDocument());
+    expect(screen.queryByText('Обычная одноразовая')).not.toBeInTheDocument();
+  });
+
+  it('завершённая задача не попадает ни в один фильтр, даже если формально подходит по всем полям', async () => {
+    const user = userEvent.setup();
+    const completed = makeTask({
+      title: 'Завершённая критичная без дат',
+      status: 'completed',
+    });
+    const completedCritical = { ...completed, priority: makePriority(1) };
+    renderSearch({ tasks: [completedCritical] });
+    await waitForFilterChips();
+
+    await user.click(filterChip(t('search', 'filters.noDate')));
+    await waitFor(() =>
+      expect(screen.getByText(t('search', 'filters.empty.title'))).toBeInTheDocument(),
+    );
+    expect(screen.queryByText('Завершённая критичная без дат')).not.toBeInTheDocument();
+
+    await user.click(filterChip(t('search', 'filters.noDate'))); // снять «Без даты»
+    await user.click(filterChip(t('search', 'filters.p1')));
+    await waitFor(() =>
+      expect(screen.getByText(t('search', 'filters.empty.title'))).toBeInTheDocument(),
+    );
+    expect(screen.queryByText('Завершённая критичная без дат')).not.toBeInTheDocument();
+  });
+
+  it('переключение между фильтрами показывает правильный список для каждого', async () => {
+    const user = userEvent.setup();
+    const bare = makeTask({ title: 'Без единой даты' });
+    const critical = {
+      ...makeTask({ title: 'Критичная с датой', plannedDate: TODAY.add({ days: 2 }) }),
+      priority: makePriority(1),
+    };
+    renderSearch({ tasks: [bare, critical] });
+    await waitForFilterChips();
+
+    await user.click(filterChip(t('search', 'filters.noDate')));
+    await waitFor(() => expect(screen.getByText('Без единой даты')).toBeInTheDocument());
+    expect(screen.queryByText('Критичная с датой')).not.toBeInTheDocument();
+
+    await user.click(filterChip(t('search', 'filters.p1')));
+    await waitFor(() => expect(screen.getByText('Критичная с датой')).toBeInTheDocument());
+    expect(screen.queryByText('Без единой даты')).not.toBeInTheDocument();
+  });
+
+  it('повторный клик по выбранному фильтру снимает выбор — возвращает calm empty state', async () => {
+    const user = userEvent.setup();
+    const bare = makeTask({ title: 'Без единой даты' });
+    renderSearch({ tasks: [bare] });
+    await waitForFilterChips();
+
+    await user.click(filterChip(t('search', 'filters.noDate')));
+    await waitFor(() => expect(screen.getByText('Без единой даты')).toBeInTheDocument());
+
+    await user.click(filterChip(t('search', 'filters.noDate')));
+    await waitFor(() => expect(screen.getByText(t('search', 'empty.title'))).toBeInTheDocument());
+    expect(screen.queryByText('Без единой даты')).not.toBeInTheDocument();
+  });
+
+  it('клик по задаче в результате фильтра открывает Task Detail (controller.openTask)', async () => {
+    const user = userEvent.setup();
+    const bare = makeTask({ title: 'Открыть из фильтра' });
+    const { controller } = renderSearch({ tasks: [bare] });
+    await waitForFilterChips();
+
+    await user.click(filterChip(t('search', 'filters.noDate')));
+    await waitFor(() => expect(screen.getByText('Открыть из фильтра')).toBeInTheDocument());
+    await user.click(screen.getByText('Открыть из фильтра'));
+
+    expect(controller.getState()).toEqual(
+      expect.objectContaining({
+        screen: 'taskDetail',
+        selectedTaskId: bare.id,
+        returnScreen: 'search',
+      }),
     );
   });
 });
