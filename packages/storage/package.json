@@ -8,7 +8,8 @@
   "types": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
-    "./contract": "./src/contract/index.ts"
+    "./contract": "./src/contract/index.ts",
+    "./search-golden": "./src/search/golden/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
@@ -21,6 +22,7 @@
   },
   "devDependencies": {
     "@types/node": "^24.13.3",
+    "fake-indexeddb": "6.2.5",
     "typescript": "5.9.3",
     "vitest": "^4.1.11"
   }

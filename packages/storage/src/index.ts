@@ -34,5 +34,8 @@ export * from './sqlite/index.js';
 // --- Эталонная реализация в памяти (п.6) ---------------------------------------
 export * from './memory/index.js';
 
+// --- Общая логика ранжирования поиска (E02.3 п.1) -------------------------------
+export * from './search/index.js';
+
 // --- Служебные value-types пакета -----------------------------------------------
 export { isNonEmptyArray, type NonEmptyArray } from './values.js';
