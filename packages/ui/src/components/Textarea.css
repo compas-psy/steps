@@ -1,0 +1,51 @@
+/**
+ * `Textarea` (§10 «Primitives», §11: Default/Focus/Error/Disabled — то же
+ * набор, что у `Input`). В отличие от `Input` рамка/фон живут прямо на
+ * `<textarea>` — нет adornment-слотов, которые требовали бы отдельной
+ * обёртки, поэтому нативный `:focus-visible` кольца из `base.css` подходит
+ * без переопределений `:has()`.
+ */
+
+.shagi-textarea {
+  display: block;
+  width: 100%;
+  min-height: calc(var(--touch-target-min) * 2);
+  resize: vertical;
+  background: var(--input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  font-family: var(--font-sans);
+  font-size: var(--text-body-primary);
+  line-height: var(--lh-body-primary);
+  font-weight: var(--fw-medium);
+  color: var(--foreground);
+  transition:
+    border-color var(--motion-duration-fast) var(--motion-easing-standard),
+    box-shadow var(--motion-duration-fast) var(--motion-easing-standard);
+}
+
+.shagi-textarea::placeholder {
+  color: var(--muted-foreground);
+}
+
+.shagi-textarea--error {
+  border-color: var(--destructive);
+}
+.shagi-textarea--error:focus-visible {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--destructive) 22%, transparent);
+}
+
+.shagi-textarea:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  resize: none;
+}
+
+.shagi-textarea__error {
+  margin: var(--space-1) 0 0;
+  font-size: var(--text-small-meta);
+  line-height: var(--lh-small-meta);
+  font-weight: var(--fw-medium);
+  color: var(--destructive);
+}

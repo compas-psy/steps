@@ -1,0 +1,93 @@
+/**
+ * `Tooltip` (§10 «Primitives»). Пузырь всегда в DOM (не монтируется
+ * условно) — `opacity`/`pointer-events` переключают видимость, но не
+ * `display`, иначе `aria-describedby` на триггере указывал бы на
+ * периодически исчезающий узел, а часть скринридеров описание такого узла
+ * не прочитает вовсе.
+ *
+ * Смещение при появлении (`transform`) убирается для `prefers-reduced-motion`
+ * целиком (§7 «removes translate/scale»), непрозрачность продолжает
+ * фейдиться — единственный примитив пакета, где это нельзя выразить только
+ * токеном длительности (тут не время анимации медленнее, а её вид другой),
+ * поэтому есть собственный `@media`-блок.
+ */
+
+.shagi-tooltip {
+  position: relative;
+  display: inline-block;
+}
+
+.shagi-tooltip__bubble {
+  position: absolute;
+  z-index: 10;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--forest-900);
+  color: var(--white);
+  font-family: var(--font-sans);
+  font-size: var(--text-small-meta);
+  line-height: var(--lh-small-meta);
+  font-weight: var(--fw-medium);
+  white-space: nowrap;
+  box-shadow: var(--shadow-floating);
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity var(--motion-duration-fast) var(--motion-easing-standard),
+    transform var(--motion-duration-fast) var(--motion-easing-standard);
+}
+.shagi-tooltip__bubble--open {
+  opacity: 1;
+}
+
+.shagi-tooltip__bubble--top {
+  bottom: calc(100% + var(--space-1));
+  left: 50%;
+  transform: translate(-50%, var(--space-1));
+}
+.shagi-tooltip__bubble--top.shagi-tooltip__bubble--open {
+  transform: translate(-50%, 0);
+}
+.shagi-tooltip__bubble--bottom {
+  top: calc(100% + var(--space-1));
+  left: 50%;
+  transform: translate(-50%, calc(var(--space-1) * -1));
+}
+.shagi-tooltip__bubble--bottom.shagi-tooltip__bubble--open {
+  transform: translate(-50%, 0);
+}
+.shagi-tooltip__bubble--left {
+  right: calc(100% + var(--space-1));
+  top: 50%;
+  transform: translate(var(--space-1), -50%);
+}
+.shagi-tooltip__bubble--left.shagi-tooltip__bubble--open {
+  transform: translate(0, -50%);
+}
+.shagi-tooltip__bubble--right {
+  left: calc(100% + var(--space-1));
+  top: 50%;
+  transform: translate(calc(var(--space-1) * -1), -50%);
+}
+.shagi-tooltip__bubble--right.shagi-tooltip__bubble--open {
+  transform: translate(0, -50%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shagi-tooltip__bubble--top,
+  .shagi-tooltip__bubble--top.shagi-tooltip__bubble--open {
+    transform: translate(-50%, 0);
+  }
+  .shagi-tooltip__bubble--bottom,
+  .shagi-tooltip__bubble--bottom.shagi-tooltip__bubble--open {
+    transform: translate(-50%, 0);
+  }
+  .shagi-tooltip__bubble--left,
+  .shagi-tooltip__bubble--left.shagi-tooltip__bubble--open {
+    transform: translate(0, -50%);
+  }
+  .shagi-tooltip__bubble--right,
+  .shagi-tooltip__bubble--right.shagi-tooltip__bubble--open {
+    transform: translate(0, -50%);
+  }
+}

@@ -1,0 +1,23 @@
+/**
+ * `Divider` (§10 «Primitives»). `<hr>` несёт `role="separator"` от природы
+ * HTML — ничего дополнительно объявлять не нужно, только `aria-orientation`
+ * для вертикального случая (по умолчанию `separator` предполагается
+ * горизонтальным).
+ */
+
+.shagi-divider {
+  border: none;
+  margin: 0;
+  background: var(--border);
+  flex-shrink: 0;
+}
+
+.shagi-divider--horizontal {
+  width: 100%;
+  height: 1px;
+}
+
+.shagi-divider--vertical {
+  width: 1px;
+  align-self: stretch;
+}

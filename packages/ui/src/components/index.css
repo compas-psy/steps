@@ -1,0 +1,32 @@
+/**
+ * Единая точка входа стилей компонентов `@shagi/ui` — публичный subpath
+ * `@shagi/ui/components.css`, тот же приём, что `tokens/index.css` для
+ * `@shagi/ui/tokens.css`: потребитель подключает один файл, а не
+ * `src/components/*.css` по одному. Порядок алфавитный — компоненты не
+ * зависят друг от друга по каскаду (у каждого свой класс-префикс
+ * `shagi-<component>`), так что порядок здесь только для читаемости, а не
+ * потому что важен.
+ *
+ * Подключается ПОСЛЕ `tokens.css` (компоненты читают `var(--...)`) —
+ * ответственность потребителя (`apps/web/src/main.tsx` и т.п.), не этого
+ * файла: `@import` порядок сам по себе гарантий не даёт, если потребитель
+ * подключит оба файла в произвольном порядке через отдельные `<link>`, но
+ * для собранного бандлера (Vite и т.п.) порядок `import` в исходниках и
+ * есть порядок каскада.
+ */
+
+@import './Badge.css';
+@import './Button.css';
+@import './Card.css';
+@import './Checkbox.css';
+@import './Chip.css';
+@import './Divider.css';
+@import './IconButton.css';
+@import './Input.css';
+@import './Radio.css';
+@import './SegmentedControl.css';
+@import './ServiceMark.css';
+@import './Spinner.css';
+@import './Switch.css';
+@import './Textarea.css';
+@import './Tooltip.css';

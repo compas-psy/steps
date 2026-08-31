@@ -1,0 +1,78 @@
+/**
+ * `Switch` (§10 «Primitives», §11: On/Off/Disabled — тумблер аналитики/
+ * уведомлений). Оверлей-техника, как у `Checkbox`/`Radio`: реальный
+ * `<input type="checkbox" role="switch">` прозрачный и точно поверх
+ * дорожки, фокус-кольцо `base.css` приходит бесплатно.
+ *
+ * Геометрия дорожки/бегунка подобрана так, чтобы путь бегунка сходился без
+ * остатка на токене отступа: дорожка `--space-10` (40) на `--space-6` (24),
+ * паддинг `calc(var(--space-1) / 2)` (2) с каждой стороны, бегунок
+ * `--space-5` (20) — свободный ход `40 − 20 − 2×2 = 16`, что равно
+ * `--space-4` буквально (не совпадение, подобрано намеренно), поэтому
+ * сдвиг включённого состояния — `translateX(var(--space-4))`, а не
+ * calc с недокументированным числом.
+ */
+
+.shagi-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  cursor: pointer;
+}
+.shagi-switch--disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.shagi-switch__control {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+  width: var(--space-10);
+  height: var(--space-6);
+}
+
+.shagi-switch__input {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+  cursor: inherit;
+}
+.shagi-switch__input:disabled {
+  cursor: not-allowed;
+}
+
+.shagi-switch__track {
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius-full);
+  background: var(--border);
+  transition: background-color var(--motion-duration-fast) var(--motion-easing-standard);
+}
+.shagi-switch__input:checked ~ .shagi-switch__track {
+  background: var(--primary);
+}
+
+.shagi-switch__thumb {
+  position: absolute;
+  top: calc(var(--space-1) / 2);
+  left: calc(var(--space-1) / 2);
+  width: var(--space-5);
+  height: var(--space-5);
+  border-radius: var(--radius-full);
+  background: var(--white);
+  box-shadow: var(--shadow-xs);
+  transition: transform var(--motion-duration-fast) var(--motion-easing-standard);
+}
+.shagi-switch__input:checked ~ .shagi-switch__track .shagi-switch__thumb {
+  transform: translateX(var(--space-4));
+}
+
+.shagi-switch__label {
+  font-family: var(--font-sans);
+  font-size: var(--text-body-primary);
+  line-height: var(--lh-body-primary);
+  font-weight: var(--fw-medium);
+  color: var(--foreground);
+}

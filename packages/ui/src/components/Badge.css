@@ -1,0 +1,73 @@
+/**
+ * `Badge` — по образцу СИМПАС (`?13`, `.ultraplan/open-questions.md`):
+ * те же имена пропсов (`variant`, `dot`), набор значений `variant`
+ * пересчитан под домен задач ШАГОВ, а не скопирован буквально (`paid`,
+ * `processing` из образца — про биллинг/запись на приём чужого продукта,
+ * их здесь нет).
+ */
+
+.shagi-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-full);
+  border: 1px solid transparent;
+  font-family: var(--font-sans);
+  font-size: var(--text-small-meta);
+  line-height: var(--lh-small-meta);
+  font-weight: var(--fw-semibold);
+  white-space: nowrap;
+}
+
+.shagi-badge--default {
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+.shagi-badge--secondary {
+  background: var(--muted);
+  color: var(--foreground);
+}
+.shagi-badge--outline {
+  background: transparent;
+  color: var(--foreground);
+  border-color: var(--border);
+}
+.shagi-badge--success {
+  background: var(--success-soft);
+  color: var(--success-500);
+  border-color: color-mix(in srgb, var(--success-500) 20%, transparent);
+}
+.shagi-badge--pending {
+  background: var(--orange-soft);
+  color: var(--orange-500);
+  border-color: color-mix(in srgb, var(--orange-500) 20%, transparent);
+}
+.shagi-badge--info {
+  background: var(--blue-soft);
+  color: var(--blue-500);
+  border-color: color-mix(in srgb, var(--blue-500) 20%, transparent);
+}
+.shagi-badge--new {
+  background: var(--amber-soft);
+  color: var(--gold-500);
+  border-color: color-mix(in srgb, var(--gold-500) 25%, transparent);
+}
+.shagi-badge--destructive {
+  background: var(--red-soft);
+  color: var(--red-500);
+  border-color: color-mix(in srgb, var(--red-500) 20%, transparent);
+}
+
+.shagi-badge__dot {
+  width: calc(var(--space-1) * 1.5);
+  height: calc(var(--space-1) * 1.5);
+  border-radius: var(--radius-full);
+  background: currentColor;
+  flex-shrink: 0;
+}
+
+.shagi-badge__icon {
+  display: inline-flex;
+  flex-shrink: 0;
+}

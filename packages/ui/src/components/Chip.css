@@ -1,0 +1,103 @@
+/**
+ * `Chip` (§10 «Primitives», §11: Default/Selected/Removable). Тон — не
+ * единственный носитель смысла: компонент уже сейчас принимает `icon`
+ * рядом с текстом (`children`), а не только цвет варианта — задел под §11
+ * «State never color-only», чтобы следующему пакету работ (планирование —
+ * DateChip/PriorityChip/DeadlineChip) не пришлось переделывать примитив.
+ *
+ * Тоновые пары — существующие soft/500 токены `colors.css` (blue/violet/
+ * orange/red/success/amber), ничего нового не заведено.
+ */
+
+.shagi-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-full);
+  border: 1px solid transparent;
+  font-family: var(--font-sans);
+  font-size: var(--text-small-meta);
+  line-height: var(--lh-small-meta);
+  font-weight: var(--fw-medium);
+  white-space: nowrap;
+}
+
+button.shagi-chip {
+  cursor: pointer;
+  transition:
+    background-color var(--motion-duration-fast) var(--motion-easing-standard),
+    transform var(--motion-duration-fast) var(--motion-easing-standard);
+}
+button.shagi-chip:active:not(:disabled) {
+  transform: scale(var(--motion-scale-press));
+}
+button.shagi-chip:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+button.shagi-chip[aria-pressed='true'] {
+  border-color: currentColor;
+  box-shadow: var(--shadow-xs);
+}
+
+.shagi-chip--neutral {
+  background: var(--muted);
+  color: var(--muted-foreground);
+}
+.shagi-chip--forest {
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+  color: var(--primary);
+}
+.shagi-chip--gold {
+  background: var(--amber-soft);
+  color: var(--gold-500);
+}
+.shagi-chip--blue {
+  background: var(--blue-soft);
+  color: var(--blue-500);
+}
+.shagi-chip--violet {
+  background: var(--violet-soft);
+  color: var(--violet-500);
+}
+.shagi-chip--orange {
+  background: var(--orange-soft);
+  color: var(--orange-500);
+}
+.shagi-chip--red {
+  background: var(--red-soft);
+  color: var(--red-500);
+}
+.shagi-chip--success {
+  background: var(--success-soft);
+  color: var(--success-500);
+}
+
+.shagi-chip__icon {
+  display: inline-flex;
+  flex-shrink: 0;
+}
+
+.shagi-chip__remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: var(--space-4);
+  height: var(--space-4);
+  padding: 0;
+  margin-right: calc(var(--space-1) * -1);
+  border: none;
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: currentColor;
+  cursor: pointer;
+  transition: background-color var(--motion-duration-fast) var(--motion-easing-standard);
+}
+.shagi-chip__remove:hover {
+  background: color-mix(in srgb, currentColor 15%, transparent);
+}
+.shagi-chip__remove:disabled {
+  cursor: not-allowed;
+}

@@ -1,0 +1,82 @@
+/**
+ * `Input` (§10 «Primitives», §11: Default/Focus/Error/Disabled).
+ *
+ * Видимая рамка/фон живут на обёртке (`.shagi-input`), а не на самом
+ * `<input>` (`.shagi-input__field` — прозрачный, без бордера) — так
+ * adornment-иконки (`leading`/`trailing`) сидят внутри одной общей рамки, а
+ * не двух отдельных полей. Фокус реального `<input>` при этом должен рисовать
+ * кольцо вокруг ВСЕЙ обёртки, а не вокруг невидимого внутреннего поля —
+ * решено через `:has()` (Baseline у всех вечнозелёных браузеров последних
+ * 2 мажорных версий, `tsconfig.base.json`), без дублирования fokus-состояния
+ * в JS `useState`, как делал образец СИМПАС.
+ */
+
+.shagi-input {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  background: var(--input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 0 var(--space-3);
+  transition:
+    border-color var(--motion-duration-fast) var(--motion-easing-standard),
+    box-shadow var(--motion-duration-fast) var(--motion-easing-standard);
+}
+
+.shagi-input:has(.shagi-input__field:focus-visible) {
+  border-color: var(--ring);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ring) 22%, transparent);
+}
+
+.shagi-input--error {
+  border-color: var(--destructive);
+}
+.shagi-input--error:has(.shagi-input__field:focus-visible) {
+  border-color: var(--destructive);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--destructive) 22%, transparent);
+}
+
+.shagi-input--disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.shagi-input__field {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-family: var(--font-sans);
+  font-size: var(--text-body-primary);
+  font-weight: var(--fw-medium);
+  color: var(--foreground);
+  height: var(--touch-target-min);
+}
+/* Глобальное фокус-кольцо `base.css` целится в сам `input` — здесь оно
+   гасится намеренно: видимый ring уже нарисован на обёртке выше, второй
+   поверх невидимого поля дал бы двойной контур. */
+.shagi-input__field:focus-visible {
+  box-shadow: none;
+}
+.shagi-input__field::placeholder {
+  color: var(--muted-foreground);
+}
+.shagi-input__field:disabled {
+  cursor: not-allowed;
+}
+
+.shagi-input__adornment {
+  display: flex;
+  flex-shrink: 0;
+  color: var(--muted-foreground);
+}
+
+.shagi-input__error {
+  margin: var(--space-1) 0 0;
+  font-size: var(--text-small-meta);
+  line-height: var(--lh-small-meta);
+  font-weight: var(--fw-medium);
+  color: var(--destructive);
+}

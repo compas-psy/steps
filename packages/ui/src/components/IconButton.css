@@ -1,0 +1,95 @@
+/**
+ * `IconButton` (§10 «Primitives», §11: Default/Hover/Pressed/Focus/Disabled/
+ * Loading — то же, что `Button`, плюс обязательное доступное имя, §15).
+ * Квадратная форма — `width == height`, размеры считаны с шагов `Button`,
+ * чтобы `md` продолжал буквально совпадать с `--touch-target-min`.
+ */
+
+.shagi-icon-button {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border-radius: var(--radius-md);
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition:
+    background-color var(--motion-duration-fast) var(--motion-easing-standard),
+    box-shadow var(--motion-duration-fast) var(--motion-easing-standard),
+    transform var(--motion-duration-fast) var(--motion-easing-standard);
+}
+
+.shagi-icon-button:active:not(:disabled):not([aria-disabled='true']) {
+  transform: scale(var(--motion-scale-press));
+}
+
+.shagi-icon-button:disabled,
+.shagi-icon-button[aria-disabled='true'] {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.shagi-icon-button--sm {
+  width: var(--space-8);
+  height: var(--space-8);
+}
+.shagi-icon-button--md {
+  width: var(--touch-target-min);
+  height: var(--touch-target-min);
+}
+.shagi-icon-button--lg {
+  width: var(--space-12);
+  height: var(--space-12);
+}
+
+.shagi-icon-button--primary {
+  background: var(--primary);
+  color: var(--primary-foreground);
+  box-shadow: var(--shadow-sm);
+}
+.shagi-icon-button--accent {
+  background: var(--accent);
+  color: var(--accent-foreground);
+  box-shadow: var(--shadow-sm);
+}
+.shagi-icon-button--secondary {
+  background: var(--card);
+  color: var(--foreground);
+  border-color: var(--border);
+}
+.shagi-icon-button--ghost {
+  background: transparent;
+  color: var(--foreground);
+}
+.shagi-icon-button--destructive {
+  background: var(--destructive);
+  color: var(--destructive-foreground);
+  box-shadow: var(--shadow-sm);
+}
+
+@media (hover: hover) {
+  .shagi-icon-button--primary:hover:not(:disabled):not([aria-disabled='true']) {
+    background: color-mix(in srgb, var(--primary) 88%, var(--foreground));
+  }
+  .shagi-icon-button--accent:hover:not(:disabled):not([aria-disabled='true']) {
+    background: color-mix(in srgb, var(--accent) 88%, var(--foreground));
+  }
+  .shagi-icon-button--secondary:hover:not(:disabled):not([aria-disabled='true']) {
+    background: var(--sage-50);
+  }
+  .shagi-icon-button--ghost:hover:not(:disabled):not([aria-disabled='true']) {
+    background: var(--sage-100);
+  }
+  .shagi-icon-button--destructive:hover:not(:disabled):not([aria-disabled='true']) {
+    background: color-mix(in srgb, var(--destructive) 88%, var(--foreground));
+  }
+}
+
+.shagi-icon-button[aria-busy='true'] .shagi-icon-button__icon {
+  visibility: hidden;
+}
+.shagi-icon-button__spinner-wrap {
+  position: absolute;
+  display: inline-flex;
+}

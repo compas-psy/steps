@@ -25,6 +25,21 @@
   "extends": ["../../.oxlintrc.json"],
   "jsPlugins": [{ "name": "eslint-js", "specifier": "oxlint-plugin-eslint" }],
   "rules": {
+    // `import/no-unassigned-import` наследуется из корневого конфига
+    // (плагин `import`) и по умолчанию не различает CSS — а компоненты
+    // E03.1 подключают свои стили побочным импортом (`import './Button.css'`),
+    // тот же паттерн, что использует любой Vite/webpack-проект с CSS рядом
+    // с компонентом. `test/setup.ts` побочным импортом регистрирует
+    // jest-dom матчеры (`@testing-library/jest-dom/vitest` — специально
+    // спроектированный side-effect-модуль, не «забытый экспорт»). Это не
+    // ослабление гейта из таблицы CLAUDE.md (там про адгезию/i18n/секреты/
+    // логи/лицензии/границу apps/*/контраст — этого правила там нет) —
+    // точечная настройка allowlist под легитимный паттерн, которого до
+    // этого пакета работ в репозитории не было.
+    "import/no-unassigned-import": [
+      "error",
+      { "allow": ["**/*.css", "@testing-library/jest-dom/vitest"] }
+    ],
     "eslint-js/no-restricted-syntax": [
       "error",
       {

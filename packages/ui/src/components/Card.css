@@ -1,0 +1,83 @@
+/**
+ * `Card`/`CardHeader`/`CardBody` — по образцу СИМПАС (`?13`): те же имена
+ * (`Card.interactive`, `Card.padding`, `CardHeader.title/icon/action`).
+ * `padding` — закрытый набор токенов (`none/sm/md/lg`), не сырое число px,
+ * как в образце (`padding={20}` там — валидный JS-инлайн-стиль, но здесь
+ * пакет держит правило «только `var()`» и для чисел тоже, не только для
+ * строковых px-литералов, которых буквально ловит гейт).
+ */
+
+.shagi-card {
+  background: var(--card);
+  color: var(--card-foreground);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+  transition: box-shadow var(--motion-duration-slow) var(--motion-easing-standard);
+}
+
+.shagi-card--interactive {
+  cursor: pointer;
+}
+@media (hover: hover) {
+  .shagi-card--interactive:hover {
+    box-shadow: var(--shadow-card-hover);
+  }
+}
+.shagi-card--interactive:active {
+  transform: scale(var(--motion-scale-press));
+}
+
+.shagi-card--padding-sm {
+  padding: var(--space-3);
+}
+.shagi-card--padding-md {
+  padding: var(--space-5);
+}
+.shagi-card--padding-lg {
+  padding: var(--space-6);
+}
+
+.shagi-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--border);
+}
+.shagi-card-header__title-group {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.shagi-card-header__icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  color: var(--muted-foreground);
+}
+.shagi-card-header__title {
+  font-family: var(--font-sans);
+  font-size: var(--text-body-secondary);
+  line-height: var(--lh-body-secondary);
+  font-weight: var(--fw-bold);
+  color: var(--foreground);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shagi-card-body {
+  padding: var(--space-5);
+}
+.shagi-card-body--padding-none {
+  padding: 0;
+}
+.shagi-card-body--padding-sm {
+  padding: var(--space-3);
+}
+.shagi-card-body--padding-lg {
+  padding: var(--space-6);
+}

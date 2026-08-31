@@ -1,0 +1,66 @@
+/**
+ * `Spinner` — индикатор загрузки (§10 «Primitives»). Кольцо рисуется через
+ * `border` + `currentColor`, а не через SVG — единственный примитив пакета
+ * без иконочной геометрии, цвет наследуется от текста контейнера (`tone`
+ * лишь выставляет `color`).
+ *
+ * Толщина кольца — `calc(var(--space-1) / 2)` (2px), длительность оборота —
+ * `calc(var(--motion-duration-slow) * 3)` (900ms): в шкале `motion.css` нет
+ * значения медленнее `--motion-duration-slow` (300ms, максимум по SPEC §7
+ * «150–300ms»), а голому обороту нужен более спокойный темп — вместо
+ * нового сырого значения оборот составлен из существующего токена
+ * умножением, ни одного значения вне `var(--motion-*)`/`var(--space-*)`.
+ *
+ * Reduced motion (§7: «Reduced Motion removes translate/scale, preserving
+ * instant/fade <=100ms») — про декоративное движение. У спиннера вращение
+ * — это и есть сообщаемое состояние («идёт процесс»), а не эффект поверх
+ * него: полная остановка убрала бы единственный сигнал занятости у тех, кто
+ * не слышит `aria-busy`/`role="status"`. Здесь обычное правило смягчено
+ * осознанно — обороты не исчезают, а замедляются вдвое.
+ */
+
+@keyframes shagi-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.shagi-spinner {
+  display: inline-block;
+  flex-shrink: 0;
+  border-radius: var(--radius-full);
+  border-style: solid;
+  border-width: calc(var(--space-1) / 2);
+  border-color: color-mix(in srgb, currentColor 25%, transparent);
+  border-top-color: currentColor;
+  animation: shagi-spin calc(var(--motion-duration-slow) * 3) linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shagi-spinner {
+    animation-duration: calc(var(--motion-duration-slow) * 6);
+  }
+}
+
+.shagi-spinner--sm {
+  width: var(--space-4);
+  height: var(--space-4);
+}
+.shagi-spinner--md {
+  width: var(--space-5);
+  height: var(--space-5);
+}
+.shagi-spinner--lg {
+  width: var(--space-8);
+  height: var(--space-8);
+}
+
+.shagi-spinner--primary {
+  color: var(--primary);
+}
+.shagi-spinner--muted {
+  color: var(--muted-foreground);
+}
+.shagi-spinner--current {
+  color: inherit;
+}

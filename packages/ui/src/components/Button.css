@@ -1,0 +1,137 @@
+/**
+ * `Button` (§10 «Primitives», §11 состояния: Default/Hover/Pressed/Focus/
+ * Disabled/Loading). Высоты подобраны из шкалы отступов ШАГОВ, а не
+ * скопированы из образца СИМПАС (36/44/52 — там своя шкала): `md` совпадает
+ * с `--touch-target-min` по построению, а не по совпадению.
+ *
+ * Hover-оттенок для primary/accent/destructive — `color-mix()` с
+ * `var(--foreground)`, а не отдельный «hover»-токен: в светлой теме
+ * `--foreground` тёмный (даёт затемнение), в тёмной — светлый (даёт
+ * осветление) — правильная полярность hover в обеих темах от одной формулы,
+ * без единого сырого цвета (тот же приём, что уже использует `base.css` для
+ * фокус-кольца — `color-mix()` поверх токена).
+ *
+ * Focus — намеренно НЕ переопределяется здесь: глобальное правило в
+ * `base.css` (`:focus-visible` → `box-shadow` через `--ring`) уже покрывает
+ * `button`, конкретно `--radius-lg` кнопки визуально сочетается с
+ * `--radius-sm` кольца без коррекции.
+ */
+
+.shagi-button {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  border-radius: var(--radius-lg);
+  border: 1px solid transparent;
+  font-family: var(--font-sans);
+  font-weight: var(--fw-semibold);
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background-color var(--motion-duration-fast) var(--motion-easing-standard),
+    box-shadow var(--motion-duration-fast) var(--motion-easing-standard),
+    transform var(--motion-duration-fast) var(--motion-easing-standard);
+}
+
+.shagi-button:active:not(:disabled):not([aria-disabled='true']) {
+  transform: scale(var(--motion-scale-press));
+}
+
+.shagi-button:disabled,
+.shagi-button[aria-disabled='true'] {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.shagi-button--block {
+  display: flex;
+  width: 100%;
+}
+
+/* ── Размеры ── */
+.shagi-button--sm {
+  height: var(--space-8);
+  padding: 0 var(--space-3);
+  font-size: var(--text-body-secondary);
+  line-height: var(--lh-body-secondary);
+}
+.shagi-button--md {
+  height: var(--touch-target-min);
+  padding: 0 var(--space-5);
+  font-size: var(--text-body-primary);
+  line-height: var(--lh-body-primary);
+}
+.shagi-button--lg {
+  height: var(--space-12);
+  padding: 0 var(--space-6);
+  font-size: var(--text-body-primary);
+  line-height: var(--lh-body-primary);
+}
+
+/* ── Варианты (Default) ── */
+.shagi-button--primary {
+  background: var(--primary);
+  color: var(--primary-foreground);
+  box-shadow: var(--shadow-sm);
+}
+.shagi-button--accent {
+  background: var(--accent);
+  color: var(--accent-foreground);
+  box-shadow: var(--shadow-sm);
+}
+.shagi-button--secondary {
+  background: var(--card);
+  color: var(--primary);
+  border-color: var(--border);
+}
+.shagi-button--ghost {
+  background: transparent;
+  color: var(--primary);
+}
+.shagi-button--destructive {
+  background: var(--destructive);
+  color: var(--destructive-foreground);
+  box-shadow: var(--shadow-sm);
+}
+
+/* ── Hover (hover-capable указатель, не эмулируется тачем) ── */
+@media (hover: hover) {
+  .shagi-button--primary:hover:not(:disabled):not([aria-disabled='true']) {
+    background: color-mix(in srgb, var(--primary) 88%, var(--foreground));
+  }
+  .shagi-button--accent:hover:not(:disabled):not([aria-disabled='true']) {
+    background: color-mix(in srgb, var(--accent) 88%, var(--foreground));
+  }
+  .shagi-button--secondary:hover:not(:disabled):not([aria-disabled='true']) {
+    background: var(--sage-50);
+  }
+  .shagi-button--ghost:hover:not(:disabled):not([aria-disabled='true']) {
+    background: var(--sage-100);
+  }
+  .shagi-button--destructive:hover:not(:disabled):not([aria-disabled='true']) {
+    background: color-mix(in srgb, var(--destructive) 88%, var(--foreground));
+  }
+}
+
+.shagi-button__icon {
+  display: inline-flex;
+  flex-shrink: 0;
+}
+
+.shagi-button__spinner {
+  display: inline-flex;
+  flex-shrink: 0;
+}
+
+/* Loading прячет текст визуально, но не из дерева доступности — кнопка
+   сохраняет то же accessible name, что и в покое (aria-busy сообщает о
+   процессе поверх него), а не подменяет его текстом спиннера. */
+.shagi-button[aria-busy='true'] .shagi-button__label {
+  visibility: hidden;
+}
+.shagi-button__spinner-wrap {
+  position: absolute;
+  display: inline-flex;
+}

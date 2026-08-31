@@ -1,0 +1,79 @@
+/**
+ * `Checkbox` (§10 «Primitives», §11: Default/Checked/Disabled).
+ *
+ * Реальный `<input type="checkbox">` остаётся в дереве и получает все
+ * нажатия/фокус (это не декорация поверх `div`-а) — он лежит абсолютно
+ * позиционированным и прозрачным (`opacity: 0`, НЕ `display:none`/
+ * `visibility:hidden` — те убрали бы элемент из дерева доступности и
+ * фокус-порядка) точно поверх видимого квадрата `.shagi-checkbox__box`,
+ * который просто следует за состоянием `input` через `~`. Фокус-кольцо
+ * `base.css` целится в сам `input` и по размеру/позиции точно совпадает с
+ * видимым квадратом снизу — переопределять `:focus-visible` здесь не
+ * нужно, оно уже приходит откуда положено.
+ */
+
+.shagi-checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  cursor: pointer;
+}
+.shagi-checkbox--disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.shagi-checkbox__control {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+  width: var(--space-5);
+  height: var(--space-5);
+}
+
+.shagi-checkbox__input {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+  cursor: inherit;
+}
+.shagi-checkbox__input:disabled {
+  cursor: not-allowed;
+}
+
+.shagi-checkbox__box {
+  position: absolute;
+  inset: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--card);
+  color: var(--primary-foreground);
+  transition:
+    background-color var(--motion-duration-fast) var(--motion-easing-standard),
+    border-color var(--motion-duration-fast) var(--motion-easing-standard);
+}
+
+.shagi-checkbox__input:checked ~ .shagi-checkbox__box {
+  background: var(--primary);
+  border-color: var(--primary);
+}
+
+.shagi-checkbox__check {
+  opacity: 0;
+  transition: opacity var(--motion-duration-fast) var(--motion-easing-standard);
+}
+.shagi-checkbox__input:checked ~ .shagi-checkbox__box .shagi-checkbox__check {
+  opacity: 1;
+}
+
+.shagi-checkbox__label {
+  font-family: var(--font-sans);
+  font-size: var(--text-body-primary);
+  line-height: var(--lh-body-primary);
+  font-weight: var(--fw-medium);
+  color: var(--foreground);
+}

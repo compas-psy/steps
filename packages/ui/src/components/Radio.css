@@ -1,0 +1,75 @@
+/**
+ * `Radio` (§10 «Primitives», §11: Default/Selected/Disabled). Та же техника
+ * оверлея, что у `Checkbox` — см. комментарий там; кольцо и точка вместо
+ * квадрата/галочки.
+ */
+
+.shagi-radio {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  cursor: pointer;
+}
+.shagi-radio--disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.shagi-radio__control {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+  width: var(--space-5);
+  height: var(--space-5);
+}
+
+.shagi-radio__input {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+  cursor: inherit;
+}
+.shagi-radio__input:disabled {
+  cursor: not-allowed;
+}
+
+.shagi-radio__ring {
+  position: absolute;
+  inset: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: var(--card);
+  transition: border-color var(--motion-duration-fast) var(--motion-easing-standard);
+}
+.shagi-radio__input:checked ~ .shagi-radio__ring {
+  border-color: var(--primary);
+}
+
+/* Появление точки анимируется через `opacity`, не `transform: scale()` —
+   §7 «Reduced Motion removes translate/scale, preserving instant/fade
+   <=100ms»: fade сюда подходит без исключений и без своего media-запроса —
+   `var(--motion-duration-fast)` в reduced-motion уже сама схлопывается к
+   `--motion-duration-reduced` (100ms) на уровне `motion.css`. */
+.shagi-radio__dot {
+  width: var(--space-2);
+  height: var(--space-2);
+  border-radius: var(--radius-full);
+  background: var(--primary);
+  opacity: 0;
+  transition: opacity var(--motion-duration-fast) var(--motion-easing-standard);
+}
+.shagi-radio__input:checked ~ .shagi-radio__ring .shagi-radio__dot {
+  opacity: 1;
+}
+
+.shagi-radio__label {
+  font-family: var(--font-sans);
+  font-size: var(--text-body-primary);
+  line-height: var(--lh-body-primary);
+  font-weight: var(--fw-medium);
+  color: var(--foreground);
+}
