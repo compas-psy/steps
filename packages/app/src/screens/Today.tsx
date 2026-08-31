@@ -6,12 +6,15 @@
  * @shagi/core) и презентационная развёртка групп — из предыдущего пакета
  * работ (E06.1), здесь не переписаны.
  *
- * Явно вне охвата (следующие пакеты работ, см. задание): Focus-промпты
- * (M11 — undated-задача → «Запланировать на сегодня и добавить в
- * Главное?», 4-я Focus-задача → выбор кого заменить), bulk-действия/
- * мультивыбор (M09 «bulk Today/Tomorrow» для «Не по плану» — здесь только
- * per-task reschedule) и переход в Task Detail («Open», M24/M25 — экрана
- * ещё нет, эпик E10).
+ * Этим же пакетом работ — «Добавить в Главное» (M11 Focus, `01§6`, раздел
+ * «Главное»): см. блок ниже «M11: Добавить в Главное».
+ *
+ * Явно вне охвата (следующие пакеты работ, см. задание): Focus-промпт для
+ * **undated**-задачи (ТЗ описывает его для будущих Inbox/Project list — на
+ * Today такой задачи в принципе не бывает, см. блок «M11» ниже),
+ * bulk-действия/мультивыбор (M09 «bulk Today/Tomorrow» для «Не по плану» —
+ * здесь только per-task reschedule) и переход в Task Detail («Open»,
+ * M24/M25 — экрана ещё нет, эпик E10).
  *
  * --- Действия по группам (`01§6`, дословно) -----------------------------
  *
@@ -30,6 +33,59 @@
  * рассинхронизацией с тем, что реально лежит в хранилище (задание). Провал
  * команды (`status !== 'ok'`) не проглатывается — `Toast` с сообщением
  * об ошибке (`@shagi/ui/feedback`), список не трогается.
+ *
+ * --- M11: «Добавить в Главное» --------------------------------------------
+ *
+ * Действие видно только там, где после успеха задача реально сменит
+ * видимую на этом экране группу на `focus` (то же соображение, по которому
+ * E06.2 не дал «Изменить срок» группе «Не по плану»): `missed_plan` /
+ * `timed` / `today` / `later` — да, `focus` — уже там (действие не нужно).
+ *
+ * `missed_deadline` — сознательно **без** этого действия: `classifyTaskForToday`
+ * (`@shagi/core`) проверяет просроченный дедлайн ПЕРВЫМ, раньше проверки
+ * `focus_date` — назначение Focus такой задаче не изменит её видимую группу
+ * на Today (она останется в «Просрочен срок»), то есть кнопка была бы, а
+ * результата пользователь не увидел бы.
+ *
+ * Три сценария (`01§6`, дословно): "Undated task → prompt to plan for
+ * today"; "Task on other date → prompt to move today"; "Fourth Focus →
+ * choose one of 3 to replace". Undated-сценарий сюда не строится: на Today
+ * задачи без ни одного из `plannedDate`/`deadlineDate`/`focusDate` не
+ * бывает — `classifyTaskForToday` вернёт для неё `null`, и она вообще не
+ * попадёт на этот экран (см. блок выше `classifyTaskForToday`). Эта логика
+ * ждёт будущий пакет работ Inbox/Project list — недостижимый код здесь был
+ * бы фиктивным покрытием.
+ *
+ * Оставшиеся два сценария различает ГРУППА-источник, не повторное чтение
+ * `plannedDate` задачи (`focusAssignmentPatch`): у `missed_plan` — и только
+ * у неё из четырёх групп с этим действием — `plannedDate` уже задан и не
+ * равен сегодня, остальные три по построению группы уже спланированы на
+ * сегодня.
+ * - `timed`/`today`/`later` → патч `{focusDate: today, dayBucket: 'default'}`
+ *   применяется СРАЗУ, без подтверждения (дата и так сегодня, подтверждать
+ *   нечего).
+ * - `missed_plan` → сперва `Modal` с подтверждением переноса даты
+ *   (`focusConfirm`), патч `{plannedDate: today, focusDate: today,
+ *   dayBucket: 'default'}` уходит только по клику подтверждения.
+ *
+ * `dayBucket: 'default'` — часть патча БЕЗУСЛОВНО в обоих случаях ("Setting
+ * Focus clears `day_bucket=later`", `01§6`), не только когда текущий
+ * bucket — `later`: результат не должен зависеть от того, правильно ли
+ * прочитано текущее состояние задачи (идемпотентно).
+ *
+ * Четвёртая задача (`focusReplace`) перехватывает оба сценария выше ДО
+ * решения "сразу/с подтверждением": если `groups.focus.length >= 3`,
+ * вместо прямого патча или диалога переноса даты показывается список из
+ * трёх текущих Focus-задач на выбор замены. После выбора — два
+ * ПОСЛЕДОВАТЕЛЬНЫХ вызова `updateTaskCommand` (`handleFocusReplace`), не
+ * один атомарный: в дереве пакетов нет мульти-task-транзакционной команды,
+ * это узкий известный компромисс (тот же жанр, что `getDeviceId`/
+ * `getLocalIdentity` в блоке ниже). Если первый вызов (снятие Focus со
+ * старой задачи) успешен, а второй (назначение новой) — нет, список
+ * обновляется после первого (снятие уже реально произошло — не скрывать
+ * это) и `Toast` сообщает об ошибке второго; конечное состояние может быть
+ * неидеальным (Focus снят с одной, не назначен другой), но это честнее,
+ * чем притворяться, что операция атомарна.
  *
  * --- Локальная идентичность (deviceId) -----------------------------------
  *
@@ -93,9 +149,11 @@ import {
   type TaskCommandResult,
   type TodayGroup,
   type TodayGroups,
+  type UpdateTaskPatch,
   type Uuid,
 } from '@shagi/core';
 import {
+  Button,
   DatePicker,
   EmptyState,
   Icon,
@@ -272,6 +330,10 @@ interface RowActionHandlers {
   readonly onRescheduleToday: (id: Uuid) => void;
   readonly onRescheduleTomorrow: (id: Uuid) => void;
   readonly onOpenDeadlinePicker: (task: Task) => void;
+  /** См. заголовок файла, блок «M11: Добавить в Главное» — `group` здесь
+   * это группа-ИСТОЧНИК (откуда вызвано действие), не `focus`: она решает,
+   * нужен ли перенос `plannedDate` (`focusAssignmentPatch`). */
+  readonly onAddToFocus: (task: Task, group: TodayGroup) => void;
 }
 
 interface TaskMenuActions {
@@ -291,12 +353,25 @@ function buildTaskMenuActions(
     onSelect: () => handlers.onComplete(task.id),
   };
 
-  if (group !== 'missed_deadline' && group !== 'missed_plan') {
-    // `focus`/`timed`/`today`/`later` — ТЗ не описывает для них других
-    // действий на экране Today в этом пакете работ (задание).
+  // «Добавить в Главное» — везде, кроме `focus` (уже там) и `missed_deadline`
+  // (назначение Focus не изменит видимую группу задачи на этом экране, см.
+  // заголовок файла, блок «M11»).
+  const addToFocus: TaskMenuItemData = {
+    key: 'add-to-focus',
+    label: t('today', 'actions.addToFocus'),
+    icon: 'star',
+    onSelect: () => handlers.onAddToFocus(task, group),
+  };
+
+  if (group === 'focus') {
     return { frequent: [complete], rare: [] };
   }
 
+  if (group === 'timed' || group === 'today' || group === 'later') {
+    return { frequent: [complete, addToFocus], rare: [] };
+  }
+
+  // Дальше — только `missed_deadline`/`missed_plan`.
   const rescheduleToday: TaskMenuItemData = {
     key: 'reschedule-today',
     label: t('today', 'actions.rescheduleToday'),
@@ -324,7 +399,14 @@ function buildTaskMenuActions(
         ]
       : [];
 
-  return { frequent: [complete, rescheduleToday, rescheduleTomorrow], rare };
+  // «Добавить в Главное» — только `missed_plan` из этих двух (`missed_deadline`
+  // исключена выше в заголовке функции, см. блок «M11»).
+  const frequent =
+    group === 'missed_plan'
+      ? [complete, rescheduleToday, rescheduleTomorrow, addToFocus]
+      : [complete, rescheduleToday, rescheduleTomorrow];
+
+  return { frequent, rare };
 }
 
 interface TodayTaskRowProps {
@@ -459,6 +541,38 @@ interface DeadlinePickerState {
   readonly visibleMonth: CalendarMonth;
 }
 
+/** Сценарий 2 (`missed_plan`) — задача ждёт подтверждения переноса даты
+ * (см. заголовок файла, блок «M11»). */
+interface FocusConfirmState {
+  readonly task: Task;
+}
+
+/** Сценарий «4-я Focus-задача» — задача ждёт выбора, кого из трёх текущих
+ * Focus-задач заменить; `group` — группа-источник самой новой задачи,
+ * нужна дальше в `focusAssignmentPatch` (см. заголовок файла, блок «M11»).
+ * `focusTasks` — снимок трёх текущих Focus-задач на момент открытия
+ * диалога (те же три, что видны в группе «Главное»), список для выбора не
+ * должен молча измениться под пользователем, пока диалог открыт. */
+interface FocusReplaceState {
+  readonly task: Task;
+  readonly group: TodayGroup;
+  readonly focusTasks: readonly Task[];
+}
+
+/** Патч назначения Focus на сегодня (сценарии 1/2 из блока «M11» в
+ * заголовке файла) — решение по ГРУППЕ-источнику, не по повторному чтению
+ * `plannedDate` задачи: `missed_plan` — единственная из четырёх групп с
+ * этим действием, где `plannedDate` уже задан и не равен сегодня, поэтому
+ * только для неё патч переносит и `plannedDate`. `dayBucket: 'default'` —
+ * безусловно в обоих случаях ("Setting Focus clears `day_bucket=later`",
+ * `01§6`) — идемпотентно, не зависит от текущего состояния задачи. */
+function focusAssignmentPatch(group: TodayGroup): UpdateTaskPatch {
+  const today = Temporal.Now.plainDateISO();
+  return group === 'missed_plan'
+    ? { plannedDate: today, focusDate: today, dayBucket: 'default' }
+    : { focusDate: today, dayBucket: 'default' };
+}
+
 export function Today(): ReactElement {
   const storage = useStorage();
   const [groups, setGroups] = useState<TodayGroups | null>(null);
@@ -467,6 +581,8 @@ export function Today(): ReactElement {
     {},
   );
   const [deadlinePicker, setDeadlinePicker] = useState<DeadlinePickerState | null>(null);
+  const [focusConfirm, setFocusConfirm] = useState<FocusConfirmState | null>(null);
+  const [focusReplace, setFocusReplace] = useState<FocusReplaceState | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
@@ -527,7 +643,60 @@ export function Today(): ReactElement {
       // если попадает в открытый месяц.
       setDeadlinePicker({ task, visibleMonth: toCalendarMonth(Temporal.Now.plainDateISO()) });
     },
+    onAddToFocus: (task, group) => {
+      // Четвёртая задача перехватывает оба сценария ниже — см. заголовок
+      // файла, блок «M11».
+      if (groups !== null && groups.focus.length >= 3) {
+        setFocusReplace({ task, group, focusTasks: groups.focus });
+        return;
+      }
+      if (group === 'missed_plan') {
+        // Сценарий 2 — есть что подтвердить (перенос даты).
+        setFocusConfirm({ task });
+        return;
+      }
+      // Сценарий 1 — `plannedDate` и так сегодня, подтверждать нечего.
+      void runCommand(
+        updateTaskCommand({ id: task.id, patch: focusAssignmentPatch(group) }, commandDeps()),
+      );
+    },
   };
+
+  function handleConfirmFocus(): void {
+    if (focusConfirm === null) return;
+    const { task } = focusConfirm;
+    setFocusConfirm(null);
+    void runCommand(
+      updateTaskCommand({ id: task.id, patch: focusAssignmentPatch('missed_plan') }, commandDeps()),
+    );
+  }
+
+  /** Два ПОСЛЕДОВАТЕЛЬНЫХ вызова `updateTaskCommand`, не один атомарный
+   * (см. заголовок файла, блок «M11» — известный узкий компромисс). Если
+   * первый (снятие Focus со старой задачи) успешен, список обновляется
+   * сразу после него — снятие уже реально произошло в хранилище, скрывать
+   * это до исхода второго вызова означало бы показывать неактуальное
+   * состояние. Если провалился именно второй (назначение новой) —
+   * `runCommand` сам покажет `Toast`, не проглатывая ошибку. */
+  async function handleReplaceFocus(replaced: Task): Promise<void> {
+    if (focusReplace === null) return;
+    const { task, group } = focusReplace;
+    setFocusReplace(null);
+
+    const removeResult = await updateTaskCommand(
+      { id: replaced.id, patch: { focusDate: null } },
+      commandDeps(),
+    );
+    if (removeResult.status !== 'ok') {
+      setErrorMessage(t('today', 'errors.actionFailed'));
+      return;
+    }
+    await refreshGroups();
+
+    await runCommand(
+      updateTaskCommand({ id: task.id, patch: focusAssignmentPatch(group) }, commandDeps()),
+    );
+  }
 
   function handleSelectDeadline(date: CalendarDate): void {
     if (deadlinePicker === null) return;
@@ -613,6 +782,50 @@ export function Today(): ReactElement {
             previousMonthLabel={t('today', 'deadlineDialog.prevMonth')}
             nextMonthLabel={t('today', 'deadlineDialog.nextMonth')}
           />
+        </Modal>
+      )}
+
+      {focusConfirm !== null && (
+        <Modal
+          open
+          onClose={() => setFocusConfirm(null)}
+          title={t('today', 'focusDialog.confirmTitle')}
+          footer={
+            <>
+              <Button variant="secondary" onClick={() => setFocusConfirm(null)}>
+                {t('today', 'focusDialog.cancel')}
+              </Button>
+              <Button variant="primary" onClick={handleConfirmFocus}>
+                {t('today', 'focusDialog.confirm')}
+              </Button>
+            </>
+          }
+        >
+          <p>{t('today', 'focusDialog.confirmBody', { title: focusConfirm.task.title })}</p>
+        </Modal>
+      )}
+
+      {focusReplace !== null && (
+        <Modal
+          open
+          onClose={() => setFocusReplace(null)}
+          title={t('today', 'focusDialog.replaceTitle')}
+        >
+          <ul aria-label={t('today', 'focusDialog.replaceListLabel')}>
+            {focusReplace.focusTasks.map((focusTask) => (
+              <li key={focusTask.id}>
+                <Button
+                  variant="secondary"
+                  block
+                  onClick={() => {
+                    void handleReplaceFocus(focusTask);
+                  }}
+                >
+                  {focusTask.title}
+                </Button>
+              </li>
+            ))}
+          </ul>
         </Modal>
       )}
     </div>

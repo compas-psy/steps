@@ -389,6 +389,149 @@ describe('Today — действия (Complete/Reschedule/Change deadline)', () 
   });
 });
 
+describe('Today — «Добавить в Главное» (M11 Focus)', () => {
+  it('задача из группы «Сегодня» → «Добавить в Главное» сразу переходит в «Главное», без модалки', async () => {
+    const user = userEvent.setup();
+    const task = makeTask({ title: 'Обычная сегодняшняя', plannedDate: TODAY });
+    const getStorage = renderTodayCapturingStorage([task]);
+
+    await waitFor(() =>
+      expect(
+        within(
+          groupHeading(t('today', 'groups.today')).closest('section') as HTMLElement,
+        ).getByText('Обычная сегодняшняя'),
+      ).toBeInTheDocument(),
+    );
+
+    await user.click(
+      screen.getByRole('button', {
+        name: t('today', 'menu.triggerLabel', { title: 'Обычная сегодняшняя' }),
+      }),
+    );
+    await user.click(screen.getByRole('menuitem', { name: t('today', 'actions.addToFocus') }));
+
+    // Без модалки — переход сразу.
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+
+    await waitFor(() =>
+      expect(
+        within(
+          groupHeading(t('today', 'groups.focus')).closest('section') as HTMLElement,
+        ).getByText('Обычная сегодняшняя'),
+      ).toBeInTheDocument(),
+    );
+    expect(queryGroupHeading(t('today', 'groups.today'))).not.toBeInTheDocument();
+
+    const stored = await getStorage().tasks.findById(task.id);
+    expect(stored?.focusDate).toEqual(TODAY);
+    expect(stored?.dayBucket).toBe('default');
+  });
+
+  it('задача из «Не по плану» → «Добавить в Главное» показывает модалку подтверждения; после подтверждения переносит plannedDate и добавляет в Главное', async () => {
+    const user = userEvent.setup();
+    const task = makeTask({ title: 'Забытый план 3', plannedDate: YESTERDAY });
+    const getStorage = renderTodayCapturingStorage([task]);
+
+    await waitFor(() =>
+      expect(
+        within(
+          groupHeading(t('today', 'groups.missedPlan')).closest('section') as HTMLElement,
+        ).getByText('Забытый план 3'),
+      ).toBeInTheDocument(),
+    );
+
+    await user.click(
+      screen.getByRole('button', {
+        name: t('today', 'menu.triggerLabel', { title: 'Забытый план 3' }),
+      }),
+    );
+    await user.click(screen.getByRole('menuitem', { name: t('today', 'actions.addToFocus') }));
+
+    const dialog = await screen.findByRole('dialog', {
+      name: t('today', 'focusDialog.confirmTitle'),
+    });
+    expect(dialog).toBeInTheDocument();
+
+    // Ещё не применилось — задача остаётся в «Не по плану» до подтверждения.
+    expect(
+      within(
+        groupHeading(t('today', 'groups.missedPlan')).closest('section') as HTMLElement,
+      ).getByText('Забытый план 3'),
+    ).toBeInTheDocument();
+
+    await user.click(
+      within(dialog).getByRole('button', { name: t('today', 'focusDialog.confirm') }),
+    );
+
+    await waitFor(() =>
+      expect(queryGroupHeading(t('today', 'groups.missedPlan'))).not.toBeInTheDocument(),
+    );
+    expect(
+      within(groupHeading(t('today', 'groups.focus')).closest('section') as HTMLElement).getByText(
+        'Забытый план 3',
+      ),
+    ).toBeInTheDocument();
+
+    const stored = await getStorage().tasks.findById(task.id);
+    expect(stored?.plannedDate).toEqual(TODAY);
+    expect(stored?.focusDate).toEqual(TODAY);
+    expect(stored?.dayBucket).toBe('default');
+  });
+
+  it('три задачи уже в Главном — назначение четвёртой открывает выбор замены; после выбора замена снята, новая — в Главном', async () => {
+    const user = userEvent.setup();
+    const focus1 = makeTask({ title: 'Фокус 1', plannedDate: TODAY, focusDate: TODAY });
+    const focus2 = makeTask({ title: 'Фокус 2', plannedDate: TODAY, focusDate: TODAY });
+    const focus3 = makeTask({ title: 'Фокус 3', plannedDate: TODAY, focusDate: TODAY });
+    const candidate = makeTask({ title: 'Четвёртый кандидат', plannedDate: TODAY });
+    const getStorage = renderTodayCapturingStorage([focus1, focus2, focus3, candidate]);
+
+    await waitFor(() =>
+      expect(
+        within(
+          groupHeading(t('today', 'groups.focus')).closest('section') as HTMLElement,
+        ).getByText('Фокус 1'),
+      ).toBeInTheDocument(),
+    );
+
+    await user.click(
+      screen.getByRole('button', {
+        name: t('today', 'menu.triggerLabel', { title: 'Четвёртый кандидат' }),
+      }),
+    );
+    await user.click(screen.getByRole('menuitem', { name: t('today', 'actions.addToFocus') }));
+
+    const dialog = await screen.findByRole('dialog', {
+      name: t('today', 'focusDialog.replaceTitle'),
+    });
+    expect(within(dialog).getByText('Фокус 1')).toBeInTheDocument();
+    expect(within(dialog).getByText('Фокус 2')).toBeInTheDocument();
+    expect(within(dialog).getByText('Фокус 3')).toBeInTheDocument();
+
+    await user.click(within(dialog).getByRole('button', { name: 'Фокус 2' }));
+
+    await waitFor(() =>
+      expect(
+        within(
+          groupHeading(t('today', 'groups.focus')).closest('section') as HTMLElement,
+        ).getByText('Четвёртый кандидат'),
+      ).toBeInTheDocument(),
+    );
+
+    const focusSection = groupHeading(t('today', 'groups.focus')).closest('section') as HTMLElement;
+    expect(within(focusSection).getByText('Фокус 1')).toBeInTheDocument();
+    expect(within(focusSection).getByText('Фокус 3')).toBeInTheDocument();
+    expect(within(focusSection).queryByText('Фокус 2')).not.toBeInTheDocument();
+    // Ровно 3 задачи в Главном, не 4 — замена, не добавление сверх лимита.
+    expect(within(focusSection).getAllByRole('checkbox')).toHaveLength(3);
+
+    const replaced = await getStorage().tasks.findById(focus2.id);
+    expect(replaced?.focusDate).toBeNull();
+    const stored = await getStorage().tasks.findById(candidate.id);
+    expect(stored?.focusDate).toEqual(TODAY);
+  });
+});
+
 describe('Today — M08 свёртываемые группы', () => {
   it('группа с 21 задачей (>20) стартует свёрнутой — заголовок кликабелен и разворачивает список', async () => {
     const user = userEvent.setup();
