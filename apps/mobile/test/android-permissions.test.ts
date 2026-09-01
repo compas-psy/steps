@@ -3,8 +3,10 @@
  * Android (решение ?28, `.ultraplan/open-questions.md`; формат — по образцу
  * `compas-psy/zapiski`). Каждая строка обязана иметь объяснение — строка
  * без него не проходит проверку: разрешение без причины — это разрешение,
- * которое никто не пересмотрит. `INTERNET` в списке быть не должно: в R1a
- * нет ни аккаунта, ни синка, ни облака (SPEC/00 §9).
+ * которое никто не пересмотрит. `INTERNET` — в списке (пересмотр ?28): он
+ * объявлен самим сгенерированным манифестом Tauri, а не решением продукта —
+ * см. объяснение самой строки в файле и `manifest-merger`-доказательство,
+ * на которое оно ссылается.
  */
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -81,20 +83,23 @@ describe('android-permissions.txt', () => {
     expect(entries.length).toBeGreaterThan(0);
   });
 
-  it('INTERNET в списке отсутствует — в R1a нет аккаунта/синка/облака (SPEC/00 §9)', () => {
-    expect(names).not.toContain('android.permission.INTERNET');
+  it('INTERNET в списке присутствует — объявлен базовым манифестом Tauri, не решением продукта (пересмотр ?28)', () => {
+    expect(names).toContain('android.permission.INTERNET');
   });
 
-  it('список — разрешения, решённые для R1 (?28) плюс подтверждённая инфраструктура AndroidX', () => {
+  it('список — разрешения, решённые для R1 (?28) плюс подтверждённая инфраструктура Tauri/AndroidX', () => {
     // `USE_EXACT_ALARM` намеренно НЕ в списке — Android документирует его
     // с `SCHEDULE_EXACT_ALARM` как взаимоисключающий выбор для одного
     // приложения, не пару «оба сразу» (см. объяснение самой строки
-    // `SCHEDULE_EXACT_ALARM` в файле). `DYNAMIC_RECEIVER_NOT_EXPORTED_
-    // PERMISSION` — саморазрешение AndroidX Core (`signature`-уровень,
-    // не пользовательское) на СОБРАННЫЙ APK, не решение продукта — тот же
-    // список, что фактически проверяет `aapt dump permissions`.
+    // `SCHEDULE_EXACT_ALARM` в файле). `INTERNET` — требование сгенерированного
+    // базового манифеста Tauri (WebView-мост), не решение продукта.
+    // `DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION` — саморазрешение AndroidX
+    // Core (`signature`-уровень, не пользовательское) на СОБРАННЫЙ APK, тоже
+    // не решение продукта — тот же список, что фактически проверяет
+    // `aapt dump permissions`.
     expect([...names].toSorted()).toEqual(
       [
+        'android.permission.INTERNET',
         'android.permission.POST_NOTIFICATIONS',
         'android.permission.SCHEDULE_EXACT_ALARM',
         'android.permission.RECEIVE_BOOT_COMPLETED',
@@ -113,8 +118,9 @@ describe('android-permissions.txt', () => {
     }
   });
 
-  it('заголовок файла явно проговаривает отсутствие INTERNET и почему', () => {
+  it('строка INTERNET явно проговаривает пересмотр решения и ссылается на manifest-merger как доказательство', () => {
     expect(text).toMatch(/INTERNET/);
-    expect(text.toLowerCase()).toMatch(/отсутств/);
+    expect(text.toLowerCase()).toMatch(/пересмотрен/);
+    expect(text).toMatch(/manifest-merger/);
   });
 });
