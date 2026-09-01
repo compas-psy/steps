@@ -164,17 +164,20 @@ import {
 } from '@shagi/core';
 import {
   Button,
+  Card,
   Checkbox,
   ChecklistRow,
   DatePicker,
   DateChip,
   DeadlineChip,
+  Divider,
   DurationChip,
   IconButton,
   Input,
   Label,
   Modal,
   Priority as PriorityBadge,
+  Radio,
   RecurrenceChip,
   ReminderChip,
   SubtaskRow,
@@ -2155,9 +2158,21 @@ export function TaskDetail(): ReactElement | null {
 
       {/* --- M26: выбор области применения Planning-патча recurring-задачи
        * (`01§11.6`, `§18.3`) — открывается ВМЕСТО немедленного коммита,
-       * см. `savePlanningPatch`. Клик по варианту сразу коммитит и закрывает
-       * (тот же приём, что picker'ы приоритета/проекта/раздела этого
-       * экрана) — отдельной кнопки "Применить" нет. -------------------- */}
+       * см. `savePlanningPatch`. Выбор `Radio` сразу коммитит и закрывает
+       * (отдельной кнопки "Применить" нет — тот же принцип, что уже был
+       * задокументирован, только раньше был выражен `<button>`-списком, не
+       * `Radio`).
+       *
+       * `Card`/`CardBody`/`Divider`/`Radio` — эти четыре примитива
+       * `@shagi/ui` уже существуют и протестированы (§10 «Primitives»), но
+       * ни один не использовался нигде в `packages/app` до этой правки:
+       * найдено при ручной сверке с мокапом M26 ("M26 · Recurring edit
+       * (§18.3)", `docs/spec/DESIGN`) — там ровно эта пара вариантов
+       * нарисована как радиокнопки в одной карточке с волосяной чертой
+       * между строками, а не как список голых кнопок. Смысл выбора здесь —
+       * взаимоисключающие радиокнопки (ровно одна активна), а не команды
+       * произвольного действия — `Radio`, а не `Button`, точнее передаёт
+       * это семантически, не только визуально. */}
       <Modal
         open={pendingPlanningPatch !== null}
         onClose={() => setPendingPlanningPatch(null)}
@@ -2169,21 +2184,21 @@ export function TaskDetail(): ReactElement | null {
         }
       >
         <p>{t('taskDetail', 'planning.recurringScope.caption')}</p>
-        <ul>
-          <li>
-            <button
-              type="button"
-              onClick={() => void handleChooseRecurringPlanningScope('occurrence')}
-            >
-              {t('taskDetail', 'planning.recurringScope.occurrence')}
-            </button>
-          </li>
-          <li>
-            <button type="button" onClick={() => void handleChooseRecurringPlanningScope('series')}>
-              {t('taskDetail', 'planning.recurringScope.series')}
-            </button>
-          </li>
-        </ul>
+        <Card padding="sm">
+          <Radio
+            name="recurringPlanningScope"
+            value="occurrence"
+            label={t('taskDetail', 'planning.recurringScope.occurrence')}
+            onChange={() => void handleChooseRecurringPlanningScope('occurrence')}
+          />
+          <Divider />
+          <Radio
+            name="recurringPlanningScope"
+            value="series"
+            label={t('taskDetail', 'planning.recurringScope.series')}
+            onChange={() => void handleChooseRecurringPlanningScope('series')}
+          />
+        </Card>
       </Modal>
     </div>
   );

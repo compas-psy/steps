@@ -1165,7 +1165,7 @@ describe('TaskDetail — M26: диалог выбора области прим�
       name: t('taskDetail', 'planning.recurringScope.title'),
     });
     await user.click(
-      within(dialog).getByRole('button', {
+      within(dialog).getByRole('radio', {
         name: t('taskDetail', 'planning.recurringScope.occurrence'),
       }),
     );
@@ -1196,7 +1196,7 @@ describe('TaskDetail — M26: диалог выбора области прим�
       name: t('taskDetail', 'planning.recurringScope.title'),
     });
     await user.click(
-      within(dialog).getByRole('button', {
+      within(dialog).getByRole('radio', {
         name: t('taskDetail', 'planning.recurringScope.series'),
       }),
     );
