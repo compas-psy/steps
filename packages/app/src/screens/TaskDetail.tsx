@@ -105,7 +105,14 @@
  * drag-переупорядочивания (в отличие от `ProjectDetail.tsx`), поэтому
  * `resolveRank`/`insertBeforeRank`-подобная механика здесь не нужна.
  */
-import { useEffect, useRef, useState, type FormEvent, type ReactElement } from 'react';
+import {
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent,
+  type ReactElement,
+  type ReactNode,
+} from 'react';
 import { Temporal } from '@js-temporal/polyfill';
 
 import {
@@ -165,8 +172,10 @@ import {
 import {
   Button,
   Card,
+  CardBody,
   Checkbox,
   ChecklistRow,
+  DataPrivacyRow,
   DatePicker,
   DateChip,
   DeadlineChip,
@@ -775,6 +784,49 @@ const RECURRING_PLANNING_SCOPE_FIELDS = [
 
 function touchesRecurringPlanningScope(patch: UpdateTaskPatch): boolean {
   return RECURRING_PLANNING_SCOPE_FIELDS.some((field) => field in patch);
+}
+
+interface PlanningRowProps {
+  readonly title: string;
+  readonly description?: ReactNode;
+  readonly actions: ReactNode;
+}
+
+/**
+ * Строка Planning-карточки (мокап M25, `docs/spec/DESIGN`, `sec-detail`:
+ * одна карточка, строки «подпись/значение», разделённые волосяной чертой).
+ * `DataPrivacyRow` (`@shagi/ui`, §10 «Account/Data») сюда не подходит ни
+ * для одной из пяти Planning-строк — её `action` это ровно ОДИН слот, а
+ * здесь у каждой строки либо два действия («Указать/Изменить» + условная
+ * «Очистить»/«Отменить»), либо (Duration) редактируемое поле вместо
+ * кнопки. Использует ТЕ ЖЕ CSS-классы, что `DataPrivacyRow.css`
+ * (`shagi-data-privacy-row*`) — визуальная консистентность с
+ * Organization-строками ниже (которые используют сам компонент), не
+ * копирование чужой разметки как компонента.
+ *
+ * `flexWrap`/`flexBasis:'100%'` на `__text`/`flexShrink:1` на `__action` —
+ * поверх готовых классов, тот же приём inline-style, что уже применяет
+ * `Today.tsx` (`style={{ position: 'relative' }}`). Без них
+ * `DataPrivacyRow.css`'s `flex-basis:0%`/`flex-shrink:0` (рассчитаны на
+ * одну короткую кнопку) на узком экране схлопывают подпись почти до нуля
+ * и обрезают вторую кнопку по краю экрана вместо переноса — здесь у
+ * каждой строки может быть ДВЕ полноразмерные кнопки с длинными русскими
+ * подписями, это не тот случай, под который рассчитан исходный CSS.
+ */
+function PlanningRow({ title, description, actions }: PlanningRowProps): ReactElement {
+  return (
+    <div className="shagi-data-privacy-row" style={{ flexWrap: 'wrap' }}>
+      <span className="shagi-data-privacy-row__text" style={{ flexBasis: '100%' }}>
+        <span className="shagi-data-privacy-row__title">{title}</span>
+        {description !== undefined && (
+          <span className="shagi-data-privacy-row__description">{description}</span>
+        )}
+      </span>
+      <span className="shagi-data-privacy-row__action" style={{ flexWrap: 'wrap', flexShrink: 1 }}>
+        {actions}
+      </span>
+    </div>
+  );
 }
 
 export function TaskDetail(): ReactElement | null {
@@ -1626,165 +1678,235 @@ export function TaskDetail(): ReactElement | null {
         />
       </section>
 
-      {/* --- 3. Planning — редактор дат (эпик E08.2) ------------------------- */}
+      {/* --- 3. Planning — редактор дат (эпик E08.2) -------------------------
+       * Визуальная группировка мокапа M25 (`docs/spec/DESIGN`, `sec-detail`):
+       * одна карточка, строки «подпись / значение», разделённые волосяной
+       * чертой — все пять строк используют локальный `PlanningRow` (см. его
+       * заголовок за полным обоснованием, почему не `DataPrivacyRow`). */}
       <section>
         <h2>{t('taskDetail', 'planning.sectionTitle')}</h2>
 
-        {/* Available From */}
-        <div>
-          <span>{t('taskDetail', 'planning.availableFrom.label')}</span>
-          {task.availableFrom !== null ? (
-            <DateChip label={formatDate(task.availableFrom)} />
-          ) : (
-            <span>{t('taskDetail', 'planning.availableFrom.empty')}</span>
-          )}
-          <Button variant="secondary" onClick={openAvailableFromPicker}>
-            {task.availableFrom !== null
-              ? t('taskDetail', 'planning.availableFrom.change')
-              : t('taskDetail', 'planning.availableFrom.set')}
-          </Button>
-          {task.availableFrom !== null && (
-            <Button variant="ghost" onClick={handleClearAvailableFrom}>
-              {t('taskDetail', 'planning.availableFrom.clear')}
-            </Button>
-          )}
-          {fieldErrors['availableFrom'] !== undefined && <p>{fieldErrors['availableFrom']}</p>}
-        </div>
-
-        {/* Planned Date/Time */}
-        <div>
-          <span>{t('taskDetail', 'planning.planned.label')}</span>
-          {task.plannedDate !== null ? (
-            <DateChip label={formatDate(task.plannedDate)} />
-          ) : (
-            <span>{t('taskDetail', 'planning.planned.empty')}</span>
-          )}
-          {task.plannedTime !== null && <TimeChip label={formatTime(task.plannedTime)} />}
-          <Button variant="secondary" onClick={openPlannedPicker}>
-            {task.plannedDate !== null
-              ? t('taskDetail', 'planning.planned.change')
-              : t('taskDetail', 'planning.planned.set')}
-          </Button>
-          {task.plannedDate !== null && (
-            <Button variant="ghost" onClick={handleClearPlannedDate}>
-              {t('taskDetail', 'planning.planned.clearDate')}
-            </Button>
-          )}
-          {fieldErrors['plannedDate'] !== undefined && <p>{fieldErrors['plannedDate']}</p>}
-          {fieldErrors['plannedTime'] !== undefined && <p>{fieldErrors['plannedTime']}</p>}
-        </div>
-
-        {/* Duration */}
-        <div>
-          <Input
-            aria-label={t('taskDetail', 'planning.duration.label')}
-            type="number"
-            min={1}
-            max={1440}
-            placeholder={t('taskDetail', 'planning.duration.placeholder')}
-            value={durationDraft}
-            onChange={(event) => setDurationDraft(event.target.value)}
-            onBlur={handleDurationBlur}
-            error={fieldErrors['durationMin'] !== undefined}
-            errorMessage={fieldErrors['durationMin']}
-          />
-          {task.durationMin !== null && (
-            <DurationChip
-              label={t('taskDetail', 'planning.duration.chipLabel', { count: task.durationMin })}
+        <Card>
+          <CardBody padding="none">
+            <PlanningRow
+              title={t('taskDetail', 'planning.availableFrom.label')}
+              description={
+                task.availableFrom !== null ? (
+                  <DateChip label={formatDate(task.availableFrom)} />
+                ) : (
+                  t('taskDetail', 'planning.availableFrom.empty')
+                )
+              }
+              actions={
+                <>
+                  <Button variant="secondary" onClick={openAvailableFromPicker}>
+                    {task.availableFrom !== null
+                      ? t('taskDetail', 'planning.availableFrom.change')
+                      : t('taskDetail', 'planning.availableFrom.set')}
+                  </Button>
+                  {task.availableFrom !== null && (
+                    <Button variant="ghost" onClick={handleClearAvailableFrom}>
+                      {t('taskDetail', 'planning.availableFrom.clear')}
+                    </Button>
+                  )}
+                </>
+              }
             />
-          )}
-        </div>
+            {fieldErrors['availableFrom'] !== undefined && <p>{fieldErrors['availableFrom']}</p>}
 
-        {/* Deadline Date/Time */}
-        <div>
-          <span>{t('taskDetail', 'planning.deadline.label')}</span>
-          {task.deadlineDate !== null ? (
-            <DeadlineChip label={formatDate(task.deadlineDate)} />
-          ) : (
-            <span>{t('taskDetail', 'planning.deadline.empty')}</span>
-          )}
-          {task.deadlineTime !== null && <TimeChip label={formatTime(task.deadlineTime)} />}
-          <Button variant="secondary" onClick={openDeadlinePicker}>
-            {task.deadlineDate !== null
-              ? t('taskDetail', 'planning.deadline.change')
-              : t('taskDetail', 'planning.deadline.set')}
-          </Button>
-          {task.deadlineDate !== null && (
-            <Button variant="ghost" onClick={handleClearDeadlineDate}>
-              {t('taskDetail', 'planning.deadline.clearDate')}
-            </Button>
-          )}
-          {fieldErrors['deadlineDate'] !== undefined && <p>{fieldErrors['deadlineDate']}</p>}
-          {fieldErrors['deadlineTime'] !== undefined && <p>{fieldErrors['deadlineTime']}</p>}
-        </div>
+            <Divider />
 
-        {/* Warning-баннеры — см. `computeConflicts` за источником */}
+            <PlanningRow
+              title={t('taskDetail', 'planning.planned.label')}
+              description={
+                <>
+                  {task.plannedDate !== null ? (
+                    <DateChip label={formatDate(task.plannedDate)} />
+                  ) : (
+                    t('taskDetail', 'planning.planned.empty')
+                  )}
+                  {task.plannedTime !== null && <TimeChip label={formatTime(task.plannedTime)} />}
+                </>
+              }
+              actions={
+                <>
+                  <Button variant="secondary" onClick={openPlannedPicker}>
+                    {task.plannedDate !== null
+                      ? t('taskDetail', 'planning.planned.change')
+                      : t('taskDetail', 'planning.planned.set')}
+                  </Button>
+                  {task.plannedDate !== null && (
+                    <Button variant="ghost" onClick={handleClearPlannedDate}>
+                      {t('taskDetail', 'planning.planned.clearDate')}
+                    </Button>
+                  )}
+                </>
+              }
+            />
+            {fieldErrors['plannedDate'] !== undefined && <p>{fieldErrors['plannedDate']}</p>}
+            {fieldErrors['plannedTime'] !== undefined && <p>{fieldErrors['plannedTime']}</p>}
+
+            <Divider />
+
+            {/* Duration — не действие, редактируемое поле вместо кнопки в
+             * слоте действия, тот же визуальный ряд, что у остальных строк. */}
+            <PlanningRow
+              title={t('taskDetail', 'planning.duration.label')}
+              actions={
+                <>
+                  <Input
+                    aria-label={t('taskDetail', 'planning.duration.label')}
+                    type="number"
+                    min={1}
+                    max={1440}
+                    placeholder={t('taskDetail', 'planning.duration.placeholder')}
+                    value={durationDraft}
+                    onChange={(event) => setDurationDraft(event.target.value)}
+                    onBlur={handleDurationBlur}
+                    error={fieldErrors['durationMin'] !== undefined}
+                    errorMessage={fieldErrors['durationMin']}
+                  />
+                  {task.durationMin !== null && (
+                    <DurationChip
+                      label={t('taskDetail', 'planning.duration.chipLabel', {
+                        count: task.durationMin,
+                      })}
+                    />
+                  )}
+                </>
+              }
+            />
+
+            <Divider />
+
+            <PlanningRow
+              title={t('taskDetail', 'planning.deadline.label')}
+              description={
+                <>
+                  {task.deadlineDate !== null ? (
+                    <DeadlineChip label={formatDate(task.deadlineDate)} />
+                  ) : (
+                    t('taskDetail', 'planning.deadline.empty')
+                  )}
+                  {task.deadlineTime !== null && <TimeChip label={formatTime(task.deadlineTime)} />}
+                </>
+              }
+              actions={
+                <>
+                  <Button variant="secondary" onClick={openDeadlinePicker}>
+                    {task.deadlineDate !== null
+                      ? t('taskDetail', 'planning.deadline.change')
+                      : t('taskDetail', 'planning.deadline.set')}
+                  </Button>
+                  {task.deadlineDate !== null && (
+                    <Button variant="ghost" onClick={handleClearDeadlineDate}>
+                      {t('taskDetail', 'planning.deadline.clearDate')}
+                    </Button>
+                  )}
+                </>
+              }
+            />
+            {fieldErrors['deadlineDate'] !== undefined && <p>{fieldErrors['deadlineDate']}</p>}
+            {fieldErrors['deadlineTime'] !== undefined && <p>{fieldErrors['deadlineTime']}</p>}
+
+            <Divider />
+
+            {/* Explicit Reminder (M31, `01§18`) — условная вторая кнопка
+             * («Отменить»), та же форма, что три строки выше. */}
+            <PlanningRow
+              title={t('taskDetail', 'planning.reminder.label')}
+              description={(() => {
+                const parsedReminder =
+                  explicitReminder !== null ? parseExplicitReminderRule(explicitReminder) : null;
+                return parsedReminder !== null ? (
+                  <ReminderChip
+                    label={
+                      parsedReminder.time !== null
+                        ? `${formatDate(parsedReminder.date)} ${formatTime(parsedReminder.time)}`
+                        : formatDate(parsedReminder.date)
+                    }
+                  />
+                ) : (
+                  t('taskDetail', 'planning.reminder.empty')
+                );
+              })()}
+              actions={
+                <>
+                  <Button variant="secondary" onClick={openReminderPicker}>
+                    {explicitReminder !== null
+                      ? t('taskDetail', 'planning.reminder.change')
+                      : t('taskDetail', 'planning.reminder.add')}
+                  </Button>
+                  {explicitReminder !== null && (
+                    <Button variant="ghost" onClick={handleCancelReminder}>
+                      {t('taskDetail', 'planning.reminder.cancel')}
+                    </Button>
+                  )}
+                </>
+              }
+            />
+            {reminderError !== null && <p>{reminderError}</p>}
+          </CardBody>
+        </Card>
+
+        {/* Warning-баннеры — см. `computeConflicts` за источником. Вне
+         * карточки, под ней: баннер — не строка настроек, ему некуда встать
+         * внутрь ряда «подпись/значение». */}
         {computeConflicts(task, durationDraft, explicitReminder).map((conflict) => (
           <TemporalConflict key={conflict.type} type={conflict.type} message={conflict.message} />
         ))}
-
-        {/* Explicit Reminder (M31, `01§18`) */}
-        <div>
-          <span>{t('taskDetail', 'planning.reminder.label')}</span>
-          {(() => {
-            const parsedReminder =
-              explicitReminder !== null ? parseExplicitReminderRule(explicitReminder) : null;
-            return parsedReminder !== null ? (
-              <ReminderChip
-                label={
-                  parsedReminder.time !== null
-                    ? `${formatDate(parsedReminder.date)} ${formatTime(parsedReminder.time)}`
-                    : formatDate(parsedReminder.date)
-                }
-              />
-            ) : (
-              <span>{t('taskDetail', 'planning.reminder.empty')}</span>
-            );
-          })()}
-          <Button variant="secondary" onClick={openReminderPicker}>
-            {explicitReminder !== null
-              ? t('taskDetail', 'planning.reminder.change')
-              : t('taskDetail', 'planning.reminder.add')}
-          </Button>
-          {explicitReminder !== null && (
-            <Button variant="ghost" onClick={handleCancelReminder}>
-              {t('taskDetail', 'planning.reminder.cancel')}
-            </Button>
-          )}
-          {reminderError !== null && <p>{reminderError}</p>}
-        </div>
       </section>
 
-      {/* --- 4. Organization ------------------------------------------------ */}
+      {/* --- 4. Organization ------------------------------------------------
+       * Та же группировка карточка+разделитель, что Planning выше — но
+       * ТОЛЬКО для трёх строк с ровно одним действием (Priority/Project/
+       * Section): именно они попадают под форму `DataPrivacyRow` (§10
+       * «Account/Data», один слот `action`). Labels и Recurrence ниже —
+       * другая природа (список чипов+форма создания; два разнотипных
+       * действия), их разметка не тронута. */}
       <section>
         <h2>{t('taskDetail', 'organization.sectionTitle')}</h2>
 
-        <div>
-          <span>{t('taskDetail', 'organization.priorityLabel')}</span>
-          <PriorityBadge level={priorityLevelOf(task.priority)}>
-            {priorityLabel(task.priority)}
-          </PriorityBadge>
-          <Button variant="secondary" onClick={() => setPriorityPickerOpen(true)}>
-            {t('taskDetail', 'organization.priorityChangeLabel')}
-          </Button>
-        </div>
-
-        <div>
-          <span>{t('taskDetail', 'organization.projectLabel')}</span>
-          <span>{project?.title ?? t('taskDetail', 'organization.projectNone')}</span>
-          <Button variant="secondary" onClick={() => setProjectPickerOpen(true)}>
-            {t('taskDetail', 'organization.projectChangeLabel')}
-          </Button>
-        </div>
-
-        {task.projectId !== null && (
-          <div>
-            <span>{section?.title ?? t('taskDetail', 'organization.sectionNone')}</span>
-            <Button variant="secondary" onClick={() => setSectionPickerOpen(true)}>
-              {t('taskDetail', 'organization.sectionChangeLabel')}
-            </Button>
-          </div>
-        )}
+        <Card>
+          <CardBody padding="none">
+            <DataPrivacyRow
+              title={t('taskDetail', 'organization.priorityLabel')}
+              description={
+                <PriorityBadge level={priorityLevelOf(task.priority)}>
+                  {priorityLabel(task.priority)}
+                </PriorityBadge>
+              }
+              action={{
+                kind: 'button',
+                label: t('taskDetail', 'organization.priorityChangeLabel'),
+                onClick: () => setPriorityPickerOpen(true),
+              }}
+            />
+            <Divider />
+            <DataPrivacyRow
+              title={t('taskDetail', 'organization.projectLabel')}
+              description={project?.title ?? t('taskDetail', 'organization.projectNone')}
+              action={{
+                kind: 'button',
+                label: t('taskDetail', 'organization.projectChangeLabel'),
+                onClick: () => setProjectPickerOpen(true),
+              }}
+            />
+            {task.projectId !== null && (
+              <>
+                <Divider />
+                <DataPrivacyRow
+                  title={section?.title ?? t('taskDetail', 'organization.sectionNone')}
+                  action={{
+                    kind: 'button',
+                    label: t('taskDetail', 'organization.sectionChangeLabel'),
+                    onClick: () => setSectionPickerOpen(true),
+                  }}
+                />
+              </>
+            )}
+          </CardBody>
+        </Card>
 
         <div>
           <h3>{t('taskDetail', 'organization.labelsTitle')}</h3>
