@@ -24,6 +24,7 @@ import ruProjectDetail from './catalog/ru-RU/projectDetail.json' with { type: 'j
 import ruProjects from './catalog/ru-RU/projects.json' with { type: 'json' };
 import ruQuickAdd from './catalog/ru-RU/quickAdd.json' with { type: 'json' };
 import ruSearch from './catalog/ru-RU/search.json' with { type: 'json' };
+import ruSettings from './catalog/ru-RU/settings.json' with { type: 'json' };
 import ruShell from './catalog/ru-RU/shell.json' with { type: 'json' };
 import ruTaskDetail from './catalog/ru-RU/taskDetail.json' with { type: 'json' };
 import ruTasks from './catalog/ru-RU/tasks.json' with { type: 'json' };
@@ -41,6 +42,7 @@ export const CATALOG_RU_RU = {
   projects: ruProjects,
   quickAdd: ruQuickAdd,
   search: ruSearch,
+  settings: ruSettings,
   shell: ruShell,
   taskDetail: ruTaskDetail,
   tasks: ruTasks,

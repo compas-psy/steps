@@ -13,6 +13,7 @@ describe('AppController', () => {
       selectedProjectId: null,
       selectedTaskId: null,
       returnScreen: null,
+      settingsReturnScreen: null,
       quickAdd: null,
     });
   });
@@ -39,6 +40,7 @@ describe('AppController', () => {
       selectedProjectId: null,
       selectedTaskId: null,
       returnScreen: null,
+      settingsReturnScreen: null,
       quickAdd: null,
     });
   });
@@ -62,6 +64,7 @@ describe('AppController', () => {
       selectedProjectId: null,
       selectedTaskId: null,
       returnScreen: null,
+      settingsReturnScreen: null,
       quickAdd: null,
     });
   });
@@ -80,6 +83,7 @@ describe('AppController', () => {
       selectedProjectId: projectId,
       selectedTaskId: null,
       returnScreen: null,
+      settingsReturnScreen: null,
       quickAdd: null,
     });
     expect(listener).toHaveBeenCalledWith(
@@ -101,6 +105,7 @@ describe('AppController', () => {
       selectedProjectId: null,
       selectedTaskId: taskId,
       returnScreen: 'inbox',
+      settingsReturnScreen: null,
       quickAdd: null,
     });
     expect(listener).toHaveBeenCalledWith(
@@ -108,6 +113,7 @@ describe('AppController', () => {
         screen: 'taskDetail',
         selectedTaskId: taskId,
         returnScreen: 'inbox',
+        settingsReturnScreen: null,
       }),
     );
   });
@@ -125,6 +131,7 @@ describe('AppController', () => {
       selectedProjectId: null,
       selectedTaskId: null,
       returnScreen: null,
+      settingsReturnScreen: null,
       quickAdd: null,
     });
   });
@@ -140,6 +147,7 @@ describe('AppController', () => {
       selectedProjectId: null,
       selectedTaskId: null,
       returnScreen: null,
+      settingsReturnScreen: null,
       quickAdd: null,
     });
   });
@@ -157,6 +165,7 @@ describe('AppController', () => {
       selectedProjectId: null,
       selectedTaskId: null,
       returnScreen: null,
+      settingsReturnScreen: null,
       quickAdd: { origin: 'today' },
     });
     expect(listener).toHaveBeenCalledWith(
@@ -177,6 +186,7 @@ describe('AppController', () => {
       selectedProjectId: null,
       selectedTaskId: null,
       returnScreen: null,
+      settingsReturnScreen: null,
       quickAdd: null,
     });
     expect(listener).toHaveBeenCalledWith(expect.objectContaining({ screen: 'plan' }));
@@ -195,6 +205,7 @@ describe('AppController', () => {
       selectedProjectId: null,
       selectedTaskId: null,
       returnScreen: null,
+      settingsReturnScreen: null,
       quickAdd: null,
     });
     expect(listener).toHaveBeenCalledWith(expect.objectContaining({ screen: 'search' }));
@@ -212,6 +223,7 @@ describe('AppController', () => {
       selectedProjectId: null,
       selectedTaskId: null,
       returnScreen: null,
+      settingsReturnScreen: null,
       quickAdd: null,
     });
   });

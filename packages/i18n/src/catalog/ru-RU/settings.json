@@ -1,0 +1,10 @@
+{
+  "root.pageTitle": "Настройки",
+  "root.back.label": "Назад",
+  "root.appearance.title": "Оформление",
+  "appearance.pageTitle": "Оформление",
+  "appearance.back.label": "Назад",
+  "appearance.options.system": "Как в системе",
+  "appearance.options.light": "Светлая",
+  "appearance.options.dark": "Тёмная"
+}

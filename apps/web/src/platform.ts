@@ -19,6 +19,9 @@
  *    догадка по UA;
  *  - `updater` — обновление веба это перезагрузка с новым service worker'ом
  *    (SPEC §4, `UpdaterPort`: «На Web это просто перезагрузка страницы»);
+ *  - `localPreferences` — `localStorage`, синхронный, доступен одинаково на
+ *    всех трёх оболочек (вебвью, `packages/platform`, `LocalPreferencesPort`)
+ *    — тема оформления (M42) и будущие настройки того же рода;
  *  - `localDb` — с E04 больше не `Unavailable`: `@shagi/storage` поставлен
  *    (эпик E02), реальный `StoragePort` для веба — `createIndexedDbStorage`,
  *    которую собирает `main.tsx` и кладёт в `AppHost.storage` напрямую (это
@@ -40,6 +43,7 @@
 import type {
   DeepLinkPort,
   LocalDbPort,
+  LocalPreferencesPort,
   NotificationSchedulerPort,
   PlatformCapabilitiesRegistry,
   SharePort,
@@ -120,6 +124,41 @@ function createLocalDb(): LocalDbPort {
   return {
     async initialize() {},
     async close() {},
+  };
+}
+
+/**
+ * `localStorage` синхронный и по контракту `LocalPreferencesPort` (см.
+ * `@shagi/platform`) — тонкая обёртка без адаптации. Может кинуть исключение
+ * в приватном режиме с полным запретом хранения — это не Unavailable
+ * (браузер честно ДАЁТ `localStorage` как объект, отказывает только на
+ * вызове), поэтому каждый метод глотает исключение и ведёт себя как «ключа
+ * нет»/«запись тихо не удалась»: выбор пользователя не переживёт такую
+ * сессию, но и не роняет экран (M42, см. `Appearance.tsx`, `@shagi/app`).
+ */
+function createLocalPreferences(): LocalPreferencesPort {
+  return {
+    get(key) {
+      try {
+        return window.localStorage.getItem(key);
+      } catch {
+        return null;
+      }
+    },
+    set(key, value) {
+      try {
+        window.localStorage.setItem(key, value);
+      } catch {
+        // См. заголовок функции — приватный режим без хранения.
+      }
+    },
+    remove(key) {
+      try {
+        window.localStorage.removeItem(key);
+      } catch {
+        // См. заголовок функции.
+      }
+    },
   };
 }
 
@@ -210,5 +249,6 @@ export function createWebPlatform(): PlatformCapabilitiesRegistry {
     networkStatus: createNetworkStatus(),
     calendarProvider: unavailable('Внешние календари — R1.1'),
     audioCapture: unavailable('Voice input — R3'),
+    localPreferences: createLocalPreferences(),
   };
 }

@@ -23,6 +23,20 @@
  * `useAppController()`), снимается при размонтировании тем же эффектом,
  * что и boot-последовательность `localDb` рядом. `preventDefault()` —
  * `Ctrl+N`/`Cmd+N` иначе открыли бы новое окно браузера/приложения.
+ *
+ * --- Boot-применение темы (M42 Appearance, пакет работ «Настройки») -------
+ *
+ * `useBootstrapTheme` — читает сохранённый `ThemePreference`
+ * (`theme/preference.js`, `LocalPreferencesPort`) и применяет его к
+ * `document.documentElement` ПРИ КАЖДОМ ЗАПУСКЕ приложения, а не только
+ * когда пользователь долистает до `screens/Appearance.tsx`. Без этого шага
+ * тема сбрасывалась бы к дефолту («система») при каждой перезагрузке
+ * страницы, пока пользователь заново не зайдёт в Settings → Оформление —
+ * прямое нарушение задания «применяет его при следующем запуске» (найдено
+ * и исправлено при ручной проверке в браузере этим же пакетом работ: без
+ * этого хука `data-theme` после `location.reload()` оставался `null`, хотя
+ * `localStorage` уже хранил `'light'`/`'dark'`). `Unavailable` — молча
+ * пропускается, тот же приём, что `useBootstrapLocalDb` рядом.
  */
 import { useEffect, type ReactElement } from 'react';
 
@@ -35,6 +49,7 @@ import { SCREENS } from './screens/index.js';
 import { AppShell, isMainTabScreen } from './shell/AppShell.js';
 import { OfflineBanner } from './shell/OfflineBanner.js';
 import type { AppController } from './state/store.js';
+import { THEME_PREFERENCE_KEY, applyTheme, isThemePreference } from './theme/preference.js';
 
 /**
  * Контракт между оболочкой (`apps/*`) и продуктом (`@shagi/app`).
@@ -85,6 +100,24 @@ function useBootstrapLocalDb(platform: PlatformCapabilitiesRegistry): void {
   }, []);
 }
 
+/** См. заголовок файла, блок «Boot-применение темы». Читает сохранённый
+ * выбор РОВНО один раз при монтировании — `document.documentElement`
+ * глобален, применять его на каждый рендер незачем и не идемпотентно
+ * дороже, чем нужно. `Unavailable`/ничего не сохранено — молча остаётся
+ * дефолт «система» (атрибут не ставится вовсе), тот же принцип честности,
+ * что и `useBootstrapLocalDb`. */
+function useBootstrapTheme(platform: PlatformCapabilitiesRegistry): void {
+  useEffect(() => {
+    const localPreferences = platform.localPreferences;
+    if (!isAvailable(localPreferences)) return;
+    const saved = localPreferences.get(THEME_PREFERENCE_KEY);
+    if (saved !== null && isThemePreference(saved)) {
+      applyTheme(saved);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- та же причина, что `useBootstrapLocalDb` выше
+  }, []);
+}
+
 /** См. заголовок файла, блок «Оверлей Quick Add и `Ctrl/Cmd+N`». */
 function useGlobalQuickAddShortcut(controller: AppController): void {
   useEffect(() => {
@@ -101,6 +134,7 @@ function useGlobalQuickAddShortcut(controller: AppController): void {
 
 function Bootstrap({ host }: { host: AppHost }): ReactElement {
   useBootstrapLocalDb(host.platform);
+  useBootstrapTheme(host.platform);
   useGlobalQuickAddShortcut(useAppController());
   return (
     <>

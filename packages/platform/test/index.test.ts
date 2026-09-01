@@ -93,6 +93,7 @@ describe('@shagi/platform', () => {
         'networkStatus',
         'calendarProvider',
         'audioCapture',
+        'localPreferences',
       ] as const;
 
       for (const capability of capabilities) {
@@ -128,10 +129,10 @@ describe('@shagi/platform', () => {
   });
 
   describe('PlatformCapabilitiesRegistry', () => {
-    it('содержит ровно 15 портов', () => {
+    it('содержит ровно 16 портов', () => {
       const platform = createUnavailablePlatform();
       const keys = Object.keys(platform);
-      expect(keys).toHaveLength(15);
+      expect(keys).toHaveLength(16);
     });
 
     it('содержит все требуемые в ТЗ порты', () => {
@@ -153,6 +154,7 @@ describe('@shagi/platform', () => {
         'networkStatus',
         'calendarProvider',
         'audioCapture',
+        'localPreferences',
       ] as const;
 
       for (const cap of requiredCapabilities) {
@@ -181,6 +183,7 @@ describe('@shagi/platform', () => {
         'networkStatus',
         'calendarProvider',
         'audioCapture',
+        'localPreferences',
       ] as const;
 
       for (const cap of capabilities) {

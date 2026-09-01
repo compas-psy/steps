@@ -90,6 +90,26 @@
  * навигации, см. её заголовок), возврат — обычная кнопка «Назад» внутри
  * самого `Completed.tsx`, тот же жанр, что `Inbox.tsx` уже применяет для
  * своего собственного не-`AppShell` экрана.
+ *
+ * `'settings'` (M41 Settings Root) и `'appearance'` (M42 Appearance) —
+ * пакет работ «Настройки: экран-хаб и тема оформления». `'settings'` —
+ * ТРЕТИЙ параметризованный-по-возврату экран после `'taskDetail'`, но с
+ * фиксированным (не переменным) источником: сейчас единственная точка
+ * входа — значок-шестерёнка в заголовке `Today.tsx` (`'todayEmpty'`), в
+ * отличие от `'taskDetail'`, куда ведут три разных экрана. Отдельное поле
+ * `settingsReturnScreen` (не переиспользование `returnScreen` у
+ * `'taskDetail'`) — те же два перехода структурно независимы: Task Detail,
+ * открытый ИЗ экрана настроек в будущем, не должен путать, куда вернёт
+ * «Назад» каждого из них; общий `openTask`/`closeTask` паттерн (метод
+ * контроллера читает `this.#state.screen` ДО перезаписи, симметричный
+ * метод закрытия возвращает на него и обнуляет память) просто повторён для
+ * второй, независимой пары экрана и точки возврата.
+ *
+ * `'appearance'` — ОБЫЧНЫЙ `goTo('appearance')`/`goTo('settings')`, без
+ * своего поля возврата: единственный вход — строка «Оформление» в
+ * `Settings.tsx`, и она же единственный путь назад (задание прямо это
+ * оговаривает) — заводить память под источник, у которого нет других
+ * значений, кроме одного, было бы состоянием ради состояния.
  */
 import type { Uuid } from '@shagi/core';
 
@@ -106,7 +126,9 @@ export type ScreenId =
   | 'taskDetail'
   | 'search'
   | 'plan'
-  | 'completed';
+  | 'completed'
+  | 'settings'
+  | 'appearance';
 
 /** Откуда открыт Quick Add — см. блок про `quickAdd` в заголовке файла.
  * Только три из семи строк таблицы «Origin → Inherited values» (`01§3`) —
@@ -135,6 +157,11 @@ export interface AppState {
   /** Экран, на который вернёт «Готово» в Task Detail — см. блок про
    * `'taskDetail'` выше. `null` вне этого экрана и до первого перехода. */
   readonly returnScreen: ScreenId | null;
+  /** Экран, на который вернёт «Назад» в `Settings` (M41) — см. блок про
+   * `'settings'`/`'appearance'` в заголовке файла: отдельное от
+   * `returnScreen` поле, та же структура, независимая пара экрана и точки
+   * возврата. `null` вне `'settings'`/`'appearance'` и до первого перехода. */
+  readonly settingsReturnScreen: ScreenId | null;
   /** Оверлей Quick Add — см. блок про `quickAdd` в заголовке файла. `null`,
    * пока оверлей закрыт. НЕ влияет на `screen` — экран под низом не меняется. */
   readonly quickAdd: { readonly origin: QuickAddOrigin } | null;
@@ -148,6 +175,7 @@ const INITIAL_STATE: AppState = {
   selectedProjectId: null,
   selectedTaskId: null,
   returnScreen: null,
+  settingsReturnScreen: null,
   quickAdd: null,
 };
 
@@ -212,6 +240,24 @@ export class AppController {
       screen: this.#state.returnScreen ?? 'todayEmpty',
       selectedTaskId: null,
       returnScreen: null,
+    });
+  };
+
+  /** Клик по значку-шестерёнке (`Today.tsx`, заголовок) → Settings (M41,
+   * см. заголовок файла, блок «'settings'») — запоминает текущий экран как
+   * `settingsReturnScreen`, тот же приём, что `openTask`/`returnScreen`. */
+  openSettings = (): void => {
+    this.#setState({ screen: 'settings', settingsReturnScreen: this.#state.screen });
+  };
+
+  /** «Назад» на Settings — возвращает на `settingsReturnScreen`. Фоллбэк на
+   * `'todayEmpty'` — та же оборонительная ветка, что `closeTask`: по
+   * продуктовым путям `settingsReturnScreen` всегда задан, `openSettings` —
+   * единственный способ попасть на `'settings'`. */
+  closeSettings = (): void => {
+    this.#setState({
+      screen: this.#state.settingsReturnScreen ?? 'todayEmpty',
+      settingsReturnScreen: null,
     });
   };
 

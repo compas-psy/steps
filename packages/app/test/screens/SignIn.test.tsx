@@ -67,6 +67,7 @@ describe('SignIn (M03)', () => {
       selectedProjectId: null,
       selectedTaskId: null,
       returnScreen: null,
+      settingsReturnScreen: null,
       quickAdd: null,
     });
   });

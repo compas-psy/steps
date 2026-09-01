@@ -24,10 +24,15 @@
  *
  * `completed` (M36 «Completed») — эпик E12, ПОСЛЕДНИЙ пакет работ E12.4: см.
  * заголовок `state/store.ts`, блок про `'completed'`, и заголовок `Completed.tsx`.
+ *
+ * `settings`/`appearance` (M41 Settings Root / M42 Appearance) — пакет работ
+ * «Настройки: экран-хаб и тема оформления»: см. заголовок `state/store.ts`,
+ * блок про `'settings'`/`'appearance'`, и заголовки `Settings.tsx`/`Appearance.tsx`.
  */
 import type { ComponentType } from 'react';
 
 import type { ScreenId } from '../state/store.js';
+import { Appearance } from './Appearance.js';
 import { Completed } from './Completed.js';
 import { FirstTask } from './FirstTask.js';
 import { Inbox } from './Inbox.js';
@@ -37,11 +42,13 @@ import { Plan } from './Plan.js';
 import { ProjectDetail } from './ProjectDetail.js';
 import { Projects } from './Projects.js';
 import { Search } from './Search.js';
+import { Settings } from './Settings.js';
 import { SignIn } from './SignIn.js';
 import { TaskDetail } from './TaskDetail.js';
 import { Today } from './Today.js';
 import { Welcome } from './Welcome.js';
 
+export { Appearance } from './Appearance.js';
 export { Completed } from './Completed.js';
 export { FirstTask } from './FirstTask.js';
 export { Inbox } from './Inbox.js';
@@ -51,6 +58,7 @@ export { Plan } from './Plan.js';
 export { ProjectDetail } from './ProjectDetail.js';
 export { Projects } from './Projects.js';
 export { Search } from './Search.js';
+export { Settings } from './Settings.js';
 export { SignIn } from './SignIn.js';
 export { TaskDetail } from './TaskDetail.js';
 export { Today } from './Today.js';
@@ -70,4 +78,6 @@ export const SCREENS: Partial<Record<ScreenId, ComponentType>> = {
   search: Search,
   plan: Plan,
   completed: Completed,
+  settings: Settings,
+  appearance: Appearance,
 };

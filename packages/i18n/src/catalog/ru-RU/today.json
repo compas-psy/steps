@@ -1,5 +1,6 @@
 {
   "pageTitle": "Сегодня",
+  "settingsButton.label": "Настройки",
   "quickAdd.button": "Быстрое добавление",
   "empty.description": "Новые задачи появятся здесь, когда вы их запланируете.",
   "groups.missedDeadline": "Просрочен срок",

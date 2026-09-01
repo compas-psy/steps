@@ -139,6 +139,37 @@ export interface SecureCredentialsPort {
 }
 
 /**
+ * `LocalPreferencesPort` — интерфейс персистентности пользовательских
+ * настроек интерфейса (M42 Appearance и будущие настройки того же рода —
+ * `12_SCREEN_STATE_MATRIX.md`, `00_MASTER_IMPLEMENTATION_TZ.md` §4).
+ *
+ * Это НЕ доменные данные (задачи/проекты) и не что-то, что синхронизируется
+ * между устройствами — чисто локальный, платформенно-простой ключ-значение
+ * (тема оформления, порог свёрнутости и т.п.), поэтому интерфейс тоньше
+ * `SecureCredentialsPort`/`LocalDbPort`: ни шифрования, ни транзакций, ни
+ * async — на всех трёх оболочках (`apps/web|desktop|mobile`, уже вебвью,
+ * `navigator.onLine` тому доказательство для `networkStatus`) это синхронный
+ * `localStorage`, не нужно притворяться, что чтение ключа — это I/O с
+ * задержкой.
+ *
+ * Поддержка: все платформы (вебвью везде — `localStorage` доступен
+ * одинаково).
+ * Недоступность: тестовый режим (`createUnavailablePlatform`), окружения,
+ * где `localStorage` заблокирован (приватный режим с полным запретом
+ * хранения) — UI тогда просто не переживает выбор между запусками, не
+ * ломается (см. `Appearance.tsx`, `packages/app`).
+ */
+export interface LocalPreferencesPort {
+  /** Текущее значение ключа или `null`, если ничего не сохранено. */
+  get(key: string): string | null;
+  /** Записать значение ключа. */
+  set(key: string, value: string): void;
+  /** Удалить ключ (не используется M42, но часть честного контракта
+   * ключ-значение — «сохранить»/«прочитать»/«удалить», не два из трёх). */
+  remove(key: string): void;
+}
+
+/**
  * Точность планирования напоминания.
  *
  * Используется для различия между гарантиями, которые платформа может дать.
@@ -535,6 +566,7 @@ export interface PlatformCapabilitiesRegistry {
   readonly networkStatus: NetworkStatusPort | Unavailable;
   readonly calendarProvider: CalendarProviderPort | Unavailable;
   readonly audioCapture: AudioCapturePort | Unavailable;
+  readonly localPreferences: LocalPreferencesPort | Unavailable;
 }
 
 /**
@@ -575,5 +607,6 @@ export function createUnavailablePlatform(): PlatformCapabilitiesRegistry {
     networkStatus: unavailable,
     calendarProvider: unavailable,
     audioCapture: unavailable,
+    localPreferences: unavailable,
   };
 }

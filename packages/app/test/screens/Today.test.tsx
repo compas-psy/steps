@@ -1001,6 +1001,20 @@ describe('Today — кнопка Quick Add (эпик E05.2)', () => {
   });
 });
 
+describe('Today — вход в Settings (M41, значок-шестерёнка)', () => {
+  it('клик по значку-шестерёнке ведёт на settings с settingsReturnScreen=todayEmpty', async () => {
+    const user = userEvent.setup();
+    const { controller } = renderTodayWithController([]);
+
+    await user.click(
+      await screen.findByRole('button', { name: t('today', 'settingsButton.label') }),
+    );
+
+    expect(controller.getState().screen).toBe('settings');
+    expect(controller.getState().settingsReturnScreen).toBe('todayEmpty');
+  });
+});
+
 describe('Today — повторы (E11.2)', () => {
   it('чекбокс recurring-задачи вызывает completeOccurrenceCommand и генерирует следующий occurrence', async () => {
     const user = userEvent.setup();

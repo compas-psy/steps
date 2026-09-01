@@ -1,13 +1,30 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { createUnavailablePlatform } from '@shagi/platform';
+import { afterEach, describe, expect, it } from 'vitest';
+import { createUnavailablePlatform, type LocalPreferencesPort } from '@shagi/platform';
 import { t } from '@shagi/i18n';
-import { describe, expect, it } from 'vitest';
 
 import { App, type AppHost } from '../src/index.js';
 
 function testHost(): AppHost {
   return { platform: createUnavailablePlatform(), storageBackend: { kind: 'memory' } };
+}
+
+/** Тот же фейк, что `test/screens/Appearance.test.tsx` — синхронное
+ * чтение/запись поверх `Map`. */
+function fakeLocalPreferences(
+  initial: Readonly<Record<string, string>> = {},
+): LocalPreferencesPort {
+  const store = new Map(Object.entries(initial));
+  return {
+    get: (key) => store.get(key) ?? null,
+    set: (key, value) => {
+      store.set(key, value);
+    },
+    remove: (key) => {
+      store.delete(key);
+    },
+  };
 }
 
 describe('App', () => {
@@ -55,5 +72,46 @@ describe('App — глобальный Quick Add (эпик E05.2, D12 "callable 
     // Не должно бросать и не должно оставлять слушателя, реагирующего на
     // событие после размонтирования дерева (нечего было бы обновить).
     await expect(user.keyboard('{Control>}n{/Control}')).resolves.not.toThrow();
+  });
+});
+
+describe('App — boot-применение темы (M42 Appearance)', () => {
+  afterEach(() => {
+    // Тест реально трогает `document.documentElement` (см. заголовок
+    // `App.tsx`, блок «Boot-применение темы») — сброс, чтобы не утечь в
+    // следующий тестовый файл этого же процесса vitest.
+    document.documentElement.removeAttribute('data-theme');
+  });
+
+  it('применяет сохранённую тёмную тему сразу при монтировании, ДО открытия Settings', () => {
+    const host: AppHost = {
+      platform: {
+        ...createUnavailablePlatform(),
+        localPreferences: fakeLocalPreferences({
+          'shagi.preferences.theme': 'dark',
+        }),
+      },
+      storageBackend: { kind: 'memory' },
+    };
+
+    render(<App host={host} />);
+
+    expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
+  });
+
+  it('ничего не сохранено — атрибут не выставляется (дефолт «система»)', () => {
+    const host: AppHost = {
+      platform: { ...createUnavailablePlatform(), localPreferences: fakeLocalPreferences() },
+      storageBackend: { kind: 'memory' },
+    };
+
+    render(<App host={host} />);
+
+    expect(document.documentElement.hasAttribute('data-theme')).toBe(false);
+  });
+
+  it('`Unavailable` localPreferences — не падает, атрибут не выставляется', () => {
+    expect(() => render(<App host={testHost()} />)).not.toThrow();
+    expect(document.documentElement.hasAttribute('data-theme')).toBe(false);
   });
 });

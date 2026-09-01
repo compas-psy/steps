@@ -19,6 +19,9 @@
  *    (README плагина), которого у продукта пока нет, а прописывать
  *    несуществующий домен значило бы поставить конфиг, который сломается
  *    при первой проверке;
+ *  - `localPreferences` — `localStorage` (WebView Android поддерживает Web
+ *    Storage как обычный браузер), синхронный, тот же приём, что
+ *    `apps/web/src/platform.ts` — тема оформления (M42) и будущие настройки.
  *
  * `Unavailable` с причиной — всё остальное:
  *  - `localDb`/`fileStore` — `@shagi/storage`, ещё не поставлен;
@@ -83,6 +86,35 @@ function createHaptics(): PlatformCapabilitiesRegistry['haptics'] {
   };
 }
 
+/** Синхронный `localStorage` — тот же приём и то же обоснование (в т.ч.
+ * поглощение исключения в средах без хранения), что `apps/web/src/platform.ts`,
+ * `createLocalPreferences` — комментарий там за полным разбором. */
+function createLocalPreferences(): PlatformCapabilitiesRegistry['localPreferences'] {
+  return {
+    get(key) {
+      try {
+        return window.localStorage.getItem(key);
+      } catch {
+        return null;
+      }
+    },
+    set(key, value) {
+      try {
+        window.localStorage.setItem(key, value);
+      } catch {
+        // См. `apps/web/src/platform.ts`, `createLocalPreferences`.
+      }
+    },
+    remove(key) {
+      try {
+        window.localStorage.removeItem(key);
+      } catch {
+        // См. `apps/web/src/platform.ts`, `createLocalPreferences`.
+      }
+    },
+  };
+}
+
 function createDeepLink(): PlatformCapabilitiesRegistry['deepLink'] {
   return {
     onLink(handler) {
@@ -132,5 +164,6 @@ export function createMobilePlatform(): PlatformCapabilitiesRegistry {
     networkStatus: createNetworkStatus(),
     calendarProvider: unavailable('Внешние календари — R1.1'),
     audioCapture: unavailable('Voice input — R3'),
+    localPreferences: createLocalPreferences(),
   };
 }

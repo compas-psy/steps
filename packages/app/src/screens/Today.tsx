@@ -1001,6 +1001,17 @@ export function Today(): ReactElement {
   return (
     <div>
       <h1>{t('today', 'pageTitle')}</h1>
+      {/* Точка входа в Settings (M41, пакет работ «Настройки: экран-хаб и
+       * тема оформления») — см. заголовок `state/store.ts`, блок про
+       * `'settings'`. `openSettings()` запоминает `'todayEmpty'` (текущий
+       * экран на момент клика) как `settingsReturnScreen` сам, тем же
+       * приёмом, что `openTask` для `returnScreen` — вызывающему коду не
+       * нужно передавать экран явно. */}
+      <IconButton
+        icon="settings"
+        label={t('today', 'settingsButton.label')}
+        onClick={controller.openSettings}
+      />
       <p>{formatDate(today, { weekday: 'long' })}</p>
       <Button variant="secondary" onClick={() => controller.openQuickAdd('today')}>
         {t('today', 'quickAdd.button')}
