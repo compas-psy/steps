@@ -1,0 +1,80 @@
+/**
+ * `Welcome` (M02) — вёрстка по хендоффу дизайна (`docs/spec/DESIGN/
+ * source_unpacked/ШАГИ - R1 Design.dc.html`, `#sec-onboarding`, `[R1][M][02]
+ * Welcome`): тёмная hero-секция (знак сервиса + ворднейм) сверху, светлая
+ * панель действий снизу — а не список компонентов подряд без фона и
+ * композиции. Устройство-рамки/статус-бар макета — витринный хром
+ * (CLAUDE.md), сюда не переносятся: реальный экран не изображает телефон.
+ *
+ * Токены `--sidebar*` — не опечатка про сайдбар: это единственная пара
+ * «фон/текст на forest-800» уже в палитре (десктопный Sidebar), ровно то
+ * же сочетание, что макет использует для этой hero-секции. Отдельного
+ * bespoke «текст на тёмном» токена заводить не нужно — он уже есть.
+ */
+
+.shagi-welcome {
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+}
+
+.shagi-welcome__hero {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-5);
+  background: linear-gradient(160deg, var(--forest-800), var(--forest-900) 70%);
+}
+
+.shagi-welcome__wordmark {
+  text-align: center;
+  color: var(--sidebar-foreground);
+}
+
+.shagi-welcome__wordmark-title {
+  font-size: var(--text-hero-title);
+  font-weight: var(--fw-bold);
+  letter-spacing: 0.1em;
+  margin: 0;
+}
+
+.shagi-welcome__tagline {
+  font-family: var(--font-mono);
+  font-size: var(--text-caption);
+  color: var(--sidebar-muted);
+  margin: var(--space-1) 0 0;
+}
+
+.shagi-welcome__panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-8) var(--space-6) var(--space-8);
+}
+
+.shagi-welcome__pitch {
+  text-align: center;
+}
+
+.shagi-welcome__heading {
+  font-size: var(--text-section-title);
+  font-weight: var(--fw-bold);
+  color: var(--foreground);
+  margin: 0 0 var(--space-2);
+}
+
+.shagi-welcome__description {
+  font-size: var(--text-body-secondary);
+  color: var(--muted-foreground);
+  line-height: 1.5;
+  margin: 0;
+}
+
+.shagi-welcome__footnote {
+  text-align: center;
+  font-size: var(--text-caption);
+  color: var(--muted-foreground);
+  margin: 0;
+}

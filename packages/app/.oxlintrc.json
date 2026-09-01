@@ -25,10 +25,19 @@
   "extends": ["../../.oxlintrc.json"],
   "jsPlugins": [{ "name": "eslint-js", "specifier": "oxlint-plugin-eslint" }],
   "rules": {
+    // `**/*.css` — тот же легитимный паттерн, что уже заведён в
+    // `packages/ui/.oxlintrc.json`: побочный импорт стилей рядом с
+    // компонентом/экраном (`import './Welcome.css'`), не «забытый экспорт».
+    // Экранам нужна композиция страницы (hero-секции, панели, полноэкранные
+    // фоны) — то, чего ни один компонент `@shagi/ui` в одиночку не даёт;
+    // до пакета работ «Welcome по хендоффу» ни один экран в `packages/app`
+    // собственного `.css` не заводил, поэтому исключения здесь не было.
     // `test/setup.ts` (E04) регистрирует jest-dom матчеры побочным
-    // импортом — тот же легитимный паттерн и то же точечное исключение,
-    // что уже заведено в `packages/ui/.oxlintrc.json` для того же модуля.
-    "import/no-unassigned-import": ["error", { "allow": ["@testing-library/jest-dom/vitest"] }],
+    // импортом — тот же приём для другого модуля.
+    "import/no-unassigned-import": [
+      "error",
+      { "allow": ["**/*.css", "@testing-library/jest-dom/vitest"] }
+    ],
     "eslint-js/no-restricted-syntax": [
       "error",
       {
