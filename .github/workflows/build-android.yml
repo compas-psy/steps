@@ -559,6 +559,33 @@ jobs:
           echo '── что собралось ──'
           find apps/mobile/src-tauri/gen/android/app/build/outputs -name '*.apk' -type f -printf '%p\t%s байт\n'
 
+      # ── Диагностика манифеста (временно, разбор INTERNET/DYNAMIC_RECEIVER) ──
+      #
+      # `aapt dump permissions` (следующий по конвейеру шаг) печатает ИТОГ —
+      # какие `<uses-permission>` оказались в собранном APK, но не откуда они
+      # взялись. AGP на каждой сборке уже пишет ОБА ответа на этот вопрос сам:
+      # смёрженный `AndroidManifest.xml` (после слияния шаблона Tauri, любых
+      # плагинов и AndroidX) и текстовый merger-report с построчным `ADDED
+      # from ...`/`MERGED from ...` — не гадаем по комментариям в коде, откуда
+      # взялось разрешение, а читаем то, что реально написал сам AGP.
+      #
+      # Пути с `*` — конкретное имя build-варианта (`release`/`debug`) внутри
+      # `find` не хардкодится: они одинаковы что на релизе, что на debug, но
+      # который из двух собрался — зависит от канала (см. шаг «tauri android
+      # build» выше), а расписывать оба здесь дороже, чем найти реальный.
+      - name: Слепок манифеста Android (диагностика INTERNET/DYNAMIC_RECEIVER)
+        run: |
+          set -euo pipefail
+          echo '── смёрженный AndroidManifest.xml ──'
+          find apps/mobile/src-tauri/gen/android/app/build/intermediates \
+            -path '*merged_manifest*' -name 'AndroidManifest.xml' -type f \
+            -exec sh -c 'echo "=== $1 ==="; cat "$1"' _ {} \;
+
+          echo '── manifest-merger report ──'
+          find apps/mobile/src-tauri/gen/android/app/build/outputs/logs \
+            -name 'manifest-merger-*-report.txt' -type f \
+            -exec sh -c 'echo "=== $1 ==="; cat "$1"' _ {} \;
+
       # ── Подпись ───────────────────────────────────────────────────────────
       # Подписываем сами, а не конфигом Gradle: сгенерированный
       # build.gradle.kts — чужой файл, править его патчем ради подписи

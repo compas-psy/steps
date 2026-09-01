@@ -85,14 +85,21 @@ describe('android-permissions.txt', () => {
     expect(names).not.toContain('android.permission.INTERNET');
   });
 
-  it('список — ровно те пять разрешений, что решены для R1 (?28)', () => {
+  it('список — разрешения, решённые для R1 (?28) плюс подтверждённая инфраструктура AndroidX', () => {
+    // `USE_EXACT_ALARM` намеренно НЕ в списке — Android документирует его
+    // с `SCHEDULE_EXACT_ALARM` как взаимоисключающий выбор для одного
+    // приложения, не пару «оба сразу» (см. объяснение самой строки
+    // `SCHEDULE_EXACT_ALARM` в файле). `DYNAMIC_RECEIVER_NOT_EXPORTED_
+    // PERMISSION` — саморазрешение AndroidX Core (`signature`-уровень,
+    // не пользовательское) на СОБРАННЫЙ APK, не решение продукта — тот же
+    // список, что фактически проверяет `aapt dump permissions`.
     expect([...names].toSorted()).toEqual(
       [
         'android.permission.POST_NOTIFICATIONS',
         'android.permission.SCHEDULE_EXACT_ALARM',
-        'android.permission.USE_EXACT_ALARM',
         'android.permission.RECEIVE_BOOT_COMPLETED',
         'android.permission.VIBRATE',
+        'ru.cmpas.shagi.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION',
       ].toSorted(),
     );
   });
