@@ -33,6 +33,7 @@ import type { StorageBackend } from './state/storage-backend.js';
 import { QuickAdd } from './screens/QuickAdd.js';
 import { SCREENS } from './screens/index.js';
 import { AppShell, isMainTabScreen } from './shell/AppShell.js';
+import { OfflineBanner } from './shell/OfflineBanner.js';
 import type { AppController } from './state/store.js';
 
 /**
@@ -103,6 +104,9 @@ function Bootstrap({ host }: { host: AppHost }): ReactElement {
   useGlobalQuickAddShortcut(useAppController());
   return (
     <>
+      {/* M39 (`12_SCREEN_STATE_MATRIX.md`) — на любом экране, не только
+       * «главных» вкладках `AppShell`, см. заголовок `OfflineBanner`. */}
+      <OfflineBanner networkStatus={host.platform.networkStatus} />
       <Screens />
       <QuickAdd />
     </>
