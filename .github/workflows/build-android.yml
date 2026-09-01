@@ -543,67 +543,18 @@ jobs:
       # .ultraplan/open-questions.md), но нативного кода, который бы ими
       # пользовался (boot receiver, AlarmManager-мост), ШАГИ пока не содержат
       # — тем важнее держать их здесь, рядом друг с другом, а не по одной
-      # неучтённо. `apps/mobile/android-permissions.txt` — единственный
-      # источник истины по СОСТАВУ; здесь он же становится единственным
-      # источником истины по МАНИФЕСТУ, а не два места, которые могут разойтись.
-      # Патчим файлом после генерации проекта — тот же приём и та же причина,
-      # что «Правила R8 для нативного моста» выше (app/ до `tauri android init`
-      # не существует).
+      # неучтённо. Логика патча — `patchManifestPermissions` в
+      # `android-release-gate.mjs` (та же файловая точка, что и остальные
+      # Android-гейты, покрыта тестами в `test/android-release-gate.test.ts`,
+      # а не одноразовый inline-скрипт в YAML). Запускается после генерации
+      # проекта — тот же приём и та же причина, что «Правила R8 для нативного
+      # моста» выше (app/ до `tauri android init` не существует).
       - name: Разрешения из allowlist в манифест
         run: |
           set -euo pipefail
-          python3 - <<'PY'
-          import pathlib
-          import re
-
-          manifest_path = pathlib.Path(
-              'apps/mobile/src-tauri/gen/android/app/src/main/AndroidManifest.xml'
-          )
-          allowlist_path = pathlib.Path('apps/mobile/android-permissions.txt')
-
-          text = manifest_path.read_text(encoding='utf-8')
-          declared = set(re.findall(r'<uses-permission android:name="([^"]+)"', text))
-
-          allowlist_names = []
-          for line in allowlist_path.read_text(encoding='utf-8').splitlines():
-              stripped = line.strip()
-              if stripped == '' or stripped.startswith('#'):
-                  continue
-              allowlist_names.append(stripped.split()[0])
-
-          # `DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION` в СЫРОМ файле модуля не
-          # найти регуляркой ни при каких условиях: AndroidX Core объявляет и
-          # `<uses-permission>`, и своё же `<permission signature>` на него
-          # ТОЛЬКО во время слияния манифестов Gradle (см. manifest-merger
-          # report: `ADDED from [androidx.core:core:1.13.1]`), а этот шаг
-          # правит файл ДО слияния. Патчить его здесь означало бы задублировать
-          # то, что и так гарантированно появится — не ошибка (merger дедупит
-          # идентичные декларации), но лишняя строка, которая честно не наша.
-          skip_because_dependency_merges_it = {
-              'ru.cmpas.shagi.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION',
-          }
-          missing = [
-              name
-              for name in allowlist_names
-              if name not in declared and name not in skip_because_dependency_merges_it
-          ]
-
-          if not missing:
-              print('Патчить манифест не нужно — все разрешения allowlist уже объявлены.')
-          else:
-              anchor = '<uses-permission android:name="android.permission.INTERNET" />'
-              if anchor not in text:
-                  raise SystemExit(
-                      f'{manifest_path}: не нашли ожидаемую опорную строку INTERNET — '
-                      'шаблон Tauri изменился, проверьте вручную'
-                  )
-              insertion = '\n'.join(
-                  f'    <uses-permission android:name="{name}" />' for name in missing
-              )
-              text = text.replace(anchor, f'{anchor}\n{insertion}', 1)
-              manifest_path.write_text(text, encoding='utf-8')
-              print('Добавлены в манифест:', ', '.join(missing))
-          PY
+          node apps/mobile/scripts/android-release-gate.mjs patch-manifest \
+            --manifest apps/mobile/src-tauri/gen/android/app/src/main/AndroidManifest.xml \
+            --list apps/mobile/android-permissions.txt
           echo '── манифест после патча ──'
           cat 'apps/mobile/src-tauri/gen/android/app/src/main/AndroidManifest.xml'
 

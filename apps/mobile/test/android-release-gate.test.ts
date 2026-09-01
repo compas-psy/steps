@@ -27,6 +27,7 @@ import {
   parseApksignerVerify,
   parseExpectedSigner,
   parsePermissionList,
+  patchManifestPermissions,
   permissionsFromAapt,
   permissionsGate,
   provenance,
@@ -346,6 +347,66 @@ describe('разрешения собранного APK сверяются со 
       'android.permission.VIBRATE',
       'android.permission.POST_NOTIFICATIONS',
     ]);
+  });
+});
+
+describe('patchManifestPermissions — недостающие разрешения в сгенерированном манифесте', () => {
+  // Реальная структура сгенерированного `tauri android init` манифеста
+  // (снято CI-прогоном при разборе INTERNET/DYNAMIC_RECEIVER — см. заголовок
+  // android-permissions.txt) сокращена до того, что трогает патч: опорная
+  // строка INTERNET и закрывающий тег.
+  const TAURI_TEMPLATE_MANIFEST = [
+    '<?xml version="1.0" encoding="utf-8"?>',
+    '<manifest xmlns:android="http://schemas.android.com/apk/res/android"',
+    '    package="ru.cmpas.shagi">',
+    '    <uses-permission android:name="android.permission.INTERNET" />',
+    '',
+    '    <!-- AndroidTV support -->',
+    '    <uses-feature',
+    '        android:name="android.software.leanback"',
+    '        android:required="false" />',
+    '',
+    '    <application></application>',
+    '</manifest>',
+  ].join('\n');
+
+  it('добавляет разрешения из allowlist, которых ещё нет в манифесте', () => {
+    const { text, added } = patchManifestPermissions(TAURI_TEMPLATE_MANIFEST, [
+      'android.permission.INTERNET',
+      'android.permission.VIBRATE',
+      'android.permission.POST_NOTIFICATIONS',
+    ]);
+    expect(added).toEqual(['android.permission.VIBRATE', 'android.permission.POST_NOTIFICATIONS']);
+    expect(text).toContain('<uses-permission android:name="android.permission.VIBRATE" />');
+    expect(text).toContain(
+      '<uses-permission android:name="android.permission.POST_NOTIFICATIONS" />',
+    );
+    // Порядок: сразу после INTERNET, до остального манифеста — вставка не
+    // трогает ничего, что уже там было.
+    expect(text.indexOf('VIBRATE')).toBeLessThan(text.indexOf('AndroidTV support'));
+  });
+
+  it('не трогает файл вовсе, если добавлять нечего', () => {
+    const { text, added } = patchManifestPermissions(TAURI_TEMPLATE_MANIFEST, [
+      'android.permission.INTERNET',
+    ]);
+    expect(added).toEqual([]);
+    expect(text).toBe(TAURI_TEMPLATE_MANIFEST);
+  });
+
+  it('не дублирует DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION — его добавляет androidx.core при слиянии', () => {
+    const { text, added } = patchManifestPermissions(TAURI_TEMPLATE_MANIFEST, [
+      'android.permission.INTERNET',
+      'ru.cmpas.shagi.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION',
+    ]);
+    expect(added).toEqual([]);
+    expect(text).not.toContain('DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION');
+  });
+
+  it('падает с понятной ошибкой, если шаблон Tauri больше не содержит опорной строки INTERNET', () => {
+    expect(() =>
+      patchManifestPermissions('<manifest></manifest>', ['android.permission.VIBRATE']),
+    ).toThrow(/INTERNET/);
   });
 });
 

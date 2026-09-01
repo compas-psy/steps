@@ -382,6 +382,58 @@ export function permissionsGate(actual = [], allowed = []) {
 }
 
 /**
+ * Разрешения, которые в СЫРОМ файле модуля `AndroidManifest.xml` (до
+ * `tauri android build`, т.е. до слияния Gradle) не найти никогда — их
+ * добавляет сама зависимость во время слияния манифестов, не шаблон Tauri и
+ * не код продукта. Патчить их здесь значило бы задублировать то, что и так
+ * гарантированно появится (не ошибка — merger дедупит идентичные декларации,
+ * но лишняя строка, которая честно не наша). Подробности и manifest-merger
+ * доказательство — `apps/mobile/android-permissions.txt`, запись
+ * `DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`.
+ */
+export const MANIFEST_PERMISSIONS_MERGED_BY_DEPENDENCY = new Set([
+  'ru.cmpas.shagi.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION',
+]);
+
+const MANIFEST_INTERNET_ANCHOR = '<uses-permission android:name="android.permission.INTERNET" />';
+
+/**
+ * Разрешения из `android-permissions.txt`, которых ещё нет в манифесте,
+ * сгенерированном `tauri android init` — и патч, добавляющий недостающие.
+ * `android-permissions.txt` — единственный источник истины по СОСТАВУ,
+ * манифест подгоняется под него, а не наоборот (иначе у гейта и у манифеста
+ * было бы два места, которые могут разойтись). Чистая функция — строки на
+ * входе и выходе, без файловой системы, чтобы патч можно было проверить без
+ * реальной Android-сборки.
+ */
+export function patchManifestPermissions(manifestText, allowedNames) {
+  const declared = new Set(
+    Array.from(manifestText.matchAll(/<uses-permission android:name="([^"]+)"/g)).map(
+      (match) => match[1],
+    ),
+  );
+  const missing = allowedNames.filter(
+    (name) => !declared.has(name) && !MANIFEST_PERMISSIONS_MERGED_BY_DEPENDENCY.has(name),
+  );
+  if (missing.length === 0) return { text: manifestText, added: [] };
+
+  if (!manifestText.includes(MANIFEST_INTERNET_ANCHOR)) {
+    throw new Error(
+      'AndroidManifest.xml: не нашли ожидаемую опорную строку INTERNET — ' +
+        'шаблон Tauri изменился, патч нужно проверить вручную',
+    );
+  }
+  const insertion = missing
+    .map((name) => `    <uses-permission android:name="${name}" />`)
+    .join('\n');
+  const text = manifestText.replace(
+    MANIFEST_INTERNET_ANCHOR,
+    `${MANIFEST_INTERNET_ANCHOR}\n${insertion}`,
+  );
+  return { text, added: missing };
+}
+
+/**
  * Имена разрешений из вывода `aapt dump permissions` / `aapt2 dump permissions`.
  * Обе утилиты печатают строки вида `uses-permission: name='android.permission.X'`.
  */
@@ -641,10 +693,29 @@ if (isMain) {
     console.log(`По списку: ${allowed.map((entry) => entry.name).join(', ')}`);
     if (!ok) fail(problems.join('; '));
     console.log('Разрешения совпали со списком android-permissions.txt');
+  } else if (command === 'patch-manifest') {
+    // Разрешения из allowlist, которых ещё нет в манифесте, СГЕНЕРИРОВАННОМ
+    // `tauri android init` — см. заголовок `patchManifestPermissions` выше.
+    // Запускается ПОСЛЕ генерации проекта, ДО `tauri android build`.
+    const manifestPath = flag('manifest', '');
+    const listPath = flag('list', '');
+    const allowedNames = parsePermissionList(readFileSync(listPath, 'utf8')).map(
+      (entry) => entry.name,
+    );
+    const { text, added } = patchManifestPermissions(
+      readFileSync(manifestPath, 'utf8'),
+      allowedNames,
+    );
+    if (added.length === 0) {
+      console.log('Патчить манифест не нужно — все разрешения allowlist уже объявлены.');
+    } else {
+      writeFileSync(manifestPath, text);
+      console.log(`Добавлены в манифест: ${added.join(', ')}`);
+    }
   } else {
     fail(
       `неизвестная команда «${command ?? ''}»: ` +
-        'channel | policy | expected-signer | verify | provenance | names | permissions',
+        'channel | policy | expected-signer | verify | provenance | names | permissions | patch-manifest',
     );
   }
 }
