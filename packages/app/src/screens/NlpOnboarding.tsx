@@ -20,10 +20,17 @@
  * дату, время, длительность, проект, метку и приоритет одновременно, не
  * дожидаясь, пока пользователь наберёт что-то похожее сам.
  *
- * Дальше по матрице идёт M06 Today Empty — эпик E06, не E04. Кнопка
- * «Понятно» намеренно никуда не ведёт (нет `onClick`, кроме отсутствия
- * навигации): следующий экран заведёт тот эпик, когда `ScreenId`/`SCREENS`
- * его получат (см. `screens/index.ts`).
+ * Дальше по матрице идёт M06 Today Empty — эпик E06, не E04, поэтому на
+ * момент E04 «Понятно» не вела никуда (`ScreenId`/`SCREENS` ещё не знали
+ * `'todayEmpty'`). E06 завёл экран `Today` (сам решает по данным, показать
+ * M06 Empty или M07 Normal — `screens/index.ts`), но так и не вернулся
+ * дописать переход отсюда: без этой правки КАЖДЫЙ запуск приложения
+ * (`store.ts`: начальный экран всегда `'launch'`, навигационное состояние
+ * не персистентно) необратимо упирался в этот экран — заведённые дальше
+ * Today/Inbox/Projects/Search/Plan/TaskDetail были недостижимы вообще
+ * никаким путём в интерфейсе. Найдено и исправлено при ручной проверке
+ * M26 в браузере (E11) — `controller.goTo('todayEmpty')` тем же приёмом,
+ * что уже использует `Welcome.tsx` («Начать»/«Войти»).
  */
 import { useMemo, useState, type ReactElement } from 'react';
 import { Temporal } from '@js-temporal/polyfill';
@@ -36,6 +43,8 @@ import {
   type AnyAcceptedChip,
   type NowContext,
 } from '@shagi/nlp';
+
+import { useAppController } from '../state/context.js';
 
 const DEMO_TEXT = 'Позвонить маме завтра в 15:00 #семья @важное !2 на 20 мин';
 
@@ -88,6 +97,7 @@ function chipLabel(chip: AnyAcceptedChip): string {
 }
 
 export function NlpOnboarding(): ReactElement {
+  const controller = useAppController();
   const [text, setText] = useState(DEMO_TEXT);
 
   // Зафиксировано на момент монтирования — демонстрация, не живые часы:
@@ -130,7 +140,7 @@ export function NlpOnboarding(): ReactElement {
         emptyState={<p>{t('onboarding', 'nlpOnboarding.emptyState')}</p>}
       />
 
-      <Button type="button" variant="primary">
+      <Button type="button" variant="primary" onClick={() => controller.goTo('todayEmpty')}>
         {t('onboarding', 'nlpOnboarding.continueLabel')}
       </Button>
     </div>

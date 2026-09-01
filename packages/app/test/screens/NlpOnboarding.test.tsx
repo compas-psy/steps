@@ -1,3 +1,4 @@
+import type { ReactElement } from 'react';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createUnavailablePlatform } from '@shagi/platform';
@@ -5,11 +6,16 @@ import { t } from '@shagi/i18n';
 import { describe, expect, it } from 'vitest';
 
 import type { AppHost } from '../../src/App.js';
-import { AppProvider } from '../../src/state/context.js';
+import { AppProvider, useAppState } from '../../src/state/context.js';
 import { NlpOnboarding } from '../../src/screens/NlpOnboarding.js';
 
 function testHost(): AppHost {
   return { platform: createUnavailablePlatform(), storageBackend: { kind: 'memory' } };
+}
+
+function CurrentScreenProbe(): ReactElement {
+  const { screen: current } = useAppState();
+  return <div data-testid="current-screen">{current}</div>;
 }
 
 describe('NlpOnboarding (M05)', () => {
@@ -63,21 +69,18 @@ describe('NlpOnboarding (M05)', () => {
     expect(screen.getByText(t('onboarding', 'nlpOnboarding.emptyState'))).toBeInTheDocument();
   });
 
-  it('«Понятно» не падает и не требует несуществующего экрана M06 (эпик E06, не E04)', async () => {
+  it('«Понятно» ведёт на Today (M06, эпик E06 — экран уже существует, найдено и исправлено при ручной проверке M26)', async () => {
     const user = userEvent.setup();
     render(
       <AppProvider host={testHost()}>
         <NlpOnboarding />
+        <CurrentScreenProbe />
       </AppProvider>,
     );
 
     await user.click(
       screen.getByRole('button', { name: t('onboarding', 'nlpOnboarding.continueLabel') }),
     );
-    // Экран остаётся смонтированным — клик не бросает и не требует маршрута,
-    // которого ещё нет.
-    expect(
-      screen.getByRole('button', { name: t('onboarding', 'nlpOnboarding.continueLabel') }),
-    ).toBeInTheDocument();
+    expect(screen.getByTestId('current-screen')).toHaveTextContent('todayEmpty');
   });
 });
