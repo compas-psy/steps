@@ -17,7 +17,9 @@
  * `resolveStorageBackend` (эта же функция, внутри `@shagi/app`) уже решает,
  * какой адаптер `@shagi/storage` реально создать.
  */
-import { createIndexedDbStorage, createInMemoryStorage, type StoragePort } from '@shagi/storage';
+import { createIndexedDbStorage } from '@shagi/storage/indexeddb';
+import { createInMemoryStorage } from '@shagi/storage/memory';
+import type { StoragePort } from '@shagi/storage';
 
 export type StorageBackend =
   | {
@@ -37,20 +39,23 @@ export type StorageBackend =
     };
 
 /**
- * Известный, сознательно отложенный расход: импорт из общего барреля
- * `@shagi/storage` (единая точка входа пакета — граница пакетов, CLAUDE.md)
- * тянет в веб-бандл и SQLite-адаптер (`node:sqlite`), которым веб никогда
- * не пользуется, — Vite не может это вычистить сквозь `export * from`
- * (`vite build` показывает `node:sqlite has been externalized», сборка не
- * падает, но бандл ощутимо крупнее, чем был бы с точечным импортом
- * `@shagi/storage/indexeddb`). Не чиню сейчас: перф-бюджеты — отдельный
- * эпик E21 («перф-бюджеты — assertions в CI/nightly, не аспирации»,
- * `.ultraplan/plan.md`), а на этом этапе (E04, каркас, ни одного реального
- * экрана) оптимизировать бандл заранее — проектирование под гипотетическое
- * требование раньше времени. Если/когда бандл станет реальной проблемой —
- * решение: subpath-экспорты `@shagi/storage/{indexeddb,sqlite,memory}`
- * (прецедент уже есть — `./contract`, `./search-golden`) плюс `import()`
- * по имени backend'а вместо статического импорта обоих адаптеров разом.
+ * Точечные импорты `@shagi/storage/{indexeddb,memory}` — НЕ из общего
+ * барреля пакета. Это не перф-оптимизация впрок, а обход настоящего
+ * краша: общий баррель (`@shagi/storage/index.ts`) реэкспортирует и
+ * SQLite-адаптер (`./sqlite/index.ts` → `node-sqlite-driver.ts` →
+ * `import { DatabaseSync } from 'node:sqlite'`), а ES-модуль при импорте
+ * ЛЮБОГО именованного экспорта выполняется целиком — `vite build`
+ * это молча толерирует («node:sqlite has been externalized», сборка не
+ * падает, бандл просто крупнее), но `vite dev`/`vite preview` реально
+ * ВЫПОЛНЯЮТ этот граф модулей в браузере: `import { DatabaseSync } from
+ * 'node:sqlite'` на верхнем уровне `node-sqlite-driver.ts` бросает
+ * необработанное исключение немедленно при загрузке `#root` — экран
+ * гарантированно пустой, ни один экран продукта не рендерится, никаким
+ * ScreenId. Найдено вручную (`pnpm --filter @shagi/web dev` + браузер) —
+ * ни `vite build`, ни модульные тесты этого не ловят, оба минуют реальный
+ * ESM-граф в браузере. `type StoragePort` — отдельным `import type` из
+ * главного барреля: TypeScript стирает такой импорт целиком на этапе
+ * компиляции, ни один байт `node:sqlite` в рантайм не попадает.
  */
 export function resolveStorageBackend(backend: StorageBackend): StoragePort {
   switch (backend.kind) {

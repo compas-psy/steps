@@ -9,7 +9,11 @@
   "exports": {
     ".": "./src/index.ts",
     "./contract": "./src/contract/index.ts",
-    "./search-golden": "./src/search/golden/index.ts"
+    "./search-golden": "./src/search/golden/index.ts",
+    "./indexeddb": "./src/indexeddb/index.ts",
+    "./memory": "./src/memory/index.ts",
+    "./sqlite": "./src/sqlite/index.ts",
+    "./search": "./src/search/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",

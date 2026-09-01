@@ -256,7 +256,7 @@ import {
   type SearchableProject,
   type SearchableTask,
   type SearchCandidate,
-} from '@shagi/storage';
+} from '@shagi/storage/search';
 import type { StoragePort } from '@shagi/storage';
 import { Button, EmptyState, Filter, Icon, Input, Label, ProjectRow, TaskRow } from '@shagi/ui';
 
