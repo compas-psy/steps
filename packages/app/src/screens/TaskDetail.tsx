@@ -145,6 +145,7 @@ import {
   resolveWeekend,
   skipOccurrenceCommand,
   updateChecklistItemCommand,
+  updateRecurringOccurrencePlanningCommand,
   updateTaskCommand,
   type ChecklistItem,
   type Label as LabelEntity,
@@ -756,6 +757,23 @@ function PlanningDateModal({
   );
 }
 
+// --- M26: Planning-поля, для которых recurring-задача спрашивает область
+// применения (`01§11.6`/`§18.3`) — ровно те, что попадают в
+// `RecurrenceOccurrenceTemplate` при scope="series" (`@shagi/core`
+// `recurrence-template.ts`); title/priority/... сюда не входят намеренно.
+const RECURRING_PLANNING_SCOPE_FIELDS = [
+  'availableFrom',
+  'plannedDate',
+  'plannedTime',
+  'durationMin',
+  'deadlineDate',
+  'deadlineTime',
+] as const;
+
+function touchesRecurringPlanningScope(patch: UpdateTaskPatch): boolean {
+  return RECURRING_PLANNING_SCOPE_FIELDS.some((field) => field in patch);
+}
+
 export function TaskDetail(): ReactElement | null {
   const storage = useStorage();
   const controller = useAppController();
@@ -803,6 +821,11 @@ export function TaskDetail(): ReactElement | null {
    * (`'plannedDate'`/`'deadlineTime'`/...), не общий `Toast` поверх экрана
    * (в отличие от `notice` выше, который остаётся для прочих секций). */
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  /** M26 (`01§11.6`/`§18.3`) — Planning-патч recurring-задачи, отложенный до
+   * выбора области применения (см. `savePlanningPatch` за полным
+   * обоснованием: "молчаливое применение К ЛЮБОЙ области запрещено"). `null`
+   * — диалог закрыт, коммитить нечего. */
+  const [pendingPlanningPatch, setPendingPlanningPatch] = useState<UpdateTaskPatch | null>(null);
   const [explicitReminder, setExplicitReminder] = useState<Reminder | null>(null);
   const [reminderPicker, setReminderPicker] = useState<ReminderPickerState | null>(null);
   const [reminderError, setReminderError] = useState<string | null>(null);
@@ -1027,9 +1050,29 @@ export function TaskDetail(): ReactElement | null {
    * НЕ показывает общий `Toast` — конкретное поле покажет это само в JSX
    * ниже. `not_found` (задача исчезла под ногами, крайний случай) —
    * единственная ветка, которая всё-таки использует общий `notice`, как и
-   * остальные секции экрана. */
+   * остальные секции экрана.
+   *
+   * **M26.** Для recurring-задачи (`task.seriesId !== null`) патч,
+   * трогающий хотя бы одно из `RECURRING_PLANNING_SCOPE_FIELDS`, здесь НЕ
+   * коммитится — вместо этого сохраняется в `pendingPlanningPatch`, диалог
+   * выбора области (`§18.3`: "Молчаливое применение ко всей серии запрещено"
+   * — читается как общий принцип, не только про "вся серия") открывается
+   * ниже в JSX, а реальный коммит происходит из
+   * `handleChooseRecurringPlanningScope` через
+   * `updateRecurringOccurrencePlanningCommand`. Любые уже открытые Planning-
+   * picker'ы закрываются — иначе диалог выбора области открылся бы ПОВЕРХ
+   * picker'а, из которого пришёл вызов. Для НЕ recurring задачи поведение не
+   * меняется (`01§11.6`: "One-off reschedule does not change the series
+   * rule" применимо только к recurring, здесь просто нечего разграничивать). */
   async function savePlanningPatch(patch: UpdateTaskPatch): Promise<boolean> {
     if (task === null) return false;
+    if (task.seriesId !== null && touchesRecurringPlanningScope(patch)) {
+      setAvailableFromPicker(null);
+      setPlannedPicker(null);
+      setDeadlinePicker(null);
+      setPendingPlanningPatch(patch);
+      return false;
+    }
     const result = await updateTaskCommand({ id: task.id, patch }, commandDeps());
     if (result.status === 'ok') {
       setFieldErrors({});
@@ -1042,6 +1085,30 @@ export function TaskDetail(): ReactElement | null {
     }
     showError();
     return false;
+  }
+
+  /** Коммитит `pendingPlanningPatch` с выбранной пользователем областью
+   * (`updateRecurringOccurrencePlanningCommand`, `@shagi/core`) — та же
+   * обработка результата (`ok`/`rejected`/`not_found`), что `savePlanningPatch`
+   * применяет к обычному пути. */
+  async function handleChooseRecurringPlanningScope(scope: 'occurrence' | 'series'): Promise<void> {
+    if (task === null || pendingPlanningPatch === null) return;
+    const patch = pendingPlanningPatch;
+    setPendingPlanningPatch(null);
+    const result = await updateRecurringOccurrencePlanningCommand(
+      { id: task.id, scope, patch },
+      commandDeps(),
+    );
+    if (result.status === 'ok') {
+      setFieldErrors({});
+      await refreshOk();
+      return;
+    }
+    if (result.status === 'rejected') {
+      setFieldErrors(mapIssuesToFieldErrors(result.validation.issues));
+      return;
+    }
+    showError();
   }
 
   function handleFocusDescription(): void {
@@ -2084,6 +2151,39 @@ export function TaskDetail(): ReactElement | null {
         }
       >
         <p>{t('taskDetail', 'organization.deleteSeriesConfirmBody')}</p>
+      </Modal>
+
+      {/* --- M26: выбор области применения Planning-патча recurring-задачи
+       * (`01§11.6`, `§18.3`) — открывается ВМЕСТО немедленного коммита,
+       * см. `savePlanningPatch`. Клик по варианту сразу коммитит и закрывает
+       * (тот же приём, что picker'ы приоритета/проекта/раздела этого
+       * экрана) — отдельной кнопки "Применить" нет. -------------------- */}
+      <Modal
+        open={pendingPlanningPatch !== null}
+        onClose={() => setPendingPlanningPatch(null)}
+        title={t('taskDetail', 'planning.recurringScope.title')}
+        footer={
+          <Button variant="secondary" onClick={() => setPendingPlanningPatch(null)}>
+            {t('taskDetail', 'planning.recurringScope.cancel')}
+          </Button>
+        }
+      >
+        <p>{t('taskDetail', 'planning.recurringScope.caption')}</p>
+        <ul>
+          <li>
+            <button
+              type="button"
+              onClick={() => void handleChooseRecurringPlanningScope('occurrence')}
+            >
+              {t('taskDetail', 'planning.recurringScope.occurrence')}
+            </button>
+          </li>
+          <li>
+            <button type="button" onClick={() => void handleChooseRecurringPlanningScope('series')}>
+              {t('taskDetail', 'planning.recurringScope.series')}
+            </button>
+          </li>
+        </ul>
       </Modal>
     </div>
   );

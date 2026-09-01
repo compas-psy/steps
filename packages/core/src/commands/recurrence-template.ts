@@ -1,9 +1,12 @@
+import { Temporal } from '@js-temporal/polyfill';
+
 import type {
   RecurrenceAnchor,
   RecurrenceAnchorType,
   RecurrenceTemplate,
 } from '../entities/recurrence-series.js';
 import type { RecurrenceRuleTemplate, RecurrenceRuleUnit } from '../temporal/recurrence-anchor.js';
+import { makeDurationMinutes, type DurationMinutes } from '../values.js';
 
 /**
  * Мост между структурной `RecurrenceRuleTemplate` (`temporal/recurrence-
@@ -118,3 +121,218 @@ export const RECURRENCE_SERIES_MUTABLE_FIELDS = [
   'nextOccurrenceSeq',
   'stopAfterOccurrenceSeq',
 ] as const;
+
+/**
+ * --- M26 «Recurring detail — current/series scope chooser» ------------------
+ * (`docs/spec/SPEC/12_SCREEN_STATE_MATRIX.md`, `01§11.6` "Template edit →
+ * Это повторение / Вся серия", `01§11.7` "relative deadline/reminder/
+ * available offsets from Parent").
+ *
+ * До этого пакета работ `generateNextOccurrence` (`complete-occurrence.ts`)
+ * вычисляло `plannedTime`/`durationMin`/offset-поля следующего occurrence ИЗ
+ * ТЕКУЩЕГО occurrence (`current.plannedTime` и т.д.) — то есть у "шаблона
+ * occurrence" не было отдельного хранилища, и любая правка Planning-полей
+ * ТЕКУЩЕГО occurrence automatически просачивалась в СЛЕДУЮЩИЙ через
+ * `current`. Честно реализовать "Это повторение" (правка не просачивается)
+ * отдельно от "Вся серия" (просачивается) с такой архитектурой невозможно —
+ * обеим сторонам нужен независимый источник для будущих occurrence,
+ * отдельный от того, что видит пользователь сейчас.
+ *
+ * **Решение.** `RecurrenceOccurrenceTemplate` — второй "слой" того же
+ * `RecurrenceSeries.templateJson` (уже непрозрачный `Record<string,
+ * unknown>` в схеме E01, ADR не требуется — миграции схемы хранилища нет,
+ * оба SQLite- и IndexedDB-адаптера уже сериализуют `templateJson` как
+ * есть). `toRecurrenceTemplateJson`/`parseRecurrenceRuleTemplate` читают
+ * ТОЛЬКО ключи `unit`/`interval`/`byWeekday`/`byMonthDay`/`byMonth` и
+ * игнорируют остальные — значит пять новых ключей этого шаблона можно
+ * положить В ТОТ ЖЕ объект простым `{...rruleJson, ...occurrenceJson}` без
+ * риска столкновения имён (проверено: пересечения множеств ключей нет) и
+ * без единой правки существующего кода, читающего только rrule-часть.
+ *
+ * `plannedTime`/`durationMin` хранятся буквально (плавающее время суток,
+ * `01§11.7`), `deadlineDate`/`availableFrom` — НЕ абсолютной датой (стала бы
+ * мгновенно устаревшей), а offset'ом в целых сутках от `plannedDate` —
+ * ровно то же представление, что `generateNextOccurrence` и раньше
+ * вычисляло на лету через `shiftRelativeDate`, только теперь материализовано
+ * один раз в момент записи шаблона (создание серии — `create-recurring-
+ * task.ts`, правка со scope="series" — `update-series-template.ts`
+ * `updateSeriesOccurrenceTemplateCommand`), а не пересчитывается из текущего
+ * occurrence при каждой генерации следующего.
+ */
+
+/** День-смещение `to - from` в целых сутках (`01§11.7`: "day offsets from
+ * Parent"). `Temporal.PlainDate#until` с `largestUnit:'day'` даёт целое
+ * число суток без остатка меньших единиц (даты не несут время). Вынесена
+ * сюда (была приватной функцией `complete-occurrence.ts`) — M26 понадобилась
+ * та же арифметика ещё в двух местах (`create-recurring-task.ts`,
+ * `update-recurring-occurrence-planning.ts`), дублировать её там было бы
+ * нарушением требования задания «не дублируй код вычисления офсета». */
+export function dayOffset(from: Temporal.PlainDate, to: Temporal.PlainDate): number {
+  return from.until(to, { largestUnit: 'day' }).days;
+}
+
+/**
+ * Переносит один относительный dated-field (`01§11.7`: "Series template
+ * stores relative deadline/reminder/available offsets, never stale absolute
+ * values") с одного `plannedDate` на другой смещением в днях. `null`, если
+ * либо базовая дата, либо переносимое значение отсутствуют — в этом случае
+ * поле НЕ переносится (не остаётся устаревшим абсолютным значением), тот же
+ * принцип, что `01§11.7` явно формулирует для subtasks без Planned Date
+ * родителя ("dated child values are current-occurrence-only"). Используется
+ * `complete-occurrence.ts` для subtasks/checklist-снимка (та часть M26 не
+ * трогает — см. её комментарий), сам ТОП-уровневый occurrence с M26 читает
+ * offset из шаблона (`RecurrenceOccurrenceTemplate`), не пересчитывает его
+ * этой функцией. */
+export function shiftRelativeDate(
+  oldBase: Temporal.PlainDate | null,
+  oldValue: Temporal.PlainDate | null,
+  newBase: Temporal.PlainDate,
+): Temporal.PlainDate | null {
+  if (oldBase === null || oldValue === null) {
+    return null;
+  }
+  return newBase.add({ days: dayOffset(oldBase, oldValue) });
+}
+
+/** Форма "шаблона occurrence" (M26) — что получает КАЖДЫЙ будущий occurrence
+ * серии независимо от правок конкретного, уже показанного occurrence.
+ * `deadlineOffsetDays`/`availableFromOffsetDays` — `null` означает "у
+ * occurrence нет дедлайна/доступности" (не "офсет равен нулю"). */
+export interface RecurrenceOccurrenceTemplate {
+  readonly plannedTime: Temporal.PlainTime | null;
+  readonly durationMin: DurationMinutes | null;
+  readonly deadlineOffsetDays: number | null;
+  readonly deadlineTime: Temporal.PlainTime | null;
+  readonly availableFromOffsetDays: number | null;
+}
+
+/** `RecurrenceOccurrenceTemplate` → JSON-совместимый `Record` для слияния в
+ * `templateJson`. В отличие от `toRecurrenceTemplateJson` (там поля
+ * optional — реально отсутствуют для одних `unit`, есть для других), здесь
+ * все пять ключей ВСЕГДА присутствуют (возможно со значением `null`) — форма
+ * не меняется от содержимого, поэтому "поле отсутствует" ниже в
+ * `parseRecurrenceOccurrenceTemplate` — это признак ЛЕГАСИ-серии, созданной
+ * до M26 (или тестовой фикстуры, не прошедшей через эту функцию), не
+ * обычный кейс текущей записи. `Temporal.PlainTime` сериализуется через
+ * `.toString()` (не `Date`, CLAUDE.md «Время») — ISO-подстрока вида
+ * `"09:00:00"`, симметрично читаемая `Temporal.PlainTime.from`. */
+export function toRecurrenceOccurrenceTemplateJson(
+  tpl: RecurrenceOccurrenceTemplate,
+): Record<string, unknown> {
+  return {
+    plannedTime: tpl.plannedTime === null ? null : tpl.plannedTime.toString(),
+    durationMin: tpl.durationMin,
+    deadlineOffsetDays: tpl.deadlineOffsetDays,
+    deadlineTime: tpl.deadlineTime === null ? null : tpl.deadlineTime.toString(),
+    availableFromOffsetDays: tpl.availableFromOffsetDays,
+  };
+}
+
+function parsePlainTimeField(value: unknown, fieldName: string): Temporal.PlainTime | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  if (typeof value !== 'string') {
+    throw new Error(
+      `parseRecurrenceOccurrenceTemplate: ${fieldName} обязан быть строкой Temporal.PlainTime ` +
+        `или null, получено: ${JSON.stringify(value)}.`,
+    );
+  }
+  return Temporal.PlainTime.from(value);
+}
+
+function parseOffsetDaysField(value: unknown, fieldName: string): number | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  if (typeof value !== 'number' || !Number.isInteger(value)) {
+    throw new Error(
+      `parseRecurrenceOccurrenceTemplate: ${fieldName} обязан быть целым числом или null, ` +
+        `получено: ${JSON.stringify(value)}.`,
+    );
+  }
+  return value;
+}
+
+function parseDurationField(value: unknown): DurationMinutes | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  if (typeof value !== 'number') {
+    throw new Error(
+      `parseRecurrenceOccurrenceTemplate: durationMin обязан быть числом или null, получено: ` +
+        `${JSON.stringify(value)}.`,
+    );
+  }
+  return makeDurationMinutes(value);
+}
+
+/**
+ * Обратное преобразование, тот же защитный приём "throw, не ValidationResult"
+ * (см. комментарий `parseRecurrenceRuleTemplate`) — этот JSON тоже пишет
+ * только наш командный слой. Отсутствующий ключ (легаси-серия до M26, см.
+ * `toRecurrenceOccurrenceTemplateJson`) читается как `null`, не как ошибка —
+ * `generateNextOccurrence` для такой серии получит occurrence без времени
+ * суток/длительности/дедлайна/доступности, что безопасно (просто "не
+ * заданы"), а не падение при завершении легаси-задачи.
+ */
+export function parseRecurrenceOccurrenceTemplate(
+  json: RecurrenceTemplate,
+): RecurrenceOccurrenceTemplate {
+  const deadlineOffsetDays = parseOffsetDaysField(json.deadlineOffsetDays, 'deadlineOffsetDays');
+  return {
+    plannedTime: parsePlainTimeField(json.plannedTime, 'plannedTime'),
+    durationMin: parseDurationField(json.durationMin),
+    deadlineOffsetDays,
+    // Дедлайн-время бессмысленно без дедлайн-даты (то же правило 1/2, что
+    // домен применяет к Task целиком) — если офсета нет, время игнорируется
+    // даже если по какой-то причине записано (не должно случаться при
+    // записи через `deriveRecurrenceOccurrenceTemplate`, но чтение —
+    // защитный рубеж, не доверяет форме входа сильнее необходимого).
+    deadlineTime:
+      deadlineOffsetDays === null ? null : parsePlainTimeField(json.deadlineTime, 'deadlineTime'),
+    availableFromOffsetDays: parseOffsetDaysField(
+      json.availableFromOffsetDays,
+      'availableFromOffsetDays',
+    ),
+  };
+}
+
+/** Плоский снимок Planning-полей occurrence (Task или `CreateRecurringTaskInput`
+ * — обе формы дают эти шесть значений), из которого вычисляется
+ * `RecurrenceOccurrenceTemplate` (offset'ы вместо абсолютных дат, `01§11.7`).
+ * Общая точка для `create-recurring-task.ts` (создание серии) и
+ * `update-recurring-occurrence-planning.ts` (scope="series") — задание прямо
+ * требует не дублировать эту арифметику. */
+export interface OccurrencePlanningSnapshot {
+  readonly plannedDate: Temporal.PlainDate | null;
+  readonly plannedTime: Temporal.PlainTime | null;
+  readonly durationMin: DurationMinutes | null;
+  readonly deadlineDate: Temporal.PlainDate | null;
+  readonly deadlineTime: Temporal.PlainTime | null;
+  readonly availableFrom: Temporal.PlainDate | null;
+}
+
+/** `OccurrencePlanningSnapshot` → `RecurrenceOccurrenceTemplate`. Без
+ * `plannedDate` офсеты не от чего считать — оба обнуляются (тот же принцип,
+ * что `shiftRelativeDate`: "не остаётся устаревшим абсолютным значением"). */
+export function deriveRecurrenceOccurrenceTemplate(
+  snapshot: OccurrencePlanningSnapshot,
+): RecurrenceOccurrenceTemplate {
+  const deadlineOffsetDays =
+    snapshot.plannedDate === null || snapshot.deadlineDate === null
+      ? null
+      : dayOffset(snapshot.plannedDate, snapshot.deadlineDate);
+  const availableFromOffsetDays =
+    snapshot.plannedDate === null || snapshot.availableFrom === null
+      ? null
+      : dayOffset(snapshot.plannedDate, snapshot.availableFrom);
+
+  return {
+    plannedTime: snapshot.plannedTime,
+    durationMin: snapshot.durationMin,
+    deadlineOffsetDays,
+    deadlineTime: deadlineOffsetDays === null ? null : snapshot.deadlineTime,
+    availableFromOffsetDays,
+  };
+}

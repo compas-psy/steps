@@ -14,8 +14,10 @@ import { completeTaskCommand } from './complete-task.js';
 import { createChecklistItemCommand } from './checklist-item-create.js';
 import { createTaskCommand } from './create-task.js';
 import {
+  parseRecurrenceOccurrenceTemplate,
   parseRecurrenceRuleTemplate,
   RECURRENCE_SERIES_MUTABLE_FIELDS,
+  shiftRelativeDate,
 } from './recurrence-template.js';
 import { diffChangedFields, tickClocks } from './project-section-clock.js';
 import type { CommandDomainMutation, CommandEntityWrite } from './storage-port.js';
@@ -61,32 +63,11 @@ export type CompleteOccurrenceResult =
   | { readonly status: 'rejected'; readonly validation: ValidationResult }
   | { readonly status: 'not_found' };
 
-/** День-смещение `to - from` в целых сутках (`01§11.7`: "day offsets from
- * Parent"). `Temporal.PlainDate#until` с `largestUnit:'day'` даёт целое
- * число суток без остатка меньших единиц (даты не несут время). */
-function dayOffset(from: Temporal.PlainDate, to: Temporal.PlainDate): number {
-  return from.until(to, { largestUnit: 'day' }).days;
-}
-
-/**
- * Переносит один относительный dated-field (`01§11.7`: "Series template
- * stores relative deadline/reminder/available offsets, never stale absolute
- * values") с одного `plannedDate` на другой смещением в днях. `null`, если
- * либо базовая дата, либо переносимое значение отсутствуют — в этом случае
- * поле НЕ переносится (не остаётся устаревшим абсолютным значением), тот же
- * принцип, что `01§11.7` явно формулирует для subtasks без Planned Date
- * родителя ("dated child values are current-occurrence-only").
- */
-function shiftRelativeDate(
-  oldBase: Temporal.PlainDate | null,
-  oldValue: Temporal.PlainDate | null,
-  newBase: Temporal.PlainDate,
-): Temporal.PlainDate | null {
-  if (oldBase === null || oldValue === null) {
-    return null;
-  }
-  return newBase.add({ days: dayOffset(oldBase, oldValue) });
-}
+// `dayOffset`/`shiftRelativeDate` — теперь общие (M26, `recurrence-template.ts`
+// «--- M26 ... ---»): вынесены оттуда сюда были приватными, но правка
+// Planning-полей occurrence (`update-recurring-occurrence-planning.ts`) и
+// создание серии (`create-recurring-task.ts`) тоже теперь нуждаются в той же
+// арифметике смещения — импортируются, не дублируются.
 
 interface GeneratedNextOccurrence {
   readonly task: Task;
@@ -98,6 +79,16 @@ interface GeneratedNextOccurrence {
  * items текущего occurrence неполными (`01§11.1`, `01§11.7`). Не пишет
  * ничего в `series` — вызывающая функция сама решает, обновлять ли
  * `nextOccurrenceSeq` (после успешной генерации).
+ *
+ * **M26**: `plannedTime`/`durationMin`/`deadlineDate`/`availableFrom`
+ * СЛЕДУЮЩЕГО occurrence читаются из `RecurrenceOccurrenceTemplate`,
+ * материализованного в `series.templateJson` (см. заголовочный комментарий
+ * `recurrence-template.ts`, раздел «M26»), а НЕ вычисляются из `current` —
+ * это единственное изменение, которое делает "Это повторение" (правка
+ * `current` без прикосновения к шаблону, `updateTaskCommand` напрямую)
+ * реально изолированной от "Вся серия" (правка, которая ОБНОВЛЯЕТ шаблон,
+ * `updateSeriesOccurrenceTemplateCommand`): до M26 обе ветки были
+ * неразличимы, потому что здесь читалось `current`, а не шаблон.
  */
 async function generateNextOccurrence(
   current: Task,
@@ -108,16 +99,15 @@ async function generateNextOccurrence(
 ): Promise<GeneratedNextOccurrence> {
   const nextOccurrenceId = deriveOccurrenceId(series.id, makeOccurrenceSeq(nextSeq));
 
-  const newDeadlineDate = shiftRelativeDate(
-    current.plannedDate,
-    current.deadlineDate,
-    nextPlannedDate,
-  );
-  const newAvailableFrom = shiftRelativeDate(
-    current.plannedDate,
-    current.availableFrom,
-    nextPlannedDate,
-  );
+  const occurrenceTemplate = parseRecurrenceOccurrenceTemplate(series.templateJson);
+  const newDeadlineDate =
+    occurrenceTemplate.deadlineOffsetDays === null
+      ? null
+      : nextPlannedDate.add({ days: occurrenceTemplate.deadlineOffsetDays });
+  const newAvailableFrom =
+    occurrenceTemplate.availableFromOffsetDays === null
+      ? null
+      : nextPlannedDate.add({ days: occurrenceTemplate.availableFromOffsetDays });
 
   const taskResult = await createTaskCommand(
     {
@@ -134,16 +124,17 @@ async function generateNextOccurrence(
       generatedFromOccurrenceId: current.id,
       availableFrom: newAvailableFrom,
       plannedDate: nextPlannedDate,
-      // Время суток — плавающее wall-clock, переносится неизменным (`01§11.7`).
-      plannedTime: current.plannedTime,
-      durationMin: current.durationMin,
+      // Время суток — плавающее wall-clock, из шаблона серии, не с текущего
+      // occurrence (`01§11.7`, M26 — см. комментарий функции).
+      plannedTime: occurrenceTemplate.plannedTime,
+      durationMin: occurrenceTemplate.durationMin,
       // Focus/day_bucket — ручные, разовые пометки "поставить в сегодняшнюю
       // линейку" (`01§6`/`01§7`); новый occurrence не наследует их — решение
       // этого пакета работ, задокументировано в отчёте.
       focusDate: null,
       dayBucket: 'default',
       deadlineDate: newDeadlineDate,
-      deadlineTime: newDeadlineDate !== null ? current.deadlineTime : null,
+      deadlineTime: newDeadlineDate !== null ? occurrenceTemplate.deadlineTime : null,
       source: 'recurrence',
       sourceChannel: null,
       sourceCaptureBatchId: null,

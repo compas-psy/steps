@@ -233,6 +233,14 @@ export {
   parseRecurrenceRuleTemplate,
   RECURRENCE_SERIES_MUTABLE_FIELDS,
   toRecurrenceTemplateJson,
+  // --- M26: шаблон occurrence (time-of-day/duration/deadline+available offsets) --
+  dayOffset,
+  deriveRecurrenceOccurrenceTemplate,
+  parseRecurrenceOccurrenceTemplate,
+  shiftRelativeDate,
+  toRecurrenceOccurrenceTemplateJson,
+  type OccurrencePlanningSnapshot,
+  type RecurrenceOccurrenceTemplate,
 } from './recurrence-template.js';
 
 // --- Повторы (`01§11`) — E11 ------------------------------------------------------
@@ -254,14 +262,23 @@ export {
 } from './undo-complete-occurrence.js';
 export {
   updateSeriesTemplateCommand,
+  updateSeriesOccurrenceTemplateCommand,
   type UpdateSeriesTemplateInput,
   type UpdateSeriesTemplateResult,
+  type UpdateSeriesOccurrenceTemplateInput,
 } from './update-series-template.js';
 export {
   deleteSeriesCommand,
   type DeleteSeriesInput,
   type DeleteSeriesResult,
 } from './delete-series.js';
+
+// --- «Это повторение» / «Вся серия» для Planning-полей (M26, `01§11.6`) ------
+export {
+  updateRecurringOccurrencePlanningCommand,
+  type UpdateRecurringOccurrencePlanningInput,
+  type UpdateRecurringOccurrencePlanningResult,
+} from './update-recurring-occurrence-planning.js';
 
 // --- Восстановление завершённых задач (`01§11.10`/`01§11.11`) — E12.4 ---------
 // Экран «Завершённые» (M36, `12_SCREEN_STATE_MATRIX.md`) — последний

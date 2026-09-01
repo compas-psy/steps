@@ -1104,3 +1104,108 @@ describe('TaskDetail — повторы (E11.2)', () => {
     expect(storedSeries?.stopAfterOccurrenceSeq).toBe(1n);
   });
 });
+
+describe('TaskDetail — M26: диалог выбора области применения Planning-патча recurring-задачи', () => {
+  it('Planning-патч recurring-задачи открывает диалог и НЕ коммитит немедленно', async () => {
+    const user = userEvent.setup();
+    const series = seedRecurrenceSeries();
+    const task = makeTask({ title: 'Полить цветы', seriesId: series.id, occurrenceSeq: 1n });
+    const { getStorage } = renderTaskDetail(task.id, {
+      tasks: [task],
+      recurrenceSeries: [series],
+    });
+
+    await user.click(
+      await screen.findByRole('button', { name: t('taskDetail', 'planning.availableFrom.set') }),
+    );
+    const todayCell = await screen.findByRole('gridcell', { current: 'date' });
+    await user.click(todayCell);
+
+    await screen.findByRole('dialog', { name: t('taskDetail', 'planning.recurringScope.title') });
+
+    // Патч ещё НЕ применён — ждёт выбора области.
+    const stored = await getStorage().tasks.findById(task.id);
+    expect(stored?.availableFrom).toBeNull();
+  });
+
+  it('для НЕ recurring задачи диалог не появляется — Planning-патч коммитится напрямую (регрессия M24/M25)', async () => {
+    const user = userEvent.setup();
+    const task = makeTask({ title: 'Обычная задача' });
+    const { getStorage } = renderTaskDetail(task.id, { tasks: [task] });
+
+    await user.click(
+      await screen.findByRole('button', { name: t('taskDetail', 'planning.availableFrom.set') }),
+    );
+    const todayCell = await screen.findByRole('gridcell', { current: 'date' });
+    await user.click(todayCell);
+
+    expect(
+      screen.queryByRole('dialog', { name: t('taskDetail', 'planning.recurringScope.title') }),
+    ).not.toBeInTheDocument();
+    await waitFor(async () => {
+      const stored = await getStorage().tasks.findById(task.id);
+      expect(stored?.availableFrom?.equals(Temporal.Now.plainDateISO())).toBe(true);
+    });
+  });
+
+  it('«Это повторение» коммитит текущий occurrence и НЕ трогает серию', async () => {
+    const user = userEvent.setup();
+    const series = seedRecurrenceSeries();
+    const task = makeTask({ title: 'Полить цветы', seriesId: series.id, occurrenceSeq: 1n });
+    const { getStorage } = renderTaskDetail(task.id, {
+      tasks: [task],
+      recurrenceSeries: [series],
+    });
+
+    await user.click(
+      await screen.findByRole('button', { name: t('taskDetail', 'planning.availableFrom.set') }),
+    );
+    await user.click(await screen.findByRole('gridcell', { current: 'date' }));
+    const dialog = await screen.findByRole('dialog', {
+      name: t('taskDetail', 'planning.recurringScope.title'),
+    });
+    await user.click(
+      within(dialog).getByRole('button', {
+        name: t('taskDetail', 'planning.recurringScope.occurrence'),
+      }),
+    );
+
+    await waitFor(async () => {
+      const stored = await getStorage().tasks.findById(task.id);
+      expect(stored?.availableFrom?.equals(Temporal.Now.plainDateISO())).toBe(true);
+    });
+    const storedSeries = await getStorage().recurrenceSeries.findById(series.id);
+    expect(storedSeries?.templateRevision).toBe(1n);
+    expect(storedSeries?.templateJson).toEqual(series.templateJson);
+  });
+
+  it('«Вся серия» коммитит текущий occurrence И записывает новый шаблон в серию', async () => {
+    const user = userEvent.setup();
+    const series = seedRecurrenceSeries();
+    const task = makeTask({ title: 'Полить цветы', seriesId: series.id, occurrenceSeq: 1n });
+    const { getStorage } = renderTaskDetail(task.id, {
+      tasks: [task],
+      recurrenceSeries: [series],
+    });
+
+    await user.click(
+      await screen.findByRole('button', { name: t('taskDetail', 'planning.availableFrom.set') }),
+    );
+    await user.click(await screen.findByRole('gridcell', { current: 'date' }));
+    const dialog = await screen.findByRole('dialog', {
+      name: t('taskDetail', 'planning.recurringScope.title'),
+    });
+    await user.click(
+      within(dialog).getByRole('button', {
+        name: t('taskDetail', 'planning.recurringScope.series'),
+      }),
+    );
+
+    await waitFor(async () => {
+      const stored = await getStorage().tasks.findById(task.id);
+      expect(stored?.availableFrom?.equals(Temporal.Now.plainDateISO())).toBe(true);
+    });
+    const storedSeries = await getStorage().recurrenceSeries.findById(series.id);
+    expect(storedSeries?.templateRevision).toBe(2n);
+  });
+});

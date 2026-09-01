@@ -18,7 +18,9 @@ import {
 import { createTaskCommand } from './create-task.js';
 import {
   buildRecurrenceAnchor,
+  deriveRecurrenceOccurrenceTemplate,
   RECURRENCE_SERIES_MUTABLE_FIELDS,
+  toRecurrenceOccurrenceTemplateJson,
   toRecurrenceTemplateJson,
 } from './recurrence-template.js';
 import { diffChangedFields, tickClocks } from './project-section-clock.js';
@@ -165,10 +167,29 @@ export async function createRecurringTaskCommand(
   const hlc = { physical: deps.now, logical: 0, deviceId: deps.deviceId };
   const anchor = buildRecurrenceAnchor(input.anchorType, input.rule);
 
+  // M26: шаблон occurrence (`RecurrenceOccurrenceTemplate`) считается из ТЕХ
+  // ЖЕ полей, что уже материализует первый occurrence ниже, и сливается в
+  // тот же `templateJson`-объект, что и rrule-часть (см. заголовочный
+  // комментарий «M26» в `recurrence-template.ts` — пересечения ключей нет).
+  // Без этого следующий occurrence (`generateNextOccurrence`,
+  // `complete-occurrence.ts`) получил бы `plannedTime`/`durationMin`/офсеты
+  // `null` даже для НОВОЙ, только что заполненной формы создания серии.
+  const occurrenceTemplate = deriveRecurrenceOccurrenceTemplate({
+    plannedDate,
+    plannedTime,
+    durationMin,
+    deadlineDate,
+    deadlineTime,
+    availableFrom,
+  });
+
   const series: RecurrenceSeries = {
     id: seriesId,
     ...anchor,
-    templateJson: toRecurrenceTemplateJson(input.rule),
+    templateJson: {
+      ...toRecurrenceTemplateJson(input.rule),
+      ...toRecurrenceOccurrenceTemplateJson(occurrenceTemplate),
+    },
     active: true,
     // occurrence 1 уже материализуется этим же вызовом — "следующий, ещё не
     // сгенерированный" occurrence начинается с 2 (решение этого пакета

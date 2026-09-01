@@ -4,6 +4,7 @@ import {
   completeOccurrenceCommand,
   skipOccurrenceCommand,
 } from '../../src/commands/complete-occurrence.js';
+import { updateRecurringOccurrencePlanningCommand } from '../../src/commands/update-recurring-occurrence-planning.js';
 import type { TaskCommandDeps } from '../../src/commands/types.js';
 import type { RecurrenceSeries } from '../../src/entities/recurrence-series.js';
 import {
@@ -11,7 +12,7 @@ import {
   deriveOccurrenceId,
   deriveSubtaskId,
 } from '../../src/identity/index.js';
-import { makeOccurrenceSeq } from '../../src/values.js';
+import { makeDurationMinutes, makeOccurrenceSeq } from '../../src/values.js';
 import { DEVICE_ID, NOW, existingTask, d, t, uuid } from './fixtures.js';
 import { InMemoryCommandStoragePort } from './in-memory-storage-port.js';
 
@@ -24,13 +25,32 @@ function deps(
 
 const SERIES_ID = uuid('5e51e5000001');
 
+/**
+ * M26: `templateJson` теперь несёт и rrule-ключи, и `RecurrenceOccurrenceTemplate`
+ * (`recurrence-template.ts`, «M26») — `generateNextOccurrence` читает
+ * `plannedTime`/`durationMin`/офсеты ИЗ ЭТОГО объекта, а не с `current`
+ * (`currentOccurrence()` ниже). Фикстура несёт `plannedTime:'09:00:00'`,
+ * согласованный с `currentOccurrence().plannedTime` — так уже существующие
+ * тесты ниже ("время суток переносится неизменным") остаются верны и под
+ * новой архитектурой; там, где тест намеренно проверяет ИЗОЛЯЦИЮ шаблона от
+ * текущего occurrence (см. `describe` "«Это повторение» ...` ниже), фикстура
+ * переопределяется через `overrides`.
+ */
 function dailyScheduledSeries(overrides: Partial<RecurrenceSeries> = {}): RecurrenceSeries {
   const base: RecurrenceSeries = {
     id: SERIES_ID,
     anchorType: 'scheduled',
     rrule: JSON.stringify({ unit: 'day', interval: 1 }),
     completionIntervalJson: null,
-    templateJson: { unit: 'day', interval: 1 },
+    templateJson: {
+      unit: 'day',
+      interval: 1,
+      plannedTime: '09:00:00',
+      durationMin: null,
+      deadlineOffsetDays: null,
+      deadlineTime: null,
+      availableFromOffsetDays: null,
+    },
     active: true,
     nextOccurrenceSeq: makeOccurrenceSeq(2n),
     stopAfterOccurrenceSeq: null,
@@ -262,5 +282,105 @@ describe('skipOccurrenceCommand', () => {
     if (result.status !== 'ok') return;
     expect(result.task.completionKind).toBe('skipped');
     expect(result.generatedTask).not.toBeNull();
+  });
+});
+
+describe('M26 — «Это повторение» изолирует правку от следующего occurrence, «Вся серия» — нет (§11.6)', () => {
+  /** САМЫЙ ВАЖНЫЙ тест этого пакета работ (M26): доказывает, что
+   * `generateNextOccurrence` реально читает шаблон серии, а не `current` —
+   * без правки `complete-occurrence.ts` этот тест ловит именно ту ошибку,
+   * которую задание просило не пропустить. */
+  it('scope="occurrence": следующий occurrence несёт СТАРОЕ plannedTime из шаблона, не патч текущего', async () => {
+    const storage = new InMemoryCommandStoragePort();
+    const current = currentOccurrence(); // plannedTime = 09:00 (см. фикстуру)
+    storage.seedTask(current);
+    storage.seedRecurrenceSeries(dailyScheduledSeries());
+
+    const patchResult = await updateRecurringOccurrencePlanningCommand(
+      { id: current.id, scope: 'occurrence', patch: { plannedTime: t('14:00') } },
+      deps(storage),
+    );
+    expect(patchResult.status).toBe('ok');
+    // Патч применился к ТЕКУЩЕМУ occurrence — это одинаково для обоих scope.
+    const patched = await storage.tasks.findById(current.id);
+    expect(patched?.plannedTime?.toString()).toBe('14:00:00');
+    // Шаблон серии НЕ тронут — scope="occurrence" не пишет в RecurrenceSeries.
+    expect(storage.findRecurrenceSeries(SERIES_ID)?.templateJson).toEqual(
+      dailyScheduledSeries().templateJson,
+    );
+
+    const result = await completeOccurrenceCommand(
+      { id: current.id, occurrenceLocalDate: d('2026-08-31') },
+      deps(storage),
+    );
+    expect(result.status).toBe('ok');
+    if (result.status !== 'ok') return;
+
+    // Следующий occurrence несёт СТАРОЕ время (09:00, из шаблона), НЕ 14:00.
+    expect(result.generatedTask?.plannedTime?.toString()).toBe('09:00:00');
+  });
+
+  it('scope="series": следующий occurrence несёт НОВОЕ plannedTime — правка просочилась в шаблон', async () => {
+    const storage = new InMemoryCommandStoragePort();
+    const current = currentOccurrence(); // plannedTime = 09:00
+    storage.seedTask(current);
+    storage.seedRecurrenceSeries(dailyScheduledSeries());
+
+    const patchResult = await updateRecurringOccurrencePlanningCommand(
+      { id: current.id, scope: 'series', patch: { plannedTime: t('14:00') } },
+      deps(storage),
+    );
+    expect(patchResult.status).toBe('ok');
+    // Шаблон серии обновился — templateRevision вырос, rrule-ключи целы.
+    const seriesAfterPatch = storage.findRecurrenceSeries(SERIES_ID);
+    expect(seriesAfterPatch?.templateRevision).toBe(2n);
+    expect(seriesAfterPatch?.templateJson.unit).toBe('day');
+    expect(seriesAfterPatch?.templateJson.plannedTime).toBe('14:00:00');
+
+    const result = await completeOccurrenceCommand(
+      { id: current.id, occurrenceLocalDate: d('2026-08-31') },
+      deps(storage),
+    );
+    expect(result.status).toBe('ok');
+    if (result.status !== 'ok') return;
+
+    // Следующий occurrence несёт НОВОЕ время — «Вся серия» просачивается вперёд.
+    expect(result.generatedTask?.plannedTime?.toString()).toBe('14:00:00');
+  });
+
+  it('scope="series" переносит и durationMin/офсеты дедлайна+доступности, не только plannedTime', async () => {
+    const storage = new InMemoryCommandStoragePort();
+    const current = currentOccurrence();
+    storage.seedTask(current);
+    storage.seedRecurrenceSeries(dailyScheduledSeries());
+
+    await updateRecurringOccurrencePlanningCommand(
+      {
+        id: current.id,
+        scope: 'series',
+        patch: {
+          durationMin: makeDurationMinutes(45),
+          deadlineDate: d('2026-09-02'),
+          availableFrom: d('2026-08-30'),
+        },
+      },
+      deps(storage),
+    );
+
+    const result = await completeOccurrenceCommand(
+      { id: current.id, occurrenceLocalDate: d('2026-08-31') },
+      deps(storage),
+    );
+    expect(result.status).toBe('ok');
+    if (result.status !== 'ok') return;
+
+    const generated = result.generatedTask;
+    expect(generated?.durationMin).toBe(45);
+    // plannedDate текущего occurrence — 2026-08-31, deadlineDate патча —
+    // 2026-09-02 (offset +2 дня), availableFrom — 2026-08-30 (offset -1 день).
+    // Следующий occurrence генерируется на 2026-09-01 (scheduled, +1 день).
+    expect(generated?.plannedDate?.toString()).toBe('2026-09-01');
+    expect(generated?.deadlineDate?.toString()).toBe('2026-09-03');
+    expect(generated?.availableFrom?.toString()).toBe('2026-08-31');
   });
 });

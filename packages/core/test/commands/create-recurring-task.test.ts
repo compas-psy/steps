@@ -4,10 +4,11 @@ import {
   createRecurringTaskCommand,
   type CreateRecurringTaskInput,
 } from '../../src/commands/create-recurring-task.js';
+import { parseRecurrenceOccurrenceTemplate } from '../../src/commands/recurrence-template.js';
 import { deriveOccurrenceId } from '../../src/identity/index.js';
-import { makeOccurrenceSeq } from '../../src/values.js';
+import { makeDurationMinutes, makeOccurrenceSeq } from '../../src/values.js';
 import type { TaskCommandDeps } from '../../src/commands/types.js';
-import { DEVICE_ID, NOW, OWNER_SCOPE, d, uuid } from './fixtures.js';
+import { DEVICE_ID, NOW, OWNER_SCOPE, d, t, uuid } from './fixtures.js';
 import { InMemoryCommandStoragePort } from './in-memory-storage-port.js';
 
 function deps(
@@ -116,6 +117,63 @@ describe('createRecurringTaskCommand — успешный путь', () => {
 
     expect(resultA.series.id).toBe(resultB.series.id);
     expect(resultA.task.id).toBe(resultB.task.id);
+  });
+});
+
+describe('createRecurringTaskCommand — occurrence-шаблон (M26)', () => {
+  it('несёт plannedTime/durationMin/офсеты дедлайна и доступности, вычисленные от plannedDate', async () => {
+    const storage = new InMemoryCommandStoragePort();
+
+    const result = await createRecurringTaskCommand(
+      baseInput({
+        plannedDate: d('2026-08-31'),
+        plannedTime: t('09:00'),
+        durationMin: makeDurationMinutes(30),
+        deadlineDate: d('2026-09-02'),
+        deadlineTime: t('18:00'),
+        availableFrom: d('2026-08-29'),
+      }),
+      deps(storage),
+    );
+    if (result.status !== 'ok') throw new Error('ожидался успех');
+
+    const tpl = parseRecurrenceOccurrenceTemplate(result.series.templateJson);
+    expect(tpl.plannedTime?.toString()).toBe('09:00:00');
+    expect(tpl.durationMin).toBe(30);
+    expect(tpl.deadlineOffsetDays).toBe(2);
+    expect(tpl.deadlineTime?.toString()).toBe('18:00:00');
+    expect(tpl.availableFromOffsetDays).toBe(-2);
+  });
+
+  it('rrule-ключи (unit/interval/...) остаются читаемыми в том же templateJson', async () => {
+    const storage = new InMemoryCommandStoragePort();
+
+    const result = await createRecurringTaskCommand(
+      baseInput({ rule: { unit: 'week', interval: 1, byWeekday: [1, 2] } }),
+      deps(storage),
+    );
+    if (result.status !== 'ok') throw new Error('ожидался успех');
+
+    expect(result.series.templateJson.unit).toBe('week');
+    expect(result.series.templateJson.byWeekday).toEqual([1, 2]);
+  });
+
+  it('без plannedDate — офсеты null, а не устаревшее абсолютное значение', async () => {
+    const storage = new InMemoryCommandStoragePort();
+
+    const result = await createRecurringTaskCommand(
+      baseInput({
+        plannedDate: null,
+        deadlineDate: d('2026-09-02'),
+        availableFrom: d('2026-08-29'),
+      }),
+      deps(storage),
+    );
+    if (result.status !== 'ok') throw new Error('ожидался успех');
+
+    const tpl = parseRecurrenceOccurrenceTemplate(result.series.templateJson);
+    expect(tpl.deadlineOffsetDays).toBeNull();
+    expect(tpl.availableFromOffsetDays).toBeNull();
   });
 });
 

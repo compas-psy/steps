@@ -306,7 +306,11 @@ describe('QuickAdd — recurrence (эпик E11.2)', () => {
       // заголовок `QuickAdd.tsx`, п.4): NLP-грамматика не даёт пользователю
       // выбрать scheduled/completion.
       expect(series?.anchorType).toBe('scheduled');
-      expect(series?.templateJson).toEqual({ unit: 'day', interval: 1 });
+      // `templateJson` несёт и rrule-ключи (проверяемые здесь), и occurrence-
+      // шаблон M26 (`plannedTime`/`durationMin`/офсеты — не тема этого
+      // теста, все `null`: QuickAdd не задаёт ни одно из этих полей) — тот
+      // же объект, `objectContaining` проверяет свою половину, не всю форму.
+      expect(series?.templateJson).toEqual(expect.objectContaining({ unit: 'day', interval: 1 }));
       expect(series?.active).toBe(true);
     });
   });
@@ -326,7 +330,11 @@ describe('QuickAdd — recurrence (эпик E11.2)', () => {
       expect(task.title).toBe('Планёрка');
 
       const series = await getStorage().recurrenceSeries.findById(task.seriesId!);
-      expect(series?.templateJson).toEqual({ unit: 'week', interval: 1, byWeekday: [1] });
+      // M26: `objectContaining` — см. комментарий теста выше про occurrence-
+      // часть шаблона.
+      expect(series?.templateJson).toEqual(
+        expect.objectContaining({ unit: 'week', interval: 1, byWeekday: [1] }),
+      );
     });
   });
 });
