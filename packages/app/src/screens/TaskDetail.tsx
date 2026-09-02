@@ -181,6 +181,7 @@ import {
   DeadlineChip,
   Divider,
   DurationChip,
+  Icon,
   IconButton,
   Input,
   Label,
@@ -846,6 +847,24 @@ export function TaskDetail(): ReactElement | null {
   const [allLabels, setAllLabels] = useState<readonly LabelEntity[]>([]);
   const [activeLabelIds, setActiveLabelIds] = useState<ReadonlySet<Uuid>>(new Set());
 
+  /** Последняя ещё не завершённая правка поля (заголовок/описание/
+   * длительность). Нужна кнопке «Готово»: правка коммитится на `blur`, а
+   * клик по кнопке вызывает blur и `closeTask()` практически одновременно —
+   * без ожидания экран Today успевал перемонтироваться и запросить
+   * хранилище ДО того, как запись долетала, и показывал старое название.
+   * Поймано живым прогоном: в базе уже «Отчёт переименован», на Today ещё
+   * «Отправить квартальный отчёт». */
+  const pendingEdit = useRef<Promise<unknown> | null>(null);
+  /** Что уже отправлено в хранилище. Нужно, чтобы `blur` и «Готово» не
+   * записали одну и ту же правку дважды: к моменту клика по кнопке
+   * состояние `task` может ещё не успеть обновиться результатом
+   * blur-коммита, и сравнение «черновик ≠ task.title» дало бы ложное
+   * «есть что сохранить». */
+  const committed = useRef<{ title: string | null; description: string | null }>({
+    title: null,
+    description: null,
+  });
+
   const [titleDraft, setTitleDraft] = useState('');
   const [descriptionDraft, setDescriptionDraft] = useState('');
   const [notice, setNotice] = useState<Notice | null>(null);
@@ -1044,23 +1063,56 @@ export function TaskDetail(): ReactElement | null {
 
   // --- Заголовок/контекст ---------------------------------------------------
 
-  function handleTitleBlur(): void {
+  /** Единственное место, которое пишет название. Возвращает промис записи
+   * либо `null`, если писать нечего. Вызывается и с `blur`, и с «Готово» —
+   * второй путь нужен потому, что полагаться на `blur` нельзя: он может не
+   * случиться вовсе (снятие фокуса программно, закрытие с клавиатуры), а
+   * потерянная правка — худшее, что может сделать редактор. */
+  function commitTitle(): Promise<unknown> | null {
     const trimmed = titleDraft;
-    if (task === null || trimmed === task.title) return;
-    void runAndRefresh(
+    if (task === null) return null;
+    if (trimmed === task.title || trimmed === committed.current.title) return null;
+    committed.current.title = trimmed;
+    const promise = runAndRefresh(
       updateTaskCommand({ id: task.id, patch: { title: trimmed } }, commandDeps()),
       refreshOk,
       showError,
     );
+    pendingEdit.current = promise;
+    return promise;
   }
 
-  function handleDescriptionBlur(): void {
-    if (task === null || descriptionDraft === task.description) return;
-    void runAndRefresh(
+  function handleTitleBlur(): void {
+    void commitTitle();
+  }
+
+  /** То же самое для описания — см. `commitTitle`. */
+  function commitDescription(): Promise<unknown> | null {
+    if (task === null) return null;
+    if (descriptionDraft === task.description || descriptionDraft === committed.current.description)
+      return null;
+    committed.current.description = descriptionDraft;
+    const promise = runAndRefresh(
       updateTaskCommand({ id: task.id, patch: { description: descriptionDraft } }, commandDeps()),
       refreshOk,
       showError,
     );
+    pendingEdit.current = promise;
+    return promise;
+  }
+
+  function handleDescriptionBlur(): void {
+    void commitDescription();
+  }
+
+  /** Закрытие карточки: сначала дописать несохранённое, потом уходить.
+   * Найдено живым прогоном — правка названия и клик по «Готово» происходят
+   * почти одновременно, и экран, на который мы возвращаемся, успевал
+   * прочитать хранилище ДО записи: в базе уже новое название, на Today ещё
+   * старое. */
+  async function closeAfterPendingEdits(): Promise<void> {
+    await Promise.all([pendingEdit.current, commitTitle(), commitDescription()]);
+    controller.closeTask();
   }
 
   // `completeOccurrenceCommand` (эпик E11.2) — см. тот же комментарий в
@@ -1628,6 +1680,21 @@ export function TaskDetail(): ReactElement | null {
       )}
 
       {/* --- 1. Заголовок/контекст --------------------------------------- */}
+      {/* Верхняя полоса по макету `[R1][M][24]`: стрелка возврата слева,
+       * «Готово» справа. Оба закрывают карточку — правки сохраняются сами
+       * (см. заголовок файла), отменять нечего, и второй элемент не прячет
+       * другого поведения: стрелка — привычный жест, «Готово» — явный. */}
+      <div className="shagi-task-detail-screen__topbar">
+        <IconButton
+          icon="back"
+          label={t('taskDetail', 'backArrow.label')}
+          onClick={() => void closeAfterPendingEdits()}
+        />
+        <Button variant="ghost" onClick={() => void closeAfterPendingEdits()}>
+          {t('taskDetail', 'back.label')}
+        </Button>
+      </div>
+
       <div className="shagi-task-detail-screen__header">
         <Checkbox
           aria-label={t('taskDetail', 'completeCheckbox.label', { title: task.title })}
@@ -1643,11 +1710,20 @@ export function TaskDetail(): ReactElement | null {
             value={titleDraft}
             onChange={(event) => setTitleDraft(event.target.value)}
             onBlur={handleTitleBlur}
+            onKeyDown={(event) => {
+              // Enter применяет правку. Раньше не применял вовсе: сохранение
+              // висело только на `blur`, и человек, нажавший Enter (самый
+              // очевидный жест «готово» в однострочном поле), не получал
+              // ничего. Не отдельный путь сохранения, а тот же самый:
+              // снимаем фокус, и коммит идёт через `handleTitleBlur` —
+              // двух реализаций одного действия не появляется.
+              if (event.key === 'Enter') {
+                event.preventDefault();
+                event.currentTarget.blur();
+              }
+            }}
           />
         </div>
-        <Button variant="ghost" onClick={() => controller.closeTask()}>
-          {t('taskDetail', 'back.label')}
-        </Button>
       </div>
       <p
         className="shagi-task-detail-screen__breadcrumb"
@@ -1661,16 +1737,34 @@ export function TaskDetail(): ReactElement | null {
        * picker, что раздел Planning ниже) — заглушка `planning.comingSoon`/
        * `quickActions.addDateUnavailable` эпика E08.2 заменена реальной
        * функциональностью. */}
+      {/* Вертикальный список «иконка + подпись», а не ряд кнопок-пилюль:
+       * так их рисует макет `[R1][M][24]`. Кнопками они остаются по сути
+       * (нажимаются, попадают в порядок обхода) — меняется только вид. */}
       <div className="shagi-task-detail-screen__quick-actions">
-        <Button variant="secondary" onClick={openPlannedPicker}>
-          {t('taskDetail', 'quickActions.addDate')}
-        </Button>
-        <Button variant="secondary" onClick={() => setPriorityPickerOpen(true)}>
-          {t('taskDetail', 'quickActions.priority')}
-        </Button>
-        <Button variant="secondary" onClick={handleFocusDescription}>
-          {t('taskDetail', 'quickActions.addNote')}
-        </Button>
+        <button
+          type="button"
+          className="shagi-task-detail-screen__quick-action"
+          onClick={openPlannedPicker}
+        >
+          <Icon name="calendar" size={18} />
+          <span>{t('taskDetail', 'quickActions.addDate')}</span>
+        </button>
+        <button
+          type="button"
+          className="shagi-task-detail-screen__quick-action"
+          onClick={() => setPriorityPickerOpen(true)}
+        >
+          <Icon name="star" size={18} />
+          <span>{t('taskDetail', 'quickActions.priority')}</span>
+        </button>
+        <button
+          type="button"
+          className="shagi-task-detail-screen__quick-action"
+          onClick={handleFocusDescription}
+        >
+          <Icon name="list" size={18} />
+          <span>{t('taskDetail', 'quickActions.addNote')}</span>
+        </button>
       </div>
 
       {/* --- 2. Description ------------------------------------------------ */}

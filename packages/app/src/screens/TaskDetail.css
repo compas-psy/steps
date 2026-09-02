@@ -35,9 +35,20 @@
   padding: var(--space-5) var(--space-5) var(--space-10);
 }
 
-.shagi-task-detail-screen__header {
+/* Верхняя полоса: возврат слева, «Готово» справа (макет `[R1][M][24]`). */
+.shagi-task-detail-screen__topbar {
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  margin: calc(var(--space-2) * -1) calc(var(--space-2) * -1) 0;
+}
+
+/* Чекбокс и название — в одну строку, но по ВЕРХНЕМУ краю: длинное
+ * название переносится на две строки, и центрированный чекбокс уезжал бы к
+ * середине абзаца вместо первой строки (макет: `align-items:flex-start`). */
+.shagi-task-detail-screen__header {
+  display: flex;
+  align-items: flex-start;
   gap: var(--space-3);
 }
 
@@ -46,16 +57,71 @@
   min-width: 0;
 }
 
-.shagi-task-detail-screen__breadcrumb {
-  font-size: var(--text-small-meta);
-  color: var(--muted-foreground);
-  margin: calc(var(--space-4) * -1) 0 0;
+/* Название — заголовок, а не поле формы: в макете это просто крупный
+ * текст. Рамку и подложку рисует ОБЁРТКА `Input` (`@shagi/ui`), поэтому
+ * целимся в неё через собственный контейнер (специфичность 0-2-0 против
+ * 0-1-0 у самого компонента). В покое поле неотличимо от заголовка, при
+ * фокусе рамка возвращается — видно, что текст редактируемый. */
+.shagi-task-detail-screen__title-input .shagi-input {
+  padding: 0;
+  border-color: transparent;
+  background: transparent;
 }
 
+.shagi-task-detail-screen__title-input .shagi-input:has(.shagi-input__field:focus-visible) {
+  padding: var(--space-2);
+  border-color: var(--border);
+  background: var(--card);
+}
+
+.shagi-task-detail-screen__title-field.shagi-task-detail-screen__title-field {
+  font-size: var(--text-section-title);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-section-title);
+}
+
+/* Контекст задачи — чип, как в макете, а не строчка мелким серым. */
+.shagi-task-detail-screen__breadcrumb {
+  align-self: flex-start;
+  margin: calc(var(--space-3) * -1) 0 0;
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-full);
+  background: var(--muted);
+  color: var(--muted-foreground);
+  font-size: var(--text-caption);
+  font-weight: var(--fw-semibold);
+}
+
+/* Быстрые действия — вертикальный список «иконка + подпись» (макет), не
+ * ряд пилюль. Кнопки остаются кнопками: сброшен только браузерный хром. */
 .shagi-task-detail-screen__quick-actions {
   display: flex;
-  gap: var(--space-2);
-  flex-wrap: wrap;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border);
+}
+
+.shagi-task-detail-screen__quick-action {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: var(--touch-target-min);
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--muted-foreground);
+  font-family: var(--font-sans);
+  font-size: var(--text-body-primary);
+  font-weight: var(--fw-medium);
+  text-align: left;
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .shagi-task-detail-screen__quick-action:hover {
+    color: var(--foreground);
+  }
 }
 
 .shagi-task-detail-screen > section {

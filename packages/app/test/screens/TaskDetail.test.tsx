@@ -243,6 +243,42 @@ describe('TaskDetail — заголовок/контекст', () => {
     });
   });
 
+  it('Enter в поле названия применяет правку, а не только blur', async () => {
+    const user = userEvent.setup();
+    const task = makeTask({ title: 'Старое название' });
+    const { getStorage } = renderTaskDetail(task.id, { tasks: [task] });
+
+    const titleInput = await screen.findByLabelText(t('taskDetail', 'title.label'));
+    fireEvent.change(titleInput, { target: { value: 'Название по Enter' } });
+    await user.type(titleInput, '{Enter}');
+
+    // Enter — самый очевидный жест «готово» в однострочном поле. Раньше он
+    // не делал ничего: сохранение висело только на blur.
+    await waitFor(async () => {
+      const stored = await getStorage().tasks.findById(task.id);
+      expect(stored?.title).toBe('Название по Enter');
+    });
+  });
+
+  it('«Готово» не уходит с экрана, пока правка не записана', async () => {
+    const user = userEvent.setup();
+    const task = makeTask({ title: 'Старое название' });
+    const { getStorage, controller } = renderTaskDetail(task.id, { tasks: [task] });
+
+    const titleInput = await screen.findByLabelText(t('taskDetail', 'title.label'));
+    fireEvent.change(titleInput, { target: { value: 'Название перед закрытием' } });
+    await user.click(screen.getByRole('button', { name: t('taskDetail', 'back.label') }));
+
+    // Гонка, найденная живым прогоном: клик по «Готово» вызывает blur и
+    // закрытие практически одновременно, и экран, на который мы
+    // возвращаемся, успевал прочитать хранилище ДО записи — на Today
+    // оставалось старое название. К моменту, когда экран действительно
+    // сменился, запись обязана быть завершена.
+    await waitFor(() => expect(controller.getState().screen).toBe('todayEmpty'));
+    const stored = await getStorage().tasks.findById(task.id);
+    expect(stored?.title).toBe('Название перед закрытием');
+  });
+
   it('чекбокс завершения вызывает completeTaskCommand', async () => {
     const user = userEvent.setup();
     const task = makeTask({ title: 'Завершить меня' });
