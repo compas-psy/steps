@@ -126,6 +126,7 @@ import {
 } from '@shagi/ui';
 
 import { useAppController, useStorage } from '../state/context.js';
+import './Projects.css';
 
 /** См. заголовок файла, блок «Свотчи цвета» — копия палитры `MarkerColor`,
  * не импорт (публичная точка входа `@shagi/ui` не экспортирует значения). */
@@ -308,8 +309,8 @@ export function Projects(): ReactElement {
   const isNonEmpty = projects !== null && projects.length > 0;
 
   return (
-    <div>
-      <h1>{t('projects', 'pageTitle')}</h1>
+    <div className="shagi-projects">
+      <h1 className="shagi-projects__title">{t('projects', 'pageTitle')}</h1>
 
       {toastMessage !== null && (
         <Toast
@@ -350,11 +351,11 @@ export function Projects(): ReactElement {
       {/* Кнопка «Создать проект» видима и в непустом состоянии тоже, не
        * только в Empty (задание пакета работ) — обычная кнопка над списком. */}
       {isNonEmpty && projects !== null && (
-        <>
+        <div className="shagi-projects__section">
           <Button variant="primary" onClick={openForm}>
             {t('projects', 'actions.create')}
           </Button>
-          <ul aria-label={t('projects', 'list.ariaLabel')}>
+          <ul className="shagi-projects__list" aria-label={t('projects', 'list.ariaLabel')}>
             {projects.map((project) => (
               <ProjectRow
                 key={project.id}
@@ -364,33 +365,44 @@ export function Projects(): ReactElement {
               />
             ))}
           </ul>
-        </>
+        </div>
       )}
 
       <Modal open={formOpen} onClose={closeForm} title={t('projects', 'form.title')}>
         <form
+          className="shagi-projects__form"
           onSubmit={(event) => {
             void handleSubmit(event);
           }}
           noValidate
         >
-          <label htmlFor={titleFieldId}>{t('projects', 'form.titleLabel')}</label>
-          <Input
-            id={titleFieldId}
-            value={form.title}
-            onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))}
-          />
+          <div className="shagi-projects__field">
+            <label htmlFor={titleFieldId}>{t('projects', 'form.titleLabel')}</label>
+            <Input
+              id={titleFieldId}
+              value={form.title}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, title: event.target.value }))
+              }
+            />
+          </div>
 
-          <label htmlFor={descriptionFieldId}>{t('projects', 'form.descriptionLabel')}</label>
-          <Textarea
-            id={descriptionFieldId}
-            value={form.description}
-            onChange={(event) =>
-              setForm((current) => ({ ...current, description: event.target.value }))
-            }
-          />
+          <div className="shagi-projects__field">
+            <label htmlFor={descriptionFieldId}>{t('projects', 'form.descriptionLabel')}</label>
+            <Textarea
+              id={descriptionFieldId}
+              value={form.description}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, description: event.target.value }))
+              }
+            />
+          </div>
 
-          <div role="group" aria-label={t('projects', 'form.colorLabel')}>
+          <div
+            className="shagi-projects__swatches"
+            role="group"
+            aria-label={t('projects', 'form.colorLabel')}
+          >
             {PROJECT_COLOR_OPTIONS.map((color) => {
               const selected = form.colorToken === color;
               return (
@@ -429,12 +441,14 @@ export function Projects(): ReactElement {
             }
           />
 
-          <Button type="submit" variant="primary">
-            {t('projects', 'form.submit')}
-          </Button>
-          <Button type="button" variant="secondary" onClick={closeForm}>
-            {t('projects', 'form.cancel')}
-          </Button>
+          <div className="shagi-projects__actions">
+            <Button type="submit" variant="primary">
+              {t('projects', 'form.submit')}
+            </Button>
+            <Button type="button" variant="secondary" onClick={closeForm}>
+              {t('projects', 'form.cancel')}
+            </Button>
+          </div>
         </form>
       </Modal>
     </div>

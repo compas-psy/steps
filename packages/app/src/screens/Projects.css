@@ -1,0 +1,59 @@
+/**
+ * `Projects` (M16/M19) — прямого артборда в хендоффе нет (`docs/spec/DESIGN`
+ * показывает только экран ОДНОГО проекта, M17/M18 — список всех проектов
+ * туда не входит, см. заголовок `Projects.tsx`). Тот же общий принцип
+ * композиции страницы, что у остальных экранов этой сессии: отступы,
+ * заголовок, интервал между полями формы — `ProjectRow`/`EmptyState`/`Modal`
+ * уже несут собственную стилизацию, здесь только внешняя раскладка.
+ */
+
+.shagi-projects {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  padding: var(--space-5) var(--space-5) var(--space-10);
+}
+
+.shagi-projects__title {
+  font-size: var(--text-mobile-heading);
+  font-weight: var(--fw-bold);
+  color: var(--foreground);
+  margin: 0;
+}
+
+.shagi-projects__section {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-4);
+}
+
+.shagi-projects__list {
+  width: 100%;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.shagi-projects__form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.shagi-projects__field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.shagi-projects__swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.shagi-projects__actions {
+  display: flex;
+  gap: var(--space-3);
+}
