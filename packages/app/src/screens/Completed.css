@@ -1,0 +1,33 @@
+/**
+ * `Completed` (M36) — прямого артборда в хендоффе нет — тот же общий принцип
+ * композиции, что у остальных экранов сессии: заголовок и список были без
+ * отступов и без разделителей между строками.
+ */
+
+.shagi-completed {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  padding: var(--space-5) var(--space-5) var(--space-10);
+}
+
+.shagi-completed__header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.shagi-completed__title {
+  font-size: var(--text-mobile-heading);
+  font-weight: var(--fw-bold);
+  color: var(--foreground);
+  margin: 0;
+}
+
+.shagi-completed__list > * {
+  border-bottom: 1px solid var(--border);
+}
+
+.shagi-completed__list > *:last-child {
+  border-bottom: none;
+}

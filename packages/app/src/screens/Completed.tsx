@@ -115,6 +115,7 @@ import {
 import { Button, EmptyState, Filter, Icon, IconButton, Modal, TaskRow, Toast } from '@shagi/ui';
 
 import { useAppController, useStorage } from '../state/context.js';
+import './Completed.css';
 
 // --- Локальная идентичность устройства (см. заголовок файла) ----------------
 // Тот же узкий, файл-локальный приём, что `ProjectDetail.tsx`/остальные
@@ -240,8 +241,8 @@ export function Completed(): ReactElement {
   const situation = dialog?.situation ?? null;
 
   return (
-    <div>
-      <div>
+    <div className="shagi-completed">
+      <div className="shagi-completed__header">
         {/* Не обёрнут `AppShell` (см. заголовок файла) — собственная кнопка
          * «Назад», тот же жанр, что `Inbox.tsx` уже применяет для своего
          * не-главного экрана. Единственная точка входа этого пакета работ —
@@ -251,7 +252,7 @@ export function Completed(): ReactElement {
           label={t('completed', 'back.label')}
           onClick={() => controller.goTo('search')}
         />
-        <h1>{t('completed', 'pageTitle')}</h1>
+        <h1 className="shagi-completed__title">{t('completed', 'pageTitle')}</h1>
       </div>
 
       {errorMessage !== null && (
@@ -271,21 +272,24 @@ export function Completed(): ReactElement {
         />
       )}
 
-      {tasks !== null &&
-        tasks.map((task) => (
-          <TaskRow
-            key={task.id}
-            title={task.title}
-            checkboxLabel={task.title}
-            checked
-            disabled
-            state="completed"
-            onClick={(event) => {
-              if (isInteractiveRowClick(event.target)) return;
-              openRestoreDialog(task);
-            }}
-          />
-        ))}
+      {tasks !== null && tasks.length > 0 && (
+        <div className="shagi-completed__list">
+          {tasks.map((task) => (
+            <TaskRow
+              key={task.id}
+              title={task.title}
+              checkboxLabel={task.title}
+              checked
+              disabled
+              state="completed"
+              onClick={(event) => {
+                if (isInteractiveRowClick(event.target)) return;
+                openRestoreDialog(task);
+              }}
+            />
+          ))}
+        </div>
+      )}
 
       {dialog !== null && (
         <Modal open onClose={closeDialog} title={dialog.task.title}>
