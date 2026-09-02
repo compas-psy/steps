@@ -6,6 +6,14 @@ export type { SqliteDriverPort, SqliteParam, SqliteRow } from './driver-port.js'
  */
 export { NodeSqliteDriver } from './node-sqlite-driver.js';
 export {
+  BridgedSqliteDriver,
+  type NativeSqlBridge,
+  type NativeSqlInfo,
+  type NativeSqlRow,
+  type NativeSqlValue,
+} from './native-bridge.js';
+export {
+  createBridgedMigrationCheckpoint,
   createSqliteMigrations,
   detectCurrentSchemaVersion,
   schemaOperationDownSql,
@@ -24,6 +32,7 @@ export {
 } from './ddl.js';
 export {
   createSqliteStorageForContract,
+  openNativeSqliteStorage,
   openSqliteStorage,
   SqliteStorage,
 } from './sqlite-storage.js';

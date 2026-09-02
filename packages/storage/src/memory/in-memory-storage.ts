@@ -6,6 +6,7 @@ import type {
   DomainMutation,
   StoragePort,
   StorageWriteTransaction,
+  StorageDump,
   TombstonePurgeSummary,
   WorkspaceExport,
 } from '../ports/index.js';
@@ -112,6 +113,46 @@ export class InMemoryStorage implements StoragePort {
       taskLinks: [...this.tables.taskLinks.values()],
       attachments: [...this.tables.attachments.values()],
     };
+  }
+
+  async dumpForMigration(): Promise<StorageDump> {
+    // Никакой фильтрации по `deletedAt`: перенос backend'а обязан сохранить
+    // состояние устройства целиком (см. `StoragePort.dumpForMigration`).
+    return {
+      projects: [...this.tables.projects.values()],
+      sections: [...this.tables.sections.values()],
+      tasks: [...this.tables.tasks.values()],
+      labels: [...this.tables.labels.values()],
+      taskLabels: [...this.tables.taskLabels.values()],
+      checklistItems: [...this.tables.checklistItems.values()],
+      reminders: [...this.tables.reminders.values()],
+      recurrenceSeries: [...this.tables.recurrenceSeries.values()],
+      taskLinks: [...this.tables.taskLinks.values()],
+      attachments: [...this.tables.attachments.values()],
+      syncOutbox: [...this.tables.syncOutbox.values()],
+      syncConflicts: [...this.tables.syncConflicts.values()],
+      importBatches: [...this.tables.importBatches.values()],
+    };
+  }
+
+  async loadFromMigrationDump(dump: StorageDump): Promise<void> {
+    const draft = cloneTables(this.tables);
+    for (const project of dump.projects) draft.projects.set(project.id, project);
+    for (const section of dump.sections) draft.sections.set(section.id, section);
+    for (const task of dump.tasks) draft.tasks.set(task.id, task);
+    for (const label of dump.labels) draft.labels.set(label.id, label);
+    for (const link of dump.taskLabels) {
+      draft.taskLabels.set(taskLabelKey(link.taskId, link.labelId), link);
+    }
+    for (const item of dump.checklistItems) draft.checklistItems.set(item.id, item);
+    for (const reminder of dump.reminders) draft.reminders.set(reminder.id, reminder);
+    for (const series of dump.recurrenceSeries) draft.recurrenceSeries.set(series.id, series);
+    for (const link of dump.taskLinks) draft.taskLinks.set(link.id, link);
+    for (const attachment of dump.attachments) draft.attachments.set(attachment.id, attachment);
+    for (const entry of dump.syncOutbox) draft.syncOutbox.set(entry.opId, entry);
+    for (const conflict of dump.syncConflicts) draft.syncConflicts.set(conflict.id, conflict);
+    for (const batch of dump.importBatches) draft.importBatches.set(batch.id, batch);
+    this.tables = draft;
   }
 
   async purgeExpiredTombstones(now: Temporal.Instant): Promise<TombstonePurgeSummary> {

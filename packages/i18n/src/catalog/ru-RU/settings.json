@@ -33,5 +33,7 @@
   "dataPrivacy.import.action": "Импортировать",
   "dataPrivacy.export.title": "Экспорт данных",
   "dataPrivacy.export.description": "Полный бэкап одним файлом, отдельный проект таблицей и восстановление из бэкапа.",
-  "dataPrivacy.export.action": "Открыть"
+  "dataPrivacy.export.action": "Открыть",
+  "dataPrivacy.storage.sqlite.badge": "База на устройстве",
+  "dataPrivacy.storage.sqlite.description": "Задачи лежат в базе SQLite в приватном каталоге приложения — там же, куда её кладёт сама система. Никуда не отправляются: сервера у этой версии нет."
 }

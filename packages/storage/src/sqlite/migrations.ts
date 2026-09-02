@@ -9,6 +9,8 @@ import {
   buildDropIndexSql,
   buildDropTableSql,
 } from './ddl.js';
+import type { SqliteDriverPort } from './driver-port.js';
+import type { NativeSqlBridge } from './native-bridge.js';
 import type { NodeSqliteDriver } from './node-sqlite-driver.js';
 
 /**
@@ -45,13 +47,16 @@ export function schemaOperationDownSql(operation: SchemaOperation): string {
 export const SQLITE_BASELINE_MIGRATION_VERSION = 1;
 
 /**
- * `MigrationStep<NodeSqliteDriver>[]` для `runMigrations` (`../migration/migration.ts`).
+ * `MigrationStep<SqliteDriverPort>[]` для `runMigrations` (`../migration/migration.ts`).
+ * Шаги типизированы ПОРТОМ, а не конкретным драйвером: та же схема
+ * применяется и в тестах через `node:sqlite`, и в приложении через мост в
+ * нативную SQLite (ADR-0005) — расходиться этим двум путям нельзя.
  * `down` — обратный порядок `BASELINE_SCHEMA_PLAN` (FTS → индексы → таблицы,
  * сами таблицы в обратном порядке создания — так зависимые внешние ключи
  * дропаются раньше того, на что они ссылаются; см. `./ddl.ts`
  * `buildUpsertSql` про то, почему порядок вообще важен для FK).
  */
-export function createSqliteMigrations(): readonly MigrationStep<NodeSqliteDriver>[] {
+export function createSqliteMigrations(): readonly MigrationStep<SqliteDriverPort>[] {
   return [
     {
       version: SQLITE_BASELINE_MIGRATION_VERSION,
@@ -80,7 +85,7 @@ export function createSqliteMigrations(): readonly MigrationStep<NodeSqliteDrive
  * больше одной, и придётся отличать "версия 1" от "версия 2" не только по
  * наличию `tasks`.
  */
-export async function detectCurrentSchemaVersion(driver: NodeSqliteDriver): Promise<number> {
+export async function detectCurrentSchemaVersion(driver: SqliteDriverPort): Promise<number> {
   const row = await driver.queryOne<{ readonly name: string }>(
     `SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?`,
     ['tasks'],
@@ -104,3 +109,25 @@ export const sqliteMigrationCheckpoint: MigrationCheckpointPort<NodeSqliteDriver
     executor.restoreFromSnapshot(checkpoint);
   },
 };
+
+/**
+ * `MigrationCheckpointPort` для драйвера поверх нативного моста
+ * (`./native-bridge.ts`). Снимок здесь — не байты в памяти, как у
+ * `node:sqlite`, а ФАЙЛ: `VACUUM INTO` на стороне оболочки делает
+ * согласованную копию базы, `restore` кладёт её обратно. Это ровно то, что
+ * `02§15` называет «native atomic DB backup/checkpoint», и единственный
+ * способ снять снимок, не перегоняя всю базу через IPC.
+ *
+ * Фабрика, а не константа: сам снимок умеет делать мост, а `runMigrations`
+ * передаёт в хуки только executor (драйвер) — мост приходит замыканием.
+ */
+export function createBridgedMigrationCheckpoint(
+  bridge: NativeSqlBridge,
+): MigrationCheckpointPort<SqliteDriverPort, string> {
+  return {
+    createCheckpoint: async () => bridge.snapshot(),
+    restoreCheckpoint: async (_executor, checkpoint) => {
+      await bridge.restore(checkpoint);
+    },
+  };
+}

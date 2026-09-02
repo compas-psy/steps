@@ -38,15 +38,35 @@ export interface AppProviderProps {
   /** Только для тестов/сторибука экранов — внешний контроллер вместо
    * создаваемого по умолчанию, чтобы можно было предустановить экран. */
   readonly controller?: AppController;
+  /**
+   * Уже собранное хранилище. Нужен нативному backend'у (ADR-0005): его
+   * нельзя собрать синхронно — открытие базы, протокол миграций схемы и
+   * одноразовый перенос из IndexedDB асинхронны по природе. Оболочка
+   * вызывает `prepareStorage()` ДО монтирования и передаёт результат сюда.
+   *
+   * Для остальных backend'ов проп не нужен: они собираются синхронно из
+   * `host.storageBackend`, и ни один существующий экран/тест об этом
+   * пропе не знает.
+   */
+  readonly storage?: StoragePort;
 }
 
-export function AppProvider({ host, children, controller }: AppProviderProps): ReactElement {
+export function AppProvider({
+  host,
+  children,
+  controller,
+  storage: preparedStorage,
+}: AppProviderProps): ReactElement {
   const resolvedController = controller ?? createAppController();
   // Резолвится один раз на смонтированный `AppHost`, не на каждый рендер —
   // `createIndexedDbStorage`/`createInMemoryStorage` заводят собственное
   // состояние (открытое соединение/таблицы), пересоздавать его без причины
-  // означало бы терять его между рендерами.
-  const storage = useMemo(() => resolveStorageBackend(host.storageBackend), [host.storageBackend]);
+  // означало бы терять его между рендерами. Готовое хранилище от оболочки
+  // (нативная SQLite) не пересобирается вовсе.
+  const storage = useMemo(
+    () => preparedStorage ?? resolveStorageBackend(host.storageBackend),
+    [preparedStorage, host.storageBackend],
+  );
   return (
     <AppContext.Provider value={{ controller: resolvedController, host, storage }}>
       {children}

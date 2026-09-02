@@ -57,10 +57,11 @@
  * не написан константой: у оболочек он РАЗНЫЙ, и разница видна человеку.
  * `apps/web`/`apps/desktop` — `indexeddb`, данные переживают перезапуск;
  * `apps/mobile` — `memory`, то есть на Android данных после закрытия
- * приложения не остаётся (см. комментарий в `apps/mobile/src/main.tsx`:
- * персистентности там пока не существует, ждёт Tauri SQL-плагина). Человек,
- * который щупает Android-сборку и не понимает, куда делись задачи, обязан
- * прочитать ответ здесь, а не решить, что продукт их теряет по ошибке.
+ * приложения не остаётся. Человек, который щупает сборку и не понимает,
+ * куда делись задачи, обязан прочитать ответ здесь, а не решить, что
+ * продукт их теряет по ошибке. Backend называется настоящий: на Android
+ * это нативная SQLite (ADR-0005), в вебе — IndexedDB, в сборках без
+ * персистентности — память.
  *
  * Кнопка возврата — `IconButton icon="close"` и `goTo('settings')`, ровно
  * как `Appearance.tsx`: единственный вход сюда — строка в `Settings.tsx`,
@@ -76,11 +77,44 @@ import { useAppController, useHost, useStorage } from '../state/context.js';
 import { clearOnboardingDone } from '../state/onboarding.js';
 import './DataPrivacy.css';
 
+/**
+ * Backend → пара строк каталога. Ключи выписаны ЦЕЛИКОМ, а не собираются
+ * шаблоном: `check-i18n-catalog.mjs` сверяет литерал буквально, и склеенный
+ * ключ он не увидит — каталог выглядел бы так, будто эти строки не
+ * используются, и гейт перестал бы защищать именно их.
+ */
+function storageStrings(kind: 'memory' | 'indexeddb' | 'sqlite'): {
+  readonly badge: string;
+  readonly description: string;
+} {
+  switch (kind) {
+    case 'memory':
+      return {
+        badge: t('settings', 'dataPrivacy.storage.memory.badge'),
+        description: t('settings', 'dataPrivacy.storage.memory.description'),
+      };
+    case 'sqlite':
+      return {
+        badge: t('settings', 'dataPrivacy.storage.sqlite.badge'),
+        description: t('settings', 'dataPrivacy.storage.sqlite.description'),
+      };
+    case 'indexeddb':
+      return {
+        badge: t('settings', 'dataPrivacy.storage.local.badge'),
+        description: t('settings', 'dataPrivacy.storage.local.description'),
+      };
+  }
+}
+
 export function DataPrivacy(): ReactElement {
   const controller = useAppController();
   const host = useHost();
   const storage = useStorage();
-  const isMemory = host.storageBackend.kind === 'memory';
+  // Строка «Хранение» обязана называть НАСТОЯЩИЙ backend: у трёх оболочек
+  // он разный (нативная SQLite на Android — ADR-0005, IndexedDB в вебе,
+  // память в сборках без персистентности), и человек, который щупает
+  // сборку, должен прочитать ответ здесь, а не гадать.
+  const storageText = storageStrings(host.storageBackend.kind);
 
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [erasing, setErasing] = useState(false);
@@ -114,17 +148,8 @@ export function DataPrivacy(): ReactElement {
           <CardBody padding="none" className="shagi-data-privacy__rows">
             <DataPrivacyRow
               title={t('settings', 'dataPrivacy.storage.title')}
-              description={
-                isMemory
-                  ? t('settings', 'dataPrivacy.storage.memory.description')
-                  : t('settings', 'dataPrivacy.storage.local.description')
-              }
-              action={{
-                kind: 'status',
-                label: isMemory
-                  ? t('settings', 'dataPrivacy.storage.memory.badge')
-                  : t('settings', 'dataPrivacy.storage.local.badge'),
-              }}
+              description={storageText.description}
+              action={{ kind: 'status', label: storageText.badge }}
             />
           </CardBody>
         </Card>

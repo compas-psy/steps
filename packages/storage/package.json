@@ -13,6 +13,7 @@
     "./indexeddb": "./src/indexeddb/index.ts",
     "./memory": "./src/memory/index.ts",
     "./sqlite": "./src/sqlite/index.ts",
+    "./sqlite-native": "./src/sqlite/native.ts",
     "./search": "./src/search/index.ts"
   },
   "scripts": {

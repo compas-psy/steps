@@ -5,6 +5,7 @@ import type {
   EntityWrite,
   StoragePort,
   StorageWriteTransaction,
+  StorageDump,
   TombstonePurgeSummary,
   WorkspaceExport,
 } from '../ports/index.js';
@@ -24,6 +25,9 @@ import {
   decodeTaskLabel,
   decodeTaskLink,
   encodeAttachment,
+  decodeImportBatch,
+  decodeSyncConflict,
+  decodeSyncOutboxEntry,
   encodeChecklistItem,
   encodeImportBatch,
   encodeLabel,
@@ -31,6 +35,7 @@ import {
   encodeReminder,
   encodeRecurrenceSeries,
   encodeSection,
+  encodeSyncConflict,
   encodeSyncOutboxEntry,
   encodeTask,
   encodeTaskLabel,
@@ -254,6 +259,82 @@ export class IndexedDbStorage implements StoragePort {
     };
     await transactionDone(idbTx);
     return result;
+  }
+
+  async dumpForMigration(): Promise<StorageDump> {
+    // Без фильтра по `deleted_at`: перенос backend'а сохраняет состояние
+    // устройства целиком, включая tombstone и очередь синхронизации
+    // (см. `StoragePort.dumpForMigration`).
+    const db = await this.dbPromise;
+    const idbTx = db.transaction(allObjectStoreNames(), 'readonly');
+    const access = storeAccessFor(idbTx);
+    const read = async <TRow, TEntity>(
+      store: string,
+      decode: (row: TRow) => TEntity,
+    ): Promise<readonly TEntity[]> => {
+      const rows = (await getAllFromStore(access, store)) as TRow[];
+      return rows.map((row) => decode(row));
+    };
+    const result: StorageDump = {
+      projects: await read('projects', decodeProject),
+      sections: await read('sections', decodeSection),
+      tasks: await read('tasks', decodeTask),
+      labels: await read('labels', decodeLabel),
+      taskLabels: await read('task_labels', decodeTaskLabel),
+      checklistItems: await read('checklist_items', decodeChecklistItem),
+      reminders: await read('reminders', decodeReminder),
+      recurrenceSeries: await read('recurrence_series', decodeRecurrenceSeries),
+      taskLinks: await read('task_links', decodeTaskLink),
+      attachments: await read('attachments', decodeAttachment),
+      syncOutbox: await read('sync_outbox', decodeSyncOutboxEntry),
+      syncConflicts: await read('sync_conflicts', decodeSyncConflict),
+      importBatches: await read('import_batches', decodeImportBatch),
+    };
+    await transactionDone(idbTx);
+    return result;
+  }
+
+  async loadFromMigrationDump(dump: StorageDump): Promise<void> {
+    const db = await this.dbPromise;
+    const idbTx = db.transaction(allObjectStoreNames(), 'readwrite');
+    const access = storeAccessFor(idbTx);
+    const write = async <T>(
+      store: string,
+      rows: readonly T[],
+      encode: (value: T) => unknown,
+    ): Promise<void> => {
+      for (const row of rows) await putInStore(access, store, encode(row));
+    };
+    await write('projects', dump.projects, encodeProject);
+    await write('sections', dump.sections, encodeSection);
+    await write('tasks', dump.tasks, encodeTask);
+    await write('labels', dump.labels, encodeLabel);
+    await write('task_labels', dump.taskLabels, encodeTaskLabel);
+    await write('checklist_items', dump.checklistItems, encodeChecklistItem);
+    await write('reminders', dump.reminders, encodeReminder);
+    await write('recurrence_series', dump.recurrenceSeries, encodeRecurrenceSeries);
+    await write('task_links', dump.taskLinks, encodeTaskLink);
+    await write('attachments', dump.attachments, encodeAttachment);
+    await write('sync_outbox', dump.syncOutbox, encodeSyncOutboxEntry);
+    await write('sync_conflicts', dump.syncConflicts, encodeSyncConflict);
+    await write('import_batches', dump.importBatches, encodeImportBatch);
+    await transactionDone(idbTx);
+  }
+
+  /**
+   * Закрывает соединение с базой. НЕ часть `StoragePort` — это деталь
+   * именно этого адаптера, как `execSync` у `NodeSqliteDriver`.
+   *
+   * Нужен ровно одному сценарию: удалить базу после переноса на другой
+   * backend (ADR-0005). `indexedDB.deleteDatabase` при живом соединении не
+   * удаляет базу, а зовёт `onblocked` и ждёт — то есть без этого метода
+   * источник переноса оставался бы на диске навсегда. Найдено тестом
+   * переноса (`@shagi/app` `test/state/backend-migration.test.ts`), а не
+   * рассуждением.
+   */
+  async closeConnection(): Promise<void> {
+    const db = await this.dbPromise;
+    db.close();
   }
 
   async eraseAllLocalData(): Promise<void> {

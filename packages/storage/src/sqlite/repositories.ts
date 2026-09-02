@@ -33,19 +33,19 @@ import {
   rowToTaskLabel,
   rowToTaskLink,
 } from './mappers.js';
-import type { NodeSqliteDriver } from './node-sqlite-driver.js';
+import type { SqliteDriverPort } from './driver-port.js';
 
 /**
- * `StorageQueryPort` (`../ports/query-port.ts`) поверх `NodeSqliteDriver` —
+ * `StorageQueryPort` (`../ports/query-port.ts`) поверх `SqliteDriverPort` —
  * задание пакета работ E02.2, п.3. Каждый метод — подготовленное выражение
- * с параметрами через `?` (`NodeSqliteDriver.execute`/`queryAll`/`queryOne`
+ * с параметрами через `?` (`SqliteDriverPort.execute`/`queryAll`/`queryOne`
  * сами кешируют и параметризуют, `./node-sqlite-driver.ts`); нигде значения
  * не подставляются конкатенацией строки SQL — единственное место, где SQL
  * строится из "переменной" части, это ветвление ЦЕЛОГО запроса по
  * `null`-ости `sectionId`/`excludingId` (структура запроса, не данные), см.
  * `listByProjectSection`/`countActiveExcluding` ниже.
  *
- * Один и тот же `NodeSqliteDriver` используется и вне транзакции
+ * Один и тот же `SqliteDriverPort` используется и вне транзакции
  * (`SqliteStorage`, `./sqlite-storage.ts`), и внутри неё
  * (`createWriteTransaction`) — оба случая создают этот объект заново поверх
  * того же соединения, поэтому чтение внутри активной транзакции драйвера
@@ -62,7 +62,7 @@ function taskLabelCountActive(rows: readonly SqliteRow[]): number {
   return rows.map(rowToTaskLabel).filter(isTaskLabelActive).length;
 }
 
-export function createTaskRepository(driver: NodeSqliteDriver): TaskRepository {
+export function createTaskRepository(driver: SqliteDriverPort): TaskRepository {
   return {
     async findById(id) {
       const row = await driver.queryOne<SqliteRow>(`SELECT * FROM "tasks" WHERE id = ?`, [
@@ -202,7 +202,7 @@ export function createTaskRepository(driver: NodeSqliteDriver): TaskRepository {
 }
 
 async function countRows(
-  driver: NodeSqliteDriver,
+  driver: SqliteDriverPort,
   sql: string,
   params: readonly SqliteParam[],
 ): Promise<number> {
@@ -211,7 +211,7 @@ async function countRows(
 }
 
 async function countDirectSubtasksSql(
-  driver: NodeSqliteDriver,
+  driver: SqliteDriverPort,
   parentTaskId: Uuid,
 ): Promise<number> {
   return countRows(
@@ -221,14 +221,14 @@ async function countDirectSubtasksSql(
   );
 }
 
-async function countActiveTaskLabels(driver: NodeSqliteDriver, taskId: Uuid): Promise<number> {
+async function countActiveTaskLabels(driver: SqliteDriverPort, taskId: Uuid): Promise<number> {
   const rows = await driver.queryAll<SqliteRow>(`SELECT * FROM "task_labels" WHERE task_id = ?`, [
     uuidToSql(taskId),
   ]);
   return taskLabelCountActive(rows);
 }
 
-async function loadParentSnapshotSql(driver: NodeSqliteDriver, parentTaskId: Uuid) {
+async function loadParentSnapshotSql(driver: SqliteDriverPort, parentTaskId: Uuid) {
   const row = await driver.queryOne<SqliteRow>(`SELECT * FROM "tasks" WHERE id = ?`, [
     uuidToSql(parentTaskId),
   ]);
@@ -246,7 +246,7 @@ async function loadParentSnapshotSql(driver: NodeSqliteDriver, parentTaskId: Uui
   };
 }
 
-export function createProjectRepository(driver: NodeSqliteDriver): ProjectRepository {
+export function createProjectRepository(driver: SqliteDriverPort): ProjectRepository {
   return {
     async findById(id) {
       const row = await driver.queryOne<SqliteRow>(`SELECT * FROM "projects" WHERE id = ?`, [
@@ -276,7 +276,7 @@ export function createProjectRepository(driver: NodeSqliteDriver): ProjectReposi
   };
 }
 
-export function createSectionRepository(driver: NodeSqliteDriver): SectionRepository {
+export function createSectionRepository(driver: SqliteDriverPort): SectionRepository {
   return {
     async findById(id) {
       const row = await driver.queryOne<SqliteRow>(`SELECT * FROM "sections" WHERE id = ?`, [
@@ -294,7 +294,7 @@ export function createSectionRepository(driver: NodeSqliteDriver): SectionReposi
   };
 }
 
-export function createLabelRepository(driver: NodeSqliteDriver): LabelRepository {
+export function createLabelRepository(driver: SqliteDriverPort): LabelRepository {
   return {
     async findById(id) {
       const row = await driver.queryOne<SqliteRow>(`SELECT * FROM "labels" WHERE id = ?`, [
@@ -328,7 +328,7 @@ export function createLabelRepository(driver: NodeSqliteDriver): LabelRepository
   };
 }
 
-export function createTaskLabelRepository(driver: NodeSqliteDriver): TaskLabelRepository {
+export function createTaskLabelRepository(driver: SqliteDriverPort): TaskLabelRepository {
   return {
     async listByTask(taskId) {
       const rows = await driver.queryAll<SqliteRow>(
@@ -350,7 +350,7 @@ export function createTaskLabelRepository(driver: NodeSqliteDriver): TaskLabelRe
   };
 }
 
-export function createChecklistItemRepository(driver: NodeSqliteDriver): ChecklistItemRepository {
+export function createChecklistItemRepository(driver: SqliteDriverPort): ChecklistItemRepository {
   return {
     async listByTask(taskId) {
       const rows = await driver.queryAll<SqliteRow>(
@@ -369,7 +369,7 @@ export function createChecklistItemRepository(driver: NodeSqliteDriver): Checkli
   };
 }
 
-export function createReminderRepository(driver: NodeSqliteDriver): ReminderRepository {
+export function createReminderRepository(driver: SqliteDriverPort): ReminderRepository {
   return {
     async listByTask(taskId) {
       const rows = await driver.queryAll<SqliteRow>(`SELECT * FROM "reminders" WHERE task_id = ?`, [
@@ -388,7 +388,7 @@ export function createReminderRepository(driver: NodeSqliteDriver): ReminderRepo
 }
 
 export function createRecurrenceSeriesRepository(
-  driver: NodeSqliteDriver,
+  driver: SqliteDriverPort,
 ): RecurrenceSeriesRepository {
   return {
     async findById(id) {
@@ -401,7 +401,7 @@ export function createRecurrenceSeriesRepository(
   };
 }
 
-export function createAttachmentRepository(driver: NodeSqliteDriver): AttachmentRepository {
+export function createAttachmentRepository(driver: SqliteDriverPort): AttachmentRepository {
   return {
     async listByTask(taskId) {
       const rows = await driver.queryAll<SqliteRow>(
@@ -420,7 +420,7 @@ export function createAttachmentRepository(driver: NodeSqliteDriver): Attachment
   };
 }
 
-export function createTaskLinkRepository(driver: NodeSqliteDriver): TaskLinkRepository {
+export function createTaskLinkRepository(driver: SqliteDriverPort): TaskLinkRepository {
   return {
     async listByTask(taskId) {
       const rows = await driver.queryAll<SqliteRow>(
@@ -437,7 +437,7 @@ export function createTaskLinkRepository(driver: NodeSqliteDriver): TaskLinkRepo
   };
 }
 
-export function createImportBatchRepository(driver: NodeSqliteDriver): ImportBatchRepository {
+export function createImportBatchRepository(driver: SqliteDriverPort): ImportBatchRepository {
   return {
     async findById(id) {
       const row = await driver.queryOne<SqliteRow>(`SELECT * FROM "import_batches" WHERE id = ?`, [
@@ -455,7 +455,7 @@ export function createImportBatchRepository(driver: NodeSqliteDriver): ImportBat
   };
 }
 
-export function createSyncOutboxRepository(driver: NodeSqliteDriver): SyncOutboxRepository {
+export function createSyncOutboxRepository(driver: SqliteDriverPort): SyncOutboxRepository {
   return {
     async listPending(limit) {
       const sql =
@@ -474,7 +474,7 @@ export function createSyncOutboxRepository(driver: NodeSqliteDriver): SyncOutbox
   };
 }
 
-export function createSyncConflictRepository(driver: NodeSqliteDriver): SyncConflictRepository {
+export function createSyncConflictRepository(driver: SqliteDriverPort): SyncConflictRepository {
   return {
     async listUnresolved() {
       const rows = await driver.queryAll<SqliteRow>(
@@ -485,7 +485,7 @@ export function createSyncConflictRepository(driver: NodeSqliteDriver): SyncConf
   };
 }
 
-export function createQueryPort(driver: NodeSqliteDriver): StorageQueryPort {
+export function createQueryPort(driver: SqliteDriverPort): StorageQueryPort {
   return {
     tasks: createTaskRepository(driver),
     projects: createProjectRepository(driver),

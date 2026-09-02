@@ -43,6 +43,8 @@ import { useEffect, type ReactElement } from 'react';
 import { isAvailable, type PlatformCapabilitiesRegistry } from '@shagi/platform';
 
 import { AppProvider, useAppController, useAppState } from './state/context.js';
+import type { StoragePort } from '@shagi/storage';
+
 import type { StorageBackend } from './state/storage-backend.js';
 import { QuickAdd } from './screens/QuickAdd.js';
 import { SCREENS } from './screens/index.js';
@@ -147,10 +149,18 @@ function Bootstrap({ host }: { host: AppHost }): ReactElement {
   );
 }
 
-export function App({ host }: { host: AppHost }): ReactElement {
+export function App({
+  host,
+  storage,
+}: {
+  readonly host: AppHost;
+  /** Готовое хранилище от оболочки — нужно нативному backend'у, который
+   * нельзя собрать синхронно (ADR-0005, см. `AppProviderProps.storage`). */
+  readonly storage?: StoragePort;
+}): ReactElement {
   return (
     <div data-shagi-app-root="">
-      <AppProvider host={host}>
+      <AppProvider host={host} {...(storage === undefined ? {} : { storage })}>
         <Bootstrap host={host} />
       </AppProvider>
     </div>

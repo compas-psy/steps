@@ -24,6 +24,20 @@ export {
   type AppProviderProps,
 } from './state/context.js';
 
-export { resolveStorageBackend, type StorageBackend } from './state/storage-backend.js';
+export {
+  prepareStorage,
+  resolveStorageBackend,
+  type PreparedStorage,
+  type StorageBackend,
+} from './state/storage-backend.js';
+/** Типы моста в нативную SQLite — оболочке они нужны, чтобы реализовать
+ * транспорт, а импортировать `@shagi/storage` напрямую ей нельзя (граница
+ * `apps/*`, SPEC/00 §3). */
+export type { NativeSqlBridge, NativeSqlInfo, NativeSqlRow, NativeSqlValue } from '@shagi/storage';
+export {
+  BACKEND_MIGRATION_KEY,
+  type BackendMigrationCounts,
+  type BackendMigrationOutcome,
+} from './state/backend-migration.js';
 
 export { SCREENS } from './screens/index.js';

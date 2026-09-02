@@ -357,6 +357,95 @@ export function runStorageContract(name: string, factory: () => StoragePort): vo
         );
       });
 
+      it('dumpForMigration отдаёт ВСЁ: tombstone, очередь синхронизации и партии импорта', async () => {
+        // Перенос backend'а (ADR-0005) — не бэкап: потерять tombstone
+        // значит воскресить удалённое при следующей синхронизации,
+        // потерять outbox — не отправить уже сделанные изменения.
+        const storage = factory();
+        const alive = makeTask({ title: 'Живая' });
+        const removed = makeTask({
+          title: 'Удалённая',
+          deletedAt: Temporal.Instant.fromEpochMilliseconds(1_700_000_000_000),
+        });
+        const entry = makeOutboxEntry('task', alive.id);
+        const startedAt = Temporal.Instant.fromEpochMilliseconds(1_700_000_000_000);
+
+        await storage.runTransaction(async (tx) => {
+          await tx.applyMutation({
+            writes: [
+              { entity: 'task', value: alive },
+              { entity: 'task', value: removed },
+            ],
+            outbox: [entry],
+          });
+          await tx.saveImportBatch({
+            id: makeProject().id,
+            source: 'todoist_csv',
+            startedAt,
+            finishedAt: null,
+            rollbackDeadline: startedAt.add({ minutes: 10 }),
+            status: 'applied',
+            reportJson: {},
+          });
+        });
+
+        const dump = await storage.dumpForMigration();
+        expect(dump.tasks.map((task) => task.title).toSorted()).toEqual(['Живая', 'Удалённая']);
+        expect(dump.syncOutbox.map((row) => row.opId)).toEqual([entry.opId]);
+        expect(dump.importBatches).toHaveLength(1);
+      });
+
+      it('loadFromMigrationDump переносит состояние целиком в пустое хранилище', async () => {
+        const source = factory();
+        const project = makeProject();
+        const parent = makeTask({ title: 'Родитель', projectId: project.id });
+        const child = makeTask({
+          title: 'Подзадача',
+          projectId: project.id,
+          parentTaskId: parent.id,
+        });
+        const removed = makeTask({
+          title: 'Удалённая',
+          deletedAt: Temporal.Instant.fromEpochMilliseconds(1_700_000_000_000),
+        });
+        const entry = makeOutboxEntry('task', parent.id);
+
+        await source.runTransaction(async (tx) => {
+          await tx.applyMutation({
+            writes: [
+              { entity: 'project', value: project },
+              { entity: 'task', value: parent },
+              { entity: 'task', value: child },
+              { entity: 'task', value: removed },
+            ],
+            outbox: [entry],
+          });
+        });
+
+        const target = factory();
+        await target.loadFromMigrationDump(await source.dumpForMigration());
+        const moved = await target.dumpForMigration();
+
+        expect(moved.tasks.map((task) => task.id).toSorted()).toEqual(
+          [parent.id, child.id, removed.id].toSorted(),
+        );
+        // Иерархия и ссылка на проект — не «примерно те же данные», а те же.
+        expect(moved.tasks.find((task) => task.id === child.id)?.parentTaskId).toBe(parent.id);
+        expect(moved.tasks.find((task) => task.id === parent.id)?.projectId).toBe(project.id);
+        // Tombstone остался tombstone'ом, а не воскрес живой задачей.
+        // (`findById` — сырое чтение, tombstone включительно, см.
+        // `ports/task-repository.ts`; поэтому проверяется само поле и
+        // отсутствие записи в пользовательских выборках.)
+        expect(moved.tasks.find((task) => task.id === removed.id)?.deletedAt).not.toBeNull();
+        expect(await target.exportAllEntities()).toMatchObject({
+          tasks: expect.not.arrayContaining([expect.objectContaining({ id: removed.id })]),
+        });
+        // Очередь синхронизации переехала как есть.
+        expect(moved.syncOutbox.map((row) => row.opId)).toEqual([entry.opId]);
+        // И новых записей в очереди перенос НЕ породил.
+        expect(moved.syncOutbox).toHaveLength(1);
+      });
+
       it('exportAllEntities не отдаёт удалённое (tombstone)', async () => {
         const storage = factory();
         const alive = makeTask({ title: 'Живая' });

@@ -36,7 +36,22 @@
  */
 
 import { execFileSync } from 'node:child_process';
+import { mkdtempSync, writeFileSync, statSync, existsSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import { setTimeout as sleep } from 'node:timers/promises';
+
+import {
+  clickByLabel,
+  clickByText,
+  openTaskRow,
+  READ_APP_TEXT,
+  READ_BACKEND,
+  READ_STORAGE_STATE,
+  typeIntoFirstInput,
+  typeIntoLabeled,
+} from './page-actions.mjs';
 
 const APPLICATION_ID = process.env['SHAGI_APPLICATION_ID'] ?? 'ru.cmpas.shagi';
 const DEVTOOLS_PORT = 9222;
@@ -160,83 +175,88 @@ function createCdp(webSocketDebuggerUrl) {
   };
 }
 
-// --- Выражения, исполняемые внутри страницы ---------------------------------
+// --- Работа с НАСТОЯЩИМ файлом базы на устройстве ---------------------------
 
-/** Видимый текст продукта. Пустая строка = белый экран. */
-const READ_APP_TEXT = `
-  (() => {
-    const root = document.querySelector('[data-shagi-app-root]');
-    return root === null ? '' : (root.innerText || '').trim();
-  })()
-`;
-
-/** Нажимает кнопку по её видимому тексту. Возвращает `true`, если нашлась. */
-function clickByText(text) {
-  return `
-    (() => {
-      const wanted = ${JSON.stringify(text)};
-      const nodes = Array.from(document.querySelectorAll('button, [role="button"]'));
-      const target = nodes.find((node) => (node.innerText || '').trim().includes(wanted));
-      if (!target) return false;
-      target.click();
-      return true;
-    })()
-  `;
+/**
+ * Список файлов в app-private каталоге приложения. `run-as` работает для
+ * debug-сборки и даёт ровно те права, что у самого приложения — то есть
+ * видно именно то, что видит оно.
+ */
+function listAppFiles() {
+  return adbSoft(['shell', 'run-as', APPLICATION_ID, 'ls', '-l', 'files']);
 }
 
 /**
- * Слепок состояния хранилища ПРЯМО В СТРАНИЦЕ: origin, список баз IndexedDB
- * с версиями, число задач в каждой и флаг пройденного онбординга.
+ * Снимает файл базы (и её WAL) с устройства и открывает его тем же
+ * `node:sqlite`, что и тесты.
  *
- * Печатается на каждом запуске — до и после `am force-stop`. Без него
- * «задачи нет на экране» не отличить от «задача есть, но экран другой»: в
- * первом же прогоне, дошедшем до перезапуска, приложение показало
- * онбординг, и по одному тексту экрана нельзя было сказать, потеряно
- * хранилище или потеряна навигация. Разница видна только так.
+ * Почему именно так, а не «спросим приложение через DevTools»: вопрос
+ * стоит «лежат ли данные в НАСТОЯЩЕЙ SQLite», и ответить на него может
+ * только сам файл. Приложение на этот вопрос отвечать не должно —
+ * диагностический хук в продукте доказывал бы лишь то, что хук написан.
+ *
+ * WAL копируется вместе с базой и под тем же именем: последние коммиты
+ * могут лежать ещё в нём, и без него снимок был бы «почти правдой».
  */
-const READ_STORAGE_STATE = `
-  (async () => {
-    const dbs = (await indexedDB.databases?.()) ?? [];
-    const countTasks = (name) => new Promise((resolve) => {
-      const request = indexedDB.open(name);
-      request.onerror = () => resolve('ошибка открытия');
-      request.onsuccess = () => {
-        const db = request.result;
-        if (!db.objectStoreNames.contains('tasks')) { db.close(); resolve('нет store tasks'); return; }
-        const tx = db.transaction('tasks', 'readonly');
-        const counted = tx.objectStore('tasks').count();
-        counted.onsuccess = () => { const n = counted.result; db.close(); resolve(n); };
-        counted.onerror = () => { db.close(); resolve('ошибка count'); };
-      };
+function pullDatabase(label) {
+  const dir = mkdtempSync(join(tmpdir(), `shagi-db-${label}-`));
+  const local = join(dir, 'shagi.db');
+  for (const [remote, target] of [
+    ['files/shagi.db', local],
+    ['files/shagi.db-wal', `${local}-wal`],
+    ['files/shagi.db-shm', `${local}-shm`],
+  ]) {
+    const bytes = execFileSync('adb', ['exec-out', 'run-as', APPLICATION_ID, 'cat', remote], {
+      maxBuffer: 256 * 1024 * 1024,
     });
-    const tasks = {};
-    for (const db of dbs) tasks[db.name + '@v' + db.version] = await countTasks(db.name);
-    return JSON.stringify({
-      origin: location.origin,
-      базы: dbs.map((db) => db.name + '@v' + db.version),
-      задач: tasks,
-      онбордингПройден: localStorage.getItem('shagi.preferences.onboardingDone'),
-    });
-  })()
-`;
+    // `-wal`/`-shm` могут отсутствовать — это нормально (контрольная точка
+    // уже слита в базу). Сама база отсутствовать не может.
+    if (bytes.length === 0 && target === local) {
+      fail(`файл базы ${remote} пуст или не читается — нативной SQLite на устройстве нет`);
+    }
+    if (bytes.length > 0) writeFileSync(target, bytes);
+  }
+  if (!existsSync(local)) fail('файл базы не снялся с устройства');
+  console.log(`Файл базы снят: ${local}, ${statSync(local).size} байт`);
+  return local;
+}
 
-/** Пишет в поле ввода так, как это делает человек: через нативный сеттер
- * значения плюс событие `input`. Прямое `input.value = …` React не заметит —
- * он слушает свой синтетический `onChange` поверх нативного события. */
-function typeIntoFirstInput(text) {
-  return `
-    (() => {
-      const input = document.querySelector('input[type="text"], input:not([type]), textarea');
-      if (!input) return false;
-      const prototype = input instanceof HTMLTextAreaElement
-        ? window.HTMLTextAreaElement.prototype
-        : window.HTMLInputElement.prototype;
-      const setter = Object.getOwnPropertyDescriptor(prototype, 'value').set;
-      setter.call(input, ${JSON.stringify(text)});
-      input.dispatchEvent(new Event('input', { bubbles: true }));
-      return true;
-    })()
-  `;
+/** Читает содержимое снятой базы — то, что физически лежит в SQLite. */
+function inspectDatabase(path) {
+  const db = new DatabaseSync(path, { readBigInts: true });
+  const one = (sql) => db.prepare(sql).get();
+  const tables = db
+    .prepare(`SELECT name FROM sqlite_master WHERE type IN ('table','view') ORDER BY name`)
+    .all()
+    .map((row) => row.name);
+  const count = (table) => Number(db.prepare(`SELECT COUNT(*) AS n FROM "${table}"`).get().n);
+  const snapshot = {
+    journalMode: one('PRAGMA journal_mode').journal_mode,
+    sqliteVersion: one('SELECT sqlite_version() AS v').v,
+    fts5: Number(one(`SELECT sqlite_compileoption_used('ENABLE_FTS5') AS used`).used) === 1,
+    tables,
+    tasks: count('tasks'),
+    tombstones: Number(
+      db.prepare('SELECT COUNT(*) AS n FROM tasks WHERE deleted_at IS NOT NULL').get().n,
+    ),
+    subtasks: Number(
+      db
+        .prepare(
+          'SELECT COUNT(*) AS n FROM tasks WHERE parent_task_id IS NOT NULL AND deleted_at IS NULL',
+        )
+        .get().n,
+    ),
+    labels: count('labels'),
+    taskLabels: count('task_labels'),
+    recurrenceSeries: count('recurrence_series'),
+    outbox: count('sync_outbox'),
+    titles: db
+      .prepare('SELECT title FROM tasks ORDER BY title')
+      .all()
+      .map((row) => row.title),
+  };
+  db.close();
+  return snapshot;
 }
 
 // --- Сценарий ---------------------------------------------------------------
@@ -292,10 +312,46 @@ async function launchAndAttach(label) {
     );
   }
   console.log(`Видимый текст: ${JSON.stringify(screen.slice(0, 120))}`);
-  console.log(`Хранилище: ${await cdp.evaluate(READ_STORAGE_STATE)}`);
+  console.log(`Хранилище (страница): ${await cdp.evaluate(READ_STORAGE_STATE)}`);
 
-  return { cdp, screen };
+  // Какой backend оболочка СОБРАЛА на самом деле. Проверка отдельная и
+  // жёсткая: молчаливого отката на IndexedDB в ADR-0005 нет, и если он
+  // когда-нибудь появится, тест обязан покраснеть здесь, а не «пройти» на
+  // подменённом хранилище.
+  const backendRaw = await cdp.evaluate(READ_BACKEND);
+  const backend = typeof backendRaw === 'string' ? JSON.parse(backendRaw) : null;
+  console.log(`Хранилище (оболочка): ${backendRaw}`);
+  if (backend === null) {
+    fail(
+      `оболочка не сообщила о собранном хранилище (${label}). Либо prepareStorage() упал, ` +
+        'либо главная точка входа изменилась и диагностику потеряли.',
+    );
+  }
+  if (backend.backend !== 'sqlite') {
+    fail(
+      `backend оболочки — «${backend.backend}», а обязан быть «sqlite» (ADR-0005). ` +
+        'Это и есть тихий откат на прежнее хранилище, которого быть не должно.',
+    );
+  }
+  if (!String(backend.native?.path ?? '').startsWith('/data/')) {
+    fail(
+      `файл базы лежит не в app-private каталоге: ${JSON.stringify(backend.native?.path)}. ` +
+        'Ожидался путь под /data/ — там, куда система кладёт приватные данные приложения.',
+    );
+  }
+  if (String(backend.native?.journalMode ?? '').toLowerCase() !== 'wal') {
+    fail(`journal_mode=${backend.native?.journalMode}, а 00§2 требует WAL`);
+  }
+
+  return { cdp, screen, backend };
 }
+
+const LIVE_SUBTASK = 'Живая подзадача';
+const DOOMED_SUBTASK = 'Лишняя подзадача';
+const RECURRING_TASK = 'Полить цветы каждый день @дом';
+/** Заголовок, каким его сохранит домен: NLP вырезает и повтор, и метку. */
+const RECURRING_TITLE = 'Полить цветы';
+const AFTER_ERASE_TASK = 'Задача после стирания';
 
 async function main() {
   const taskTitle = 'Проверка сборки';
@@ -339,6 +395,56 @@ async function main() {
     );
   }
   console.log(`Задача «${taskTitle}» видна на Today.`);
+
+  // ── Данные, которые обязаны пережить перезапуск ──────────────────────────
+  //
+  // Одной задачи мало: список ADR-0005 требует доказать, что переживают и
+  // иерархия, и метки со связями, и состояние повторов, и tombstone, и
+  // очередь синхронизации. Сценарий подобран так, чтобы получить всё это
+  // минимумом действий (проверен на веб-сборке до переноса сюда):
+  // две подзадачи, одна из них удаляется, и одна задача через Quick Add с
+  // повтором и меткой.
+  console.log('── Иерархия: две подзадачи, одна удаляется (tombstone) ──');
+  if ((await first.cdp.evaluate(openTaskRow(taskTitle))) !== true) {
+    fail(`строка задачи «${taskTitle}» не открылась — карточка недоступна`);
+  }
+  await sleep(1200);
+  for (const subtask of [LIVE_SUBTASK, DOOMED_SUBTASK]) {
+    if ((await first.cdp.evaluate(typeIntoLabeled('Новая подзадача', subtask))) !== true) {
+      fail('поле «Новая подзадача» не найдено в карточке задачи');
+    }
+    await sleep(400);
+    // Точное совпадение: «Добавить дату»/«Добавить заметку» стоят выше по
+    // DOM и перехватили бы подстроку.
+    if ((await first.cdp.evaluate(clickByText('Добавить', { exact: true }))) !== true) {
+      fail(`кнопка добавления подзадачи «${subtask}» не найдена`);
+    }
+    await sleep(1200);
+  }
+  if ((await first.cdp.evaluate(clickByLabel(`Удалить подзадачу «${DOOMED_SUBTASK}»`))) !== true) {
+    fail(`кнопка удаления подзадачи «${DOOMED_SUBTASK}» не найдена`);
+  }
+  await sleep(1200);
+  if ((await first.cdp.evaluate(clickByText('Готово', { exact: true }))) !== true) {
+    fail('кнопка «Готово» карточки задачи не найдена');
+  }
+  await sleep(1200);
+
+  console.log('── Повтор и метка через Quick Add ──');
+  if ((await first.cdp.evaluate(clickByLabel('Быстрое добавление'))) !== true) {
+    fail('кнопка быстрого добавления не найдена');
+  }
+  await sleep(1000);
+  if ((await first.cdp.evaluate(typeIntoFirstInput(RECURRING_TASK))) !== true) {
+    fail('поле Quick Add не найдено');
+  }
+  await sleep(800);
+  // В Quick Add кнопка отправки — иконка: видимого текста нет, имя живёт в
+  // `aria-label` (поймано локальной проверкой выражений, а не эмулятором).
+  if ((await first.cdp.evaluate(clickByLabel('Добавить задачу'))) !== true) {
+    fail('кнопка «Добавить задачу» в Quick Add не найдена');
+  }
+  await sleep(1500);
 
   // Приложение не должно было умереть по дороге.
   if (adbSoft(['shell', 'pidof', APPLICATION_ID]).trim() === '') {
@@ -384,11 +490,137 @@ async function main() {
         `Экран показывает: ${JSON.stringify(String(last).slice(0, 300))}`,
     );
   }
+
+  console.log('── Файл базы в app-private каталоге ──');
+  console.log(listAppFiles());
+  const dbPath = pullDatabase('after-restart');
+  const state = inspectDatabase(dbPath);
+  console.log(`Содержимое базы: ${JSON.stringify(state)}`);
+
+  // Свойства самой базы (`00§2`) — не по отчёту приложения, а по файлу.
+  if (state.journalMode.toLowerCase() !== 'wal') {
+    fail(`journal_mode файла базы = ${state.journalMode}, ожидался wal`);
+  }
+  if (!state.fts5) fail('движок SQLite на устройстве собран без FTS5 (00§2)');
+  for (const table of [
+    'tasks',
+    'projects',
+    'labels',
+    'task_labels',
+    'recurrence_series',
+    'sync_outbox',
+    'tasks_fts',
+  ]) {
+    if (!state.tables.includes(table)) {
+      fail(`в базе нет таблицы ${table}. Есть: ${state.tables.join(', ')}`);
+    }
+  }
+
+  // Всё, что должно было пережить закрытие приложения, проверяется ПО ФАЙЛУ.
+  if (!state.titles.includes(taskTitle)) {
+    fail(`в файле базы нет задачи «${taskTitle}»: ${JSON.stringify(state.titles)}`);
+  }
+  if (!state.titles.includes(LIVE_SUBTASK)) {
+    fail(`в файле базы нет подзадачи «${LIVE_SUBTASK}» — иерархия не сохранилась`);
+  }
+  if (state.subtasks < 1) fail('в базе нет ни одной живой подзадачи — иерархия потеряна');
+  if (state.tombstones < 1) {
+    fail('в базе нет ни одного tombstone — удаление не сохранилось (02§9)');
+  }
+  if (state.outbox < 1) {
+    fail('очередь синхронизации пуста — outbox не сохранился (00§7)');
+  }
+  if (state.labels < 1 || state.taskLabels < 1) {
+    fail(`метки или их связи не сохранились: меток ${state.labels}, связей ${state.taskLabels}`);
+  }
+  if (state.recurrenceSeries < 1) {
+    fail('состояние повторов не сохранилось: нет ни одной серии (01§11)');
+  }
+  if (!state.titles.includes(RECURRING_TITLE)) {
+    fail(`в базе нет повторяющейся задачи «${RECURRING_TITLE}»`);
+  }
+  console.log(
+    `В базе: задач ${state.tasks} (tombstone ${state.tombstones}, подзадач ${state.subtasks}), ` +
+      `меток ${state.labels}/связей ${state.taskLabels}, серий ${state.recurrenceSeries}, ` +
+      `очередь ${state.outbox}.`,
+  );
+
+  // ── Перенос из IndexedDB: базы прежней сборки на устройстве быть не должно ─
+  const storageState = await second.cdp.evaluate(READ_STORAGE_STATE);
+  if (typeof storageState === 'string' && /"базы":\[[^\]]*"shagi@/.test(storageState)) {
+    fail(
+      `база IndexedDB прежней сборки осталась на устройстве: ${storageState}. ` +
+        'Без её удаления стёртые данные воскресали бы при следующем запуске.',
+    );
+  }
+  console.log(`Перенос: ${JSON.stringify(second.backend.migration ?? null)}`);
+
+  // ── Стирание локальных данных реально чистит НАТИВНУЮ базу ───────────────
+  console.log('── Удаление локальных данных (M52) ──');
+  if ((await second.cdp.evaluate(clickByLabel('Настройки'))) !== true) {
+    fail('кнопка «Настройки» не найдена на Today');
+  }
+  await sleep(1200);
+  if ((await second.cdp.evaluate(clickByText('Данные и конфиденциальность'))) !== true) {
+    fail('строка «Данные и конфиденциальность» не найдена в настройках');
+  }
+  await sleep(1200);
+  const privacyText = await second.cdp.evaluate(READ_APP_TEXT);
+  if (!String(privacyText).includes('База на устройстве')) {
+    fail(
+      'экран «Данные и конфиденциальность» не называет хранилищем базу на устройстве. ' +
+        `Показывает: ${JSON.stringify(String(privacyText).slice(0, 300))}`,
+    );
+  }
+  if ((await second.cdp.evaluate(clickByText('Удалить', { exact: true }))) !== true) {
+    fail('кнопка удаления локальных данных не найдена');
+  }
+  await sleep(900);
+  if ((await second.cdp.evaluate(clickByText('Удалить всё'))) !== true) {
+    fail('подтверждение удаления не найдено');
+  }
+  await sleep(2500);
+
+  const erased = inspectDatabase(pullDatabase('after-erase'));
+  console.log(`База после стирания: ${JSON.stringify(erased)}`);
+  if (erased.tasks !== 0 || erased.tombstones !== 0 || erased.outbox !== 0) {
+    fail(
+      `eraseAllLocalData не очистил нативную базу: задач ${erased.tasks}, ` +
+        `tombstone ${erased.tombstones}, очередь ${erased.outbox}`,
+    );
+  }
+  if (!erased.tables.includes('tasks')) {
+    fail('после стирания в базе нет таблиц — стёрта схема, а не данные');
+  }
+  console.log('Стирание очистило данные и сохранило схему.');
+
+  // ── База остаётся пригодной к работе после стирания ──────────────────────
+  console.log('── Работа после стирания ──');
+  if ((await second.cdp.evaluate(clickByText('Начать'))) !== true) {
+    fail('после стирания приложение не показало приветствие с кнопкой «Начать»');
+  }
+  await sleep(1200);
+  if ((await second.cdp.evaluate(typeIntoFirstInput(AFTER_ERASE_TASK))) !== true) {
+    fail('после стирания поле первой задачи не найдено');
+  }
+  await sleep(400);
+  if ((await second.cdp.evaluate(clickByText('Добавить задачу'))) !== true) {
+    fail('после стирания кнопка «Добавить задачу» не найдена');
+  }
+  await sleep(2000);
+  const reused = inspectDatabase(pullDatabase('after-reuse'));
+  if (!reused.titles.includes(AFTER_ERASE_TASK)) {
+    fail(`после стирания база не принимает новые задачи: в ней ${JSON.stringify(reused.titles)}`);
+  }
+  console.log('После стирания база снова принимает записи.');
+
   second.cdp.close();
 
   console.log(
-    'Дымовой тест пройден: приложение запускается, рисует продукт, создаёт задачу — ' +
-      'и задача остаётся на месте после закрытия приложения.',
+    'Дымовой тест пройден: приложение запускается на НАТИВНОЙ SQLite, рисует продукт, ' +
+      'создаёт задачи, иерархию, метки, повтор и tombstone — всё это лежит в файле базы ' +
+      'в app-private каталоге, переживает закрытие приложения, стирается по требованию ' +
+      'и продолжает работать после стирания.',
   );
 }
 

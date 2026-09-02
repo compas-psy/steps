@@ -4,6 +4,8 @@ import type {
   Attachment,
   ChecklistItem,
   ImportBatch,
+  SyncConflict,
+  SyncOutboxEntry,
   Label,
   Project,
   RecurrenceSeries,
@@ -131,9 +133,45 @@ export interface StoragePort extends StorageQueryPort {
    * Включая tombstone: удалённое остаётся удалённым и в копии.
    */
   exportAllEntities(): Promise<WorkspaceExport>;
+
+  /**
+   * Полный дамп ВСЕГО содержимого — для переноса между адаптерами
+   * (IndexedDB → нативная SQLite, ADR-0005).
+   *
+   * Чем отличается от `exportAllEntities` и почему это не одно и то же:
+   * бэкап (`01§27`) — копия ДАННЫХ ЧЕЛОВЕКА, и в него сознательно не
+   * входят ни tombstone, ни очередь синхронизации, ни партии импорта (см.
+   * `@shagi/importer` `backup/snapshot.ts`). Перенос backend'а — другое
+   * дело: он обязан сохранить состояние устройства ЦЕЛИКОМ. Потерять
+   * tombstone значит воскресить удалённые задачи при следующей
+   * синхронизации; потерять outbox значит не отправить изменения, которые
+   * человек уже сделал. Поэтому здесь — всё, включая удалённое.
+   */
+  dumpForMigration(): Promise<StorageDump>;
+
+  /**
+   * Обратная сторона `dumpForMigration`: записывает дамп как есть, одной
+   * транзакцией, БЕЗ валидации и без порождения outbox-записей. Это не
+   * пользовательская команда, а перенос уже существующего состояния —
+   * дописывать в очередь синхронизации то, что человек не делал, было бы
+   * искажением истории устройства.
+   */
+  loadFromMigrationDump(dump: StorageDump): Promise<void>;
 }
 
-/** Полный граф рабочего пространства — то, что уезжает в бэкап. */
+/**
+ * Состояние устройства целиком — включая удалённое (tombstone), очередь
+ * синхронизации, конфликты и партии импорта.
+ */
+export interface StorageDump extends WorkspaceExport {
+  readonly syncOutbox: readonly SyncOutboxEntry[];
+  readonly syncConflicts: readonly SyncConflict[];
+  readonly importBatches: readonly ImportBatch[];
+}
+
+/** Полный граф рабочего пространства — то, что уезжает в бэкап. В
+ * `exportAllEntities` — только живые записи; в `dumpForMigration` (через
+ * `StorageDump`) — все, включая tombstone. */
 export interface WorkspaceExport {
   readonly projects: readonly Project[];
   readonly sections: readonly Section[];

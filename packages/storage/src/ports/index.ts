@@ -13,6 +13,7 @@ export type { RecurrenceSeriesRepository } from './recurrence-series-repository.
 export type { ReminderRepository } from './reminder-repository.js';
 export type { SectionRepository } from './section-repository.js';
 export type {
+  StorageDump,
   StoragePort,
   StorageWriteTransaction,
   TombstonePurgeSummary,

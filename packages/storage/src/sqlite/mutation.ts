@@ -13,6 +13,7 @@ import {
   TASK_LINKS_TABLE,
   TASKS_TABLE,
   IMPORT_BATCHES_TABLE,
+  SYNC_CONFLICTS_TABLE,
 } from '../schema/tables.js';
 import type { TableDefinition } from '../schema/types.js';
 import type { ImportBatch, SyncOutboxEntry } from '@shagi/core';
@@ -33,9 +34,11 @@ import {
   taskLinkToRow,
   taskToRow,
   importBatchToRow,
+  syncConflictToRow,
 } from './mappers.js';
-import type { NodeSqliteDriver } from './node-sqlite-driver.js';
+import type { SqliteDriverPort } from './driver-port.js';
 import type { DomainMutation } from '../ports/transaction.js';
+import type { StorageDump } from '../ports/index.js';
 
 /**
  * `applyMutation` (задание пакета работ E02.2, п.3+4) — единственное место,
@@ -58,7 +61,7 @@ function upsertSqlFor(table: TableDefinition): string {
 }
 
 async function upsert(
-  driver: NodeSqliteDriver,
+  driver: SqliteDriverPort,
   table: TableDefinition,
   row: SqliteRow,
 ): Promise<void> {
@@ -66,7 +69,7 @@ async function upsert(
   await driver.execute(upsertSqlFor(table), params);
 }
 
-async function writeEntity(driver: NodeSqliteDriver, write: EntityWrite): Promise<void> {
+async function writeEntity(driver: SqliteDriverPort, write: EntityWrite): Promise<void> {
   switch (write.entity) {
     case 'task':
       return upsert(driver, TASKS_TABLE, taskToRow(write.value));
@@ -91,12 +94,12 @@ async function writeEntity(driver: NodeSqliteDriver, write: EntityWrite): Promis
   }
 }
 
-async function writeOutboxEntry(driver: NodeSqliteDriver, entry: SyncOutboxEntry): Promise<void> {
+async function writeOutboxEntry(driver: SqliteDriverPort, entry: SyncOutboxEntry): Promise<void> {
   await upsert(driver, SYNC_OUTBOX_TABLE, syncOutboxEntryToRow(entry));
 }
 
 export async function applyMutationSql(
-  driver: NodeSqliteDriver,
+  driver: SqliteDriverPort,
   mutation: DomainMutation,
 ): Promise<void> {
   if (!isNonEmptyArray(mutation.outbox)) {
@@ -122,8 +125,64 @@ export async function applyMutationSql(
  * см. разбор в `StorageWriteTransaction.saveImportBatch` (`ports/storage-port.ts`).
  */
 export async function saveImportBatchSql(
-  driver: NodeSqliteDriver,
+  driver: SqliteDriverPort,
   batch: ImportBatch,
 ): Promise<void> {
   await upsert(driver, IMPORT_BATCHES_TABLE, importBatchToRow(batch));
+}
+
+/**
+ * Запись полного дампа при переносе backend'а (`StoragePort.loadFromMigrationDump`).
+ *
+ * Отдельно от `applyMutationSql` по трём причинам сразу: здесь нет
+ * обязательной outbox-записи (переносится уже существующая очередь, а не
+ * порождается новая), сюда входят таблицы, которых нет в `EntityWrite`
+ * (`sync_conflicts`, `import_batches`), и сюда входят tombstone — записи с
+ * `deleted_at`, которые обычная мутация не пишет.
+ *
+ * Порядок — от независимых таблиц к зависимым: внешние ключи включены
+ * (`00§2`), и ребёнок раньше родителя не пройдёт.
+ */
+export async function writeMigrationDumpSql(
+  driver: SqliteDriverPort,
+  dump: StorageDump,
+): Promise<void> {
+  for (const project of dump.projects) await upsert(driver, PROJECTS_TABLE, projectToRow(project));
+  for (const section of dump.sections) await upsert(driver, SECTIONS_TABLE, sectionToRow(section));
+  for (const label of dump.labels) await upsert(driver, LABELS_TABLE, labelToRow(label));
+  for (const series of dump.recurrenceSeries) {
+    await upsert(driver, RECURRENCE_SERIES_TABLE, recurrenceSeriesToRow(series));
+  }
+  // Родители раньше подзадач — `tasks.parent_task_id` ссылается на ту же
+  // таблицу.
+  for (const task of dump.tasks.filter((candidate) => candidate.parentTaskId === null)) {
+    await upsert(driver, TASKS_TABLE, taskToRow(task));
+  }
+  for (const task of dump.tasks.filter((candidate) => candidate.parentTaskId !== null)) {
+    await upsert(driver, TASKS_TABLE, taskToRow(task));
+  }
+  for (const link of dump.taskLabels) {
+    await upsert(driver, TASK_LABELS_TABLE, taskLabelToRow(link));
+  }
+  for (const item of dump.checklistItems) {
+    await upsert(driver, CHECKLIST_ITEMS_TABLE, checklistItemToRow(item));
+  }
+  for (const reminder of dump.reminders) {
+    await upsert(driver, REMINDERS_TABLE, reminderToRow(reminder));
+  }
+  for (const link of dump.taskLinks) await upsert(driver, TASK_LINKS_TABLE, taskLinkToRow(link));
+  for (const attachment of dump.attachments) {
+    await upsert(driver, ATTACHMENTS_TABLE, attachmentToRow(attachment));
+  }
+  for (const entry of dump.syncOutbox) await writeOutboxEntry(driver, entry);
+  for (const conflict of dump.syncConflicts) {
+    await upsert(driver, SYNC_CONFLICTS_TABLE, syncConflictToRow(conflict));
+  }
+  for (const batch of dump.importBatches) await saveImportBatchSql(driver, batch);
+
+  // Поисковый индекс — по всем перенесённым задачам: FTS5-таблица не
+  // наполняется сама, а без неё поиск после переноса нашёл бы пустоту.
+  for (const task of dump.tasks) {
+    await syncFtsForWrite(driver, { entity: 'task', value: task });
+  }
 }

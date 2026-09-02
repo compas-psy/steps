@@ -6,7 +6,7 @@ import type { EntityWrite } from '../ports/index.js';
 import { sqlToString, sqlToUuid, uuidToSql } from './codec.js';
 import type { SqliteRow } from './driver-port.js';
 import { rowToTaskLabel } from './mappers.js';
-import type { NodeSqliteDriver } from './node-sqlite-driver.js';
+import type { SqliteDriverPort } from './driver-port.js';
 
 /**
  * Синхронизация FTS5-индекса (`../schema/indexes.ts` `TASK_SEARCH_FTS_INDEX`)
@@ -37,19 +37,19 @@ import type { NodeSqliteDriver } from './node-sqlite-driver.js';
  * посчитать активность связи (SQL-версия и TS-версия).
  *
  * Каждый вызов здесь происходит ВНУТРИ активной транзакции драйвера
- * (`NodeSqliteDriver.transaction`, вызывается из `applyMutation` до того, как
+ * (`SqliteDriverPort.transaction`, вызывается из `applyMutation` до того, как
  * колбэк транзакции вернётся) — индекс не может разойтись с `tasks`, потому
  * что откат мутации откатывает и эти изменения (тот же `ROLLBACK`).
  */
 
 const FTS_TABLE = TASK_SEARCH_FTS_INDEX.name;
 
-async function deleteFtsRow(driver: NodeSqliteDriver, taskId: Uuid): Promise<void> {
+async function deleteFtsRow(driver: SqliteDriverPort, taskId: Uuid): Promise<void> {
   await driver.execute(`DELETE FROM "${FTS_TABLE}" WHERE id = ?`, [uuidToSql(taskId)]);
 }
 
 async function upsertFtsRow(
-  driver: NodeSqliteDriver,
+  driver: SqliteDriverPort,
   taskId: Uuid,
   title: string,
   description: string,
@@ -63,7 +63,7 @@ async function upsertFtsRow(
   );
 }
 
-async function loadProjectTitle(driver: NodeSqliteDriver, projectId: Uuid | null): Promise<string> {
+async function loadProjectTitle(driver: SqliteDriverPort, projectId: Uuid | null): Promise<string> {
   if (projectId === null) {
     return '';
   }
@@ -73,7 +73,7 @@ async function loadProjectTitle(driver: NodeSqliteDriver, projectId: Uuid | null
   return row === null ? '' : sqlToString(row.title ?? null);
 }
 
-async function loadLabelDisplayNames(driver: NodeSqliteDriver, taskId: Uuid): Promise<string> {
+async function loadLabelDisplayNames(driver: SqliteDriverPort, taskId: Uuid): Promise<string> {
   const rows = await driver.queryAll<SqliteRow>(`SELECT * FROM "task_labels" WHERE task_id = ?`, [
     uuidToSql(taskId),
   ]);
@@ -99,7 +99,7 @@ async function loadLabelDisplayNames(driver: NodeSqliteDriver, taskId: Uuid): Pr
 /** Пересчитывает и переписывает строку `tasks_fts` ровно одной задачи —
  * удаляет её, если задачи больше нет либо она tombstone (tombstone не
  * user-visible, `02§1` — поиск не должен его находить). */
-export async function refreshTaskFtsRow(driver: NodeSqliteDriver, taskId: Uuid): Promise<void> {
+export async function refreshTaskFtsRow(driver: SqliteDriverPort, taskId: Uuid): Promise<void> {
   const row = await driver.queryOne<SqliteRow>(`SELECT * FROM "tasks" WHERE id = ?`, [
     uuidToSql(taskId),
   ]);
@@ -118,7 +118,7 @@ export async function refreshTaskFtsRow(driver: NodeSqliteDriver, taskId: Uuid):
   await upsertFtsRow(driver, taskId, title, description, projectTitle, labelDisplayNames);
 }
 
-async function refreshFtsForProject(driver: NodeSqliteDriver, projectId: Uuid): Promise<void> {
+async function refreshFtsForProject(driver: SqliteDriverPort, projectId: Uuid): Promise<void> {
   const rows = await driver.queryAll<SqliteRow>(
     `SELECT id FROM "tasks" WHERE project_id = ? AND deleted_at IS NULL`,
     [uuidToSql(projectId)],
@@ -128,7 +128,7 @@ async function refreshFtsForProject(driver: NodeSqliteDriver, projectId: Uuid): 
   }
 }
 
-async function refreshFtsForLabel(driver: NodeSqliteDriver, labelId: Uuid): Promise<void> {
+async function refreshFtsForLabel(driver: SqliteDriverPort, labelId: Uuid): Promise<void> {
   const rows = await driver.queryAll<SqliteRow>(`SELECT * FROM "task_labels" WHERE label_id = ?`, [
     uuidToSql(labelId),
   ]);
@@ -146,7 +146,7 @@ async function refreshFtsForLabel(driver: NodeSqliteDriver, labelId: Uuid): Prom
 /** Вызывается для КАЖДОГО `EntityWrite` мутации (`./sqlite-storage.ts`
  * `applyMutation`) — решает, какие строки `tasks_fts` эта конкретная запись
  * может задеть, и пересчитывает ровно их. */
-export async function syncFtsForWrite(driver: NodeSqliteDriver, write: EntityWrite): Promise<void> {
+export async function syncFtsForWrite(driver: SqliteDriverPort, write: EntityWrite): Promise<void> {
   switch (write.entity) {
     case 'task':
       await refreshTaskFtsRow(driver, write.value.id);

@@ -160,3 +160,27 @@ jobs:
       - name: 9. E2E смоук (веб, по собранному dist/)
         working-directory: apps/web
         run: pnpm test:e2e
+
+      # Выражения, которыми дымовой тест Android водит приложение по DOM
+      # (`apps/mobile/scripts/page-actions.mjs`), проверяются ЗДЕСЬ — на
+      # веб-сборке того же продукта. Причина простая: сломанный селектор
+      # («Добавить» вместо кнопки формы попадает в «Добавить дату») иначе
+      # обнаруживается только на эмуляторе, а цикл там — десять минут.
+      # Здесь тот же файл выражений отрабатывает за секунды. Backend, файл
+      # базы и перезапуск процесса остаются за эмулятором: это про
+      # платформу, а не про DOM.
+      - name: 10. Выражения дымового теста Android (на веб-сборке)
+        working-directory: apps/web
+        run: |
+          set -euo pipefail
+          # `--host 127.0.0.1` — по той же причине, что в playwright.config.ts:
+          # `localhost` на раннере разрешается в ::1, и клиент по IPv4 не
+          # достучится.
+          pnpm exec vite preview --host 127.0.0.1 --port 4318 --strictPort &
+          server=$!
+          trap 'kill "${server}" 2>/dev/null || true' EXIT
+          for _ in $(seq 1 30); do
+            if curl -fsS -o /dev/null http://127.0.0.1:4318/; then break; fi
+            sleep 1
+          done
+          node ../../apps/mobile/scripts/verify-page-actions.mjs http://127.0.0.1:4318/
