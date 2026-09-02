@@ -258,7 +258,7 @@ jobs:
       #     JDK 22. То есть 17…21 — рабочий диапазон, 21 берём как верхнюю
       #     границу.
       - name: JDK 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '21'
@@ -836,7 +836,7 @@ jobs:
       # (AGP тут не запускается), но полагаться на «что окажется в образе» —
       # ровно тот способ получить падение, которое нечем объяснить.
       - name: JDK 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '21'
