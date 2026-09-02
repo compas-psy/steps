@@ -1,0 +1,34 @@
+/**
+ * `NlpOnboarding` (M05) — нет отдельного артборда в хендоффе (`docs/spec/
+ * DESIGN/source_unpacked/ШАГИ - R1 Design.dc.html` не содержит `M05`), но
+ * страница всё равно нуждается в композиции — та же базовая раскладка
+ * (заголовок/подзаголовок сверху, поле, превью, кнопка снизу), что уже
+ * применена в `FirstTask.css` для соседнего онбординг-экрана, без
+ * bespoke-решений там, где сосед уже задал паттерн.
+ */
+
+.shagi-nlp-onboarding {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-height: 100dvh;
+  padding: var(--space-8) var(--space-6);
+}
+
+.shagi-nlp-onboarding__heading {
+  font-size: var(--text-mobile-heading);
+  font-weight: var(--fw-bold);
+  color: var(--foreground);
+  margin: 0 0 var(--space-1);
+}
+
+.shagi-nlp-onboarding__description {
+  font-size: var(--text-body-secondary);
+  color: var(--muted-foreground);
+  margin: 0;
+}
+
+.shagi-nlp-onboarding__footer {
+  margin-top: auto;
+  padding-top: var(--space-6);
+}

@@ -45,6 +45,7 @@ import {
 } from '@shagi/nlp';
 
 import { useAppController } from '../state/context.js';
+import './NlpOnboarding.css';
 
 const DEMO_TEXT = 'Позвонить маме завтра в 15:00 #семья @важное !2 на 20 мин';
 
@@ -122,9 +123,11 @@ export function NlpOnboarding(): ReactElement {
   }));
 
   return (
-    <div>
-      <h1>{t('onboarding', 'nlpOnboarding.title')}</h1>
-      <p>{t('onboarding', 'nlpOnboarding.description')}</p>
+    <div className="shagi-nlp-onboarding">
+      <h1 className="shagi-nlp-onboarding__heading">{t('onboarding', 'nlpOnboarding.title')}</h1>
+      <p className="shagi-nlp-onboarding__description">
+        {t('onboarding', 'nlpOnboarding.description')}
+      </p>
 
       <Input
         value={text}
@@ -140,9 +143,17 @@ export function NlpOnboarding(): ReactElement {
         emptyState={<p>{t('onboarding', 'nlpOnboarding.emptyState')}</p>}
       />
 
-      <Button type="button" variant="primary" onClick={() => controller.goTo('todayEmpty')}>
-        {t('onboarding', 'nlpOnboarding.continueLabel')}
-      </Button>
+      <div className="shagi-nlp-onboarding__footer">
+        <Button
+          type="button"
+          variant="primary"
+          size="lg"
+          block
+          onClick={() => controller.goTo('todayEmpty')}
+        >
+          {t('onboarding', 'nlpOnboarding.continueLabel')}
+        </Button>
+      </div>
     </div>
   );
 }
