@@ -62,8 +62,11 @@ export function isOnboardingDone(platform: PlatformCapabilitiesRegistry): boolea
   return preferences.get(ONBOARDING_DONE_KEY) === DONE_VALUE;
 }
 
-/** Недоступный порт — не ошибка: выбор просто не переживёт перезапуск, а
- * запасной сигнал (наличие задач) всё равно отработает. */
+/** Недоступный порт — не ошибка, но и не «всё равно отработает»: признак
+ * просто не переживёт перезапуск. Запасной сигнал (наличие задач) подхватит
+ * только тех, кто успел завести хотя бы одну задачу; прошедший онбординг с
+ * пустым списком увидит его снова — см. «ЧЕСТНО О ГРАНИЦЕ» в заголовке
+ * файла. */
 export function markOnboardingDone(platform: PlatformCapabilitiesRegistry): void {
   const preferences = platform.localPreferences;
   if (!isAvailable(preferences)) return;

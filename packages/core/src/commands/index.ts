@@ -39,6 +39,24 @@ export { resolveTaskRank, type NewTaskRank } from './rank-input.js';
 export { createTaskCommand, type CreateTaskInput } from './create-task.js';
 export { updateTaskCommand, type UpdateTaskInput, type UpdateTaskPatch } from './update-task.js';
 export { completeTaskCommand, type CompleteTaskInput } from './complete-task.js';
+export {
+  completeManyCommand,
+  previewBulkCompletion,
+  type CompleteManyInput,
+  type CompleteManyResult,
+} from './complete-many.js';
+export { planBulkCompletion, type BulkCompletionPlan } from './bulk-completion-plan.js';
+export {
+  moveManyToProjectCommand,
+  previewBulkProjectMove,
+  type MoveManyToProjectInput,
+  type MoveManyToProjectResult,
+} from './move-many-to-project.js';
+export {
+  planBulkProjectMove,
+  type BulkProjectMovePlan,
+  type BulkProjectMoveStep,
+} from './bulk-project-move-plan.js';
 // `DeleteTaskResult` (не `TaskCommandResult`) — пакет работ E10 расширил
 // исход аддитивно (`affectedSubtaskIds`/`affectedChecklistItemIds`, каскад
 // `01§9`), см. комментарий `delete-task.ts`.

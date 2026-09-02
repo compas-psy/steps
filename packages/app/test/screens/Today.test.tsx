@@ -656,7 +656,7 @@ describe('Today — «Добавить в Главное» (M11 Focus)', () => {
 });
 
 describe('Today — bulk Today/Tomorrow («Не по плану», M09)', () => {
-  it('режим выбора «Не по плану» не влияет на чекбоксы остальных групп — они по-прежнему завершают задачу по клику', async () => {
+  it('режим выбора распространяется на ВСЕ группы (M37): чекбокс выбирает, а не завершает', async () => {
     const user = userEvent.setup();
     const missedPlanTask = makeTask({ title: 'Забытая А', plannedDate: YESTERDAY });
     const todayTask = makeTask({ title: 'Обычная сегодняшняя Б', plannedDate: TODAY });
@@ -678,13 +678,23 @@ describe('Today — bulk Today/Tomorrow («Не по плану», M09)', () => 
     const missedPlanStored = await getStorage().tasks.findById(missedPlanTask.id);
     expect(missedPlanStored?.status).toBe('active');
 
-    // Чекбокс "Сегодня" (другая группа) продолжает работать как раньше — Complete.
+    // И чекбокс ДРУГОЙ группы в этом режиме тоже выбирает, а не завершает:
+    // `01§20` описывает действия над выбором, не над одной группой, а макет
+    // `[R1][M][37]` подсвечивает строки вперемешку. Раньше режим был узким
+    // (только «Не по плану», M09) — это состояние экрана и расширено.
+    await user.click(screen.getByRole('checkbox', { name: 'Обычная сегодняшняя Б' }));
+    expect(screen.getByRole('checkbox', { name: 'Обычная сегодняшняя Б' })).toBeChecked();
+    expect(screen.getByText('Обычная сегодняшняя Б')).toBeInTheDocument();
+    const todayStored = await getStorage().tasks.findById(todayTask.id);
+    expect(todayStored?.status).toBe('active');
+
+    // А вне режима — прежнее поведение: чекбокс завершает.
+    await user.click(screen.getByRole('button', { name: t('today', 'selection.exit') }));
     await user.click(screen.getByRole('checkbox', { name: 'Обычная сегодняшняя Б' }));
     await waitFor(() =>
       expect(screen.queryByText('Обычная сегодняшняя Б')).not.toBeInTheDocument(),
     );
-    const todayStored = await getStorage().tasks.findById(todayTask.id);
-    expect(todayStored?.status).toBe('completed');
+    expect((await getStorage().tasks.findById(todayTask.id))?.status).toBe('completed');
   });
 
   it('выбор 2 из 3 задач «Не по плану» → «Сегодня» переносит plannedDate только у выбранных, невыбранная остаётся на месте', async () => {
@@ -708,6 +718,9 @@ describe('Today — bulk Today/Tomorrow («Не по плану», M09)', () => 
 
     expect(screen.getByText(t('today', 'bulk.selectedCount', { count: 2 }))).toBeInTheDocument();
 
+    // Дата в панели M37 — иконка, за ней диалог с быстрыми пунктами и
+    // календарём (`01§20` «Move date»), поэтому шага теперь два.
+    await user.click(screen.getByRole('button', { name: t('today', 'bulk.date') }));
     await user.click(screen.getByRole('button', { name: t('today', 'bulk.today') }));
 
     // Выбранные ушли из "Не по плану" в "Сегодня", невыбранная осталась в "Не по плану".
@@ -767,6 +780,9 @@ describe('Today — bulk Today/Tomorrow («Не по плану», M09)', () => 
     await user.click(screen.getByRole('button', { name: t('today', 'selection.enter') }));
     await user.click(screen.getByRole('checkbox', { name: 'Bulk-завтра А' }));
     await user.click(screen.getByRole('checkbox', { name: 'Bulk-завтра Б' }));
+    // Дата в панели M37 — иконка, за ней диалог с быстрыми пунктами и
+    // календарём (`01§20` «Move date»), поэтому шага теперь два.
+    await user.click(screen.getByRole('button', { name: t('today', 'bulk.date') }));
     await user.click(screen.getByRole('button', { name: t('today', 'bulk.tomorrow') }));
 
     await waitFor(() => expect(screen.getByText(t('common', 'today.doneAll'))).toBeInTheDocument());
@@ -825,6 +841,9 @@ describe('Today — bulk Today/Tomorrow («Не по плану», M09)', () => 
     await user.click(screen.getByRole('button', { name: t('today', 'selection.enter') }));
     await user.click(screen.getByRole('checkbox', { name: '...' }));
     await user.click(screen.getByRole('checkbox', { name: 'Валидная задача' }));
+    // Дата в панели M37 — иконка, за ней диалог с быстрыми пунктами и
+    // календарём (`01§20` «Move date»), поэтому шага теперь два.
+    await user.click(screen.getByRole('button', { name: t('today', 'bulk.date') }));
     await user.click(screen.getByRole('button', { name: t('today', 'bulk.today') }));
 
     await waitFor(() =>
@@ -1089,5 +1108,94 @@ describe('Today — повторы (E11.2)', () => {
     expect(stored?.status).toBe('completed');
     expect(stored?.completionKind).toBe('done');
     expect(stored?.seriesId).toBeNull();
+  });
+});
+
+describe('Today — M37 «Множественный выбор»: агрегированные подтверждения', () => {
+  it('родитель и его подзадача выбраны ОБА — подтверждение показывается и не врёт про «0 подзадач»', async () => {
+    // Регрессия живого прогона M37: первая версия триггерила подтверждение
+    // по `additionalChildCount > 0`, и этот выбор завершал иерархию МОЛЧА,
+    // хотя `01§20` требует подтверждения при самом наличии иерархии.
+    const user = userEvent.setup();
+    const parent = makeTask({ title: 'Родитель М37', plannedDate: TODAY });
+    const child = makeTask({
+      title: 'Подзадача М37',
+      plannedDate: TODAY,
+      parentTaskId: parent.id,
+    });
+    const getStorage = renderTodayCapturingStorage([parent, child]);
+
+    await waitFor(() => expect(screen.getByText('Родитель М37')).toBeInTheDocument());
+    await user.click(screen.getByRole('button', { name: t('today', 'selection.enter') }));
+    await user.click(screen.getByRole('checkbox', { name: 'Родитель М37' }));
+    await user.click(screen.getByRole('checkbox', { name: 'Подзадача М37' }));
+    await user.click(screen.getByRole('button', { name: t('today', 'bulk.complete') }));
+
+    expect(await screen.findByText(t('today', 'bulk.confirmTitle'))).toBeInTheDocument();
+    expect(screen.getByText(t('today', 'bulk.confirmBodyNoExtra'))).toBeInTheDocument();
+    // Ни одна задача ещё не тронута — «Cancel leaves the entire selection
+    // unchanged» достижимо только если до подтверждения записи не было.
+    expect((await getStorage().tasks.findById(parent.id))?.status).toBe('active');
+
+    await user.click(screen.getByRole('button', { name: t('today', 'bulk.confirmCancel') }));
+    expect((await getStorage().tasks.findById(parent.id))?.status).toBe('active');
+    expect((await getStorage().tasks.findById(child.id))?.status).toBe('active');
+    // Выбор пережил отмену — человек может продолжить с того же места.
+    expect(screen.getByText(t('today', 'bulk.selectedCount', { count: 2 }))).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: t('today', 'bulk.complete') }));
+    await user.click(screen.getByRole('button', { name: t('today', 'bulk.confirmAccept') }));
+
+    await waitFor(async () =>
+      expect((await getStorage().tasks.findById(parent.id))?.status).toBe('completed'),
+    );
+    expect((await getStorage().tasks.findById(child.id))?.status).toBe('completed');
+  });
+
+  it('массовое удаление спрашивает подтверждение, отмена не удаляет ничего', async () => {
+    // Undo (`01§9`) в R1 ещё нет, поэтому единственная страховка от
+    // необратимого каскада — этот диалог. Тест краснеет, если его убрать.
+    const user = userEvent.setup();
+    const first = makeTask({ title: 'Удаляемая А', plannedDate: TODAY });
+    const second = makeTask({ title: 'Удаляемая Б', plannedDate: TODAY });
+    const getStorage = renderTodayCapturingStorage([first, second]);
+
+    await waitFor(() => expect(screen.getByText('Удаляемая А')).toBeInTheDocument());
+    await user.click(screen.getByRole('button', { name: t('today', 'selection.enter') }));
+    await user.click(screen.getByRole('checkbox', { name: 'Удаляемая А' }));
+    await user.click(screen.getByRole('checkbox', { name: 'Удаляемая Б' }));
+    await user.click(screen.getByRole('button', { name: t('today', 'bulk.delete') }));
+
+    expect(await screen.findByText(t('today', 'bulk.deleteConfirmTitle'))).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: t('today', 'bulk.confirmCancel') }));
+
+    expect((await getStorage().tasks.findById(first.id))?.deletedAt).toBeNull();
+    expect((await getStorage().tasks.findById(second.id))?.deletedAt).toBeNull();
+
+    await user.click(screen.getByRole('button', { name: t('today', 'bulk.delete') }));
+    await user.click(screen.getByRole('button', { name: t('today', 'bulk.deleteConfirmAccept') }));
+
+    await waitFor(async () =>
+      expect((await getStorage().tasks.findById(first.id))?.deletedAt).not.toBeNull(),
+    );
+    expect((await getStorage().tasks.findById(second.id))?.deletedAt).not.toBeNull();
+  });
+
+  it('массовый приоритет применяется ко всем выбранным и только к ним', async () => {
+    const user = userEvent.setup();
+    const chosen = makeTask({ title: 'Приоритет А', plannedDate: TODAY });
+    const untouched = makeTask({ title: 'Приоритет Б', plannedDate: TODAY });
+    const getStorage = renderTodayCapturingStorage([chosen, untouched]);
+
+    await waitFor(() => expect(screen.getByText('Приоритет А')).toBeInTheDocument());
+    await user.click(screen.getByRole('button', { name: t('today', 'selection.enter') }));
+    await user.click(screen.getByRole('checkbox', { name: 'Приоритет А' }));
+    await user.click(screen.getByRole('button', { name: t('today', 'bulk.priority') }));
+    await user.click(screen.getByRole('button', { name: t('today', 'bulk.priorityP1') }));
+
+    await waitFor(async () =>
+      expect((await getStorage().tasks.findById(chosen.id))?.priority).toBe(1),
+    );
+    expect((await getStorage().tasks.findById(untouched.id))?.priority).toBe(4);
   });
 });

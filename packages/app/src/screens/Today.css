@@ -163,16 +163,6 @@
   color: var(--primary);
 }
 
-.shagi-today__bulk-bar {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-2) var(--space-1);
-  margin-bottom: var(--space-2);
-  font-size: var(--text-small-meta);
-  color: var(--muted-foreground);
-}
-
 /* Класс продублирован намеренно (специфичность 0-2-0): собственный
  * `padding` у `TaskRow` (`@shagi/ui`) объявлен с той же специфичностью, а
  * его CSS попадает в бандл позже — при равенстве выиграл бы он. Тот же
@@ -184,4 +174,119 @@
 
 .shagi-today__group-list.shagi-today__group-list > *:last-child {
   border-bottom: none;
+}
+
+/* --- M37 «Множественный выбор» -------------------------------------------- */
+
+/* Вход/выход из режима — текстовая кнопка в шапке, рядом с иконками. */
+.shagi-today__select-mode {
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--primary-on-surface);
+  font-family: inherit;
+  font-size: var(--text-small-meta);
+  font-weight: var(--fw-semibold);
+  cursor: pointer;
+}
+
+/* Панель массовых действий липнет к низу экрана (макет `[R1][M][37]`) —
+ * прокручивая длинный список, человек не теряет ни счётчик, ни действия.
+ * `position: sticky`, а не `fixed`: панель принадлежит экрану, а не окну,
+ * и не всплывает поверх других экранов. */
+/* Панель массовых действий (M37).
+ *
+ * `fixed`, а не `sticky`. Первая версия была `sticky; bottom: 0`, и живой
+ * прогон на ширине 390px показал, чего это стоит: при коротком списке
+ * панель просто оставалась там, где стоит в разметке — сразу под шапкой,
+ * СВЕРХУ экрана (`m37-12-selected-2.png`), а при длинном уезжала вместе с
+ * прокруткой и пропадала из виду (`m37-15-scroll.png`). `sticky` прижимает
+ * элемент к краю ПРОКРУЧИВАЕМОГО предка только пока его собственный бокс в
+ * зоне видимости, и ни один из двух случаев этому условию не отвечает.
+ *
+ * Панель перекрывает нижнюю навигацию — ровно как в макете `[R1][M][37]`,
+ * где на экране множественного выбора навигации нет вовсе. Это осознанная
+ * замена прежнего решения («панель встаёт НАД навигацией»): побочный
+ * эффект полезен — пока идёт выбор, уйти на другой экран нельзя, и вопрос
+ * «протекает ли выбор между экранами» снимается самой раскладкой. */
+.shagi-today__bulk-bar {
+  position: fixed;
+  inset-inline: 0;
+  bottom: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4) var(--space-5);
+  border-top: 1px solid var(--border);
+  background: var(--card);
+  box-shadow: var(--shadow-header);
+}
+
+/* Пока панель видна, последние строки списка не должны прятаться под ней. */
+.shagi-today--bulk {
+  padding-bottom: var(--space-12);
+}
+
+/* Удаление в панели — красный контур глифа, а не залитый красным квадрат:
+ * в макете это `<span style="color:var(--destructive)">` вокруг иконки.
+ * Специфичность 0-2-0 — правило спорит с собственным CSS `IconButton`
+ * (`@shagi/ui`), который попадает в бандл позже. */
+.shagi-today__bulk-danger.shagi-today__bulk-danger {
+  color: var(--destructive);
+}
+
+.shagi-today__bulk-count {
+  font-size: var(--text-small-meta);
+  font-weight: var(--fw-bold);
+  color: var(--foreground);
+}
+
+/* Шесть действий и счётчик обязаны уместиться в ОДНУ строку на 390px — в
+ * макете панель однострочная. Первый вариант (`gap: --space-3`, кнопки
+ * размера `md`) на живом прогоне переносил иконки под счётчик. */
+.shagi-today__bulk-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+/* Пикеры массовых действий (M37): список во всю ширину диалога, строки —
+ * обычные кнопки без браузерного хрома, как в пикерах карточки задачи. */
+.shagi-today__bulk-picker {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.shagi-today__bulk-picker li {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.shagi-today__bulk-picker button {
+  flex: 1;
+  padding: var(--space-3);
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  font: inherit;
+  font-size: var(--text-body);
+  color: var(--foreground);
+  text-align: start;
+  cursor: pointer;
+}
+
+.shagi-today__bulk-picker button:hover {
+  background: var(--muted);
+}
+
+.shagi-today__bulk-quick-dates {
+  display: flex;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
 }

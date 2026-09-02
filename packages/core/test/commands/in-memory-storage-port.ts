@@ -95,7 +95,13 @@ export class InMemoryCommandStoragePort implements CommandStoragePort {
     },
   };
 
+  /** Сколько раз открывалась транзакция. Нужен там, где «атомарно»
+   * (`01§20`) — часть требования, а не деталь: одна транзакция на весь
+   * набор проверяется этим счётчиком. */
+  transactionCount = 0;
+
   async runTransaction<T>(run: (tx: CommandStorageWriteTransaction) => Promise<T>): Promise<T> {
+    this.transactionCount += 1;
     const tx: CommandStorageWriteTransaction = {
       tasks: this.tasks,
       checklistItems: this.checklistItems,

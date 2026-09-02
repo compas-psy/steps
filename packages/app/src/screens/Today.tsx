@@ -129,21 +129,29 @@
  * непостоянное (не персистентное между заходами) — задание прямо просит не
  * выходить за эти рамки в этом пакете работ.
  *
- * --- M09: bulk Today/Tomorrow — только «Не по плану» ----------------------
+ * --- M37: множественный выбор на всём экране -----------------------------
  *
- * `01§6`, дословно про «Не по плану»: "Actions: per-task reschedule; bulk
- * Today/Tomorrow. Bulk never changes Deadline." Пер-таск reschedule — уже
- * E06.2 (меню строки, см. блок действий выше). Этот пакет работ добавляет
- * bulk: множественный выбор ТОЛЬКО внутри `missed_plan` — ТЗ прописывает это
- * действие именно для этой группы среди всех шести, остальные пять
- * мультивыбором не оборудованы.
+ * Раньше здесь жил узкий вариант (M09): множественный выбор ТОЛЬКО внутри
+ * группы «Не по плану», потому что `01§6` прописывает bulk Today/Tomorrow
+ * именно ей. Пакет работ M37 расширил его до нормативного: `01§20`
+ * «Multi-select» и матрица экранов (`12`, строка M37) описывают выбор как
+ * поведение ЭКРАНА с шестью действиями — complete / date / project /
+ * priority / labels / delete, — а не как локальную кнопку одной группы.
+ * Ограничение «Bulk never changes Deadline» (`01§6`) при этом сохранено:
+ * в патче переноса физически нет `deadlineDate`.
  *
- * Вход/выход — кнопка в заголовке секции (`missedPlanSelection`, по образцу
- * уже существующей кнопки сворачивания той же секции): «Выбрать» включает
- * режим, повторный клик по той же кнопке («Готово») выключает и ОБНУЛЯЕТ
- * множество выбранных — отменённый режим выбора не должен "запоминать"
- * частичный выбор до следующего входа, лишняя скрытая память в UI-состоянии
- * без пользы.
+ * Вход/выход — кнопка в ШАПКЕ экрана: «Выбрать» включает режим, «Готово»
+ * выключает и ОБНУЛЯЕТ множество выбранных — отменённый режим выбора не
+ * должен "запоминать" частичный выбор до следующего входа, лишняя скрытая
+ * память в UI-состоянии без пользы.
+ *
+ * Клик по строке в режиме выбора ПЕРЕКЛЮЧАЕТ выбор, а не открывает
+ * карточку: в макете `[R1][M][37]` подсвечена вся строка, значит и целятся
+ * в неё целиком, а не в кружок чекбокса.
+ *
+ * Панель массовых действий прижата к низу экрана и на время выбора
+ * закрывает нижнюю навигацию — как в макете, где на этом экране навигации
+ * нет; разбор раскладки и почему `fixed`, а не `sticky`, — в `Today.css`.
  *
  * Чекбокс строки в режиме выбора — переключатель ВЫБОРА, не Complete: тот же
  * `TaskRow`/`TaskCheckbox`, что и везде на экране (задание — не трогать
@@ -173,6 +181,15 @@
  * недоказанное предположение. Патч — **только** `plannedDate`: "Bulk never
  * changes Deadline" тем самым выполняется структурно (в патче физически нет
  * `deadlineDate`), не отдельной проверкой поверх.
+ *
+ * Действия, у которых ТЗ описывает иерархические правила, вынесены в домен
+ * отдельными командами, а не собраны циклом здесь: завершение —
+ * `completeManyCommand` + `bulk-completion-plan.ts` (`01§20`, каскад
+ * атомарно, ребёнок считается один раз, одно агрегированное
+ * подтверждение), перенос в проект — `moveManyToProjectCommand` +
+ * `bulk-project-move-plan.ts` (`01§12`, каскад в одной транзакции,
+ * одинокая подзадача отцепляется с подтверждением). Приоритет и метки
+ * иерархических правил в ТЗ не имеют и применяются перебором.
  *
  * `refreshGroups()` — ровно ОДИН раз, после всех N вызовов, не после
  * каждого по отдельности (задание: иначе список мигал бы N раз за один
@@ -270,10 +287,21 @@ import {
   weekdayName,
 } from '@shagi/i18n';
 import {
+  attachLabelToTaskCommand,
+  completeManyCommand,
   completeOccurrenceCommand,
+  deleteTaskCommand,
+  detachLabelFromTaskCommand,
   generateDeviceId,
+  makePriority,
+  moveManyToProjectCommand,
+  previewBulkCompletion,
+  previewBulkProjectMove,
   selectTodayTasks,
   updateTaskCommand,
+  type Label,
+  type Priority,
+  type Project,
   type Task,
   type TaskCommandResult,
   type TodayGroup,
@@ -381,6 +409,19 @@ function isInteractiveRowClick(target: EventTarget | null): boolean {
 function toCalendarDate(date: Temporal.PlainDate): CalendarDate {
   return { year: date.year, month: date.month, day: date.day };
 }
+
+/** Четыре уровня приоритета для массового пикера (`01§20` «Priority»).
+ * Подписи — своими ключами каталога, а не склейкой `bulk.priority${n}`:
+ * склеенный ключ невозможно проверить `check-i18n-catalog.mjs`. */
+const BULK_PRIORITIES: readonly {
+  readonly level: Priority;
+  readonly labelKey: 'bulk.priorityP1' | 'bulk.priorityP2' | 'bulk.priorityP3' | 'bulk.priorityP4';
+}[] = [
+  { level: makePriority(1), labelKey: 'bulk.priorityP1' },
+  { level: makePriority(2), labelKey: 'bulk.priorityP2' },
+  { level: makePriority(3), labelKey: 'bulk.priorityP3' },
+  { level: makePriority(4), labelKey: 'bulk.priorityP4' },
+];
 
 function toCalendarMonth(date: Temporal.PlainDate): CalendarMonth {
   return { year: date.year, month: date.month };
@@ -589,10 +630,12 @@ function TodayTaskRow({
 }: TodayTaskRowProps): ReactElement {
   const { frequent, rare } = buildTaskMenuActions(group, task, handlers);
 
-  // Режим выбора «Не по плану» (M09, см. заголовок файла) подменяет
-  // checked/onCheckedChange на переключатель ВЫБОРА — `completeTaskCommand`
-  // не вызывается, пока `selectionOverride` задан. Без него (все остальные
-  // пять групп, и сама `missed_plan` вне режима выбора) — прежнее поведение.
+  // Режим множественного выбора (M37) подменяет checked/onCheckedChange на
+  // переключатель ВЫБОРА — команда завершения не вызывается, пока
+  // `selectionOverride` задан. Вне режима — прежнее поведение чекбокса
+  // (завершить задачу). Раньше выбор существовал только у группы «Не по
+  // плану» (M09) — теперь это общий режим экрана, а bulk-перенос
+  // «Сегодня/Завтра» остался его частным случаем.
   const checked = selectionOverride !== undefined ? selectionOverride.selected : false;
   const state = selectionOverride?.selected === true ? 'selected' : groupRowState(group);
   const onCheckedChange =
@@ -611,6 +654,15 @@ function TodayTaskRow({
       onCheckedChange={onCheckedChange}
       onClick={(event) => {
         if (isInteractiveRowClick(event.target)) return;
+        // В режиме множественного выбора (M37) клик по строке ПЕРЕКЛЮЧАЕТ
+        // выбор, а не открывает карточку: в макете `[R1][M][37]` вся строка
+        // подсвечена как выбранная, значит и целится человек в строку
+        // целиком, а не в маленький кружок. После выхода из режима клик
+        // снова открывает карточку — проверено живым прогоном.
+        if (selectionOverride !== undefined) {
+          selectionOverride.onToggle(!selectionOverride.selected);
+          return;
+        }
         onOpen(task);
       }}
       {...(group === 'timed' && task.plannedTime !== null
@@ -644,17 +696,15 @@ function TodayTaskRow({
   );
 }
 
-/** Управление режимом множественного выбора «Не по плану» (M09, см.
- * заголовок файла) — `undefined` у пяти остальных групп: они мультивыбором
- * не оборудованы, `TodayGroupSection` для них рендерится без кнопки
- * «Выбрать» и без панели массовых действий вовсе. */
-interface MissedPlanSelectionControls {
+/** Управление режимом множественного выбора (M37). Один на весь экран, а
+ * не по группе: выбирать можно задачи из любых групп разом — так его
+ * показывает макет `[R1][M][37]` (подсвечены строки вперемешку) и так
+ * формулирует `01§20` (список действий над «selection», без оговорок про
+ * группы). */
+interface SelectionControls {
   readonly active: boolean;
   readonly selectedIds: ReadonlySet<Uuid>;
-  readonly onToggleMode: () => void;
   readonly onToggleTask: (id: Uuid, selected: boolean) => void;
-  readonly onBulkToday: () => void;
-  readonly onBulkTomorrow: () => void;
 }
 
 interface TodayGroupSectionProps {
@@ -668,7 +718,7 @@ interface TodayGroupSectionProps {
   readonly handlers: RowActionHandlers;
   /** См. заголовок файла, блок «Открытие Task Detail по клику на строку». */
   readonly onOpen: (task: Task) => void;
-  readonly selection?: MissedPlanSelectionControls | undefined;
+  readonly selection?: SelectionControls | undefined;
 }
 
 /** Заголовок группы — кликабельная кнопка (не просто `<h2>`), сворачивает/
@@ -718,32 +768,7 @@ function TodayGroupSection({
         <span className="shagi-today__group-count" aria-hidden="true">
           {tasks.length}
         </span>
-        {/* Кнопка входа/выхода из режима выбора — только «Не по плану» (M09,
-         * см. заголовок файла), по образцу кнопки сворачивания секции выше:
-         * тот же native `<button>`, тот же уровень визуальной весомости. */}
-        {selection !== undefined && (
-          <button
-            type="button"
-            className="shagi-today__group-action"
-            onClick={selection.onToggleMode}
-          >
-            {selection.active ? t('today', 'selection.exit') : t('today', 'selection.enter')}
-          </button>
-        )}
       </div>
-      {/* Панель массовых действий — видна, пока выбрана хотя бы одна задача
-       * (задание: не floating/sticky, минимально достаточная реализация). */}
-      {selection !== undefined && selection.active && selection.selectedIds.size > 0 && (
-        <div className="shagi-today__bulk-bar">
-          <span>{t('today', 'bulk.selectedCount', { count: selection.selectedIds.size })}</span>
-          <Button variant="secondary" onClick={selection.onBulkToday}>
-            {t('today', 'bulk.today')}
-          </Button>
-          <Button variant="secondary" onClick={selection.onBulkTomorrow}>
-            {t('today', 'bulk.tomorrow')}
-          </Button>
-        </div>
-      )}
       {!collapsed && (
         <div id={listId} className="shagi-today__group-list">
           {tasks.map((task) => (
@@ -825,14 +850,42 @@ export function Today(): ReactElement {
   const [focusConfirm, setFocusConfirm] = useState<FocusConfirmState | null>(null);
   const [focusReplace, setFocusReplace] = useState<FocusReplaceState | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  /** Режим множественного выбора «Не по плану» (M09, см. заголовок файла) —
+  /** Режим множественного выбора экрана (M37, см. заголовок файла) —
    * `selectedIds` пуст, пока `active === false`; вход и выход всегда идут
-   * через `toggleMissedPlanSelectionMode`, которая сама следит, чтобы
-   * выбор не пережил выход из режима. */
-  const [missedPlanSelection, setMissedPlanSelection] = useState<{
+   * через `toggleSelectionMode`, которая сама следит, чтобы выбор не
+   * пережил выход из режима. */
+  const [selection, setSelection] = useState<{
     readonly active: boolean;
     readonly selectedIds: ReadonlySet<Uuid>;
   }>({ active: false, selectedIds: new Set() });
+  /** План массового завершения, ждущий единственного агрегированного
+   * подтверждения (`01§20`). `null` — подтверждать нечего. */
+  const [bulkCompletion, setBulkCompletion] = useState<{
+    readonly ids: readonly Uuid[];
+    readonly additionalChildCount: number;
+  } | null>(null);
+  /** Выбор, ждущий подтверждения массового удаления. `null` — ничего не
+   * ждёт. */
+  const [bulkDelete, setBulkDelete] = useState<readonly Uuid[] | null>(null);
+  /** Какой из массовых пикеров открыт (`01§20`: date / project / priority /
+   * labels). `null` — ни один. */
+  const [bulkDialog, setBulkDialog] = useState<'date' | 'project' | 'priority' | 'labels' | null>(
+    null,
+  );
+  const [bulkDateMonth, setBulkDateMonth] = useState<CalendarMonth>(() =>
+    toCalendarMonth(Temporal.Now.plainDateISO()),
+  );
+  /** Подтверждение отцепления подзадач при массовом переносе в проект
+   * (`01§12` «Подзадача станет отдельной задачей») — одно на весь выбор. */
+  const [bulkProjectMove, setBulkProjectMove] = useState<{
+    readonly ids: readonly Uuid[];
+    readonly target: Project | null;
+    readonly detachedChildCount: number;
+  } | null>(null);
+  /** Списки для пикеров проекта и меток. Грузятся вместе с задачами: без
+   * них панель массовых действий показала бы пустые диалоги. */
+  const [activeProjects, setActiveProjects] = useState<readonly Project[]>([]);
+  const [allLabels, setAllLabels] = useState<readonly Label[]>([]);
 
   // Открыт ли оверлей Quick Add — нужен ИМЕННО переход «был → закрылся»
   // (см. заголовок файла, блок «Кнопка Quick Add»).
@@ -848,10 +901,14 @@ export function Today(): ReactElement {
     void Promise.all([
       selectTodayTasks(storage, now),
       storage.tasks.listByCaptureStateAndStatus('inbox', 'active'),
-    ]).then(([result, inboxTasks]) => {
+      storage.projects.listActive(),
+      storage.labels.listAll(),
+    ]).then(([result, inboxTasks, projects, labels]) => {
       if (!cancelled) {
         setGroups(result);
         setInboxCount(inboxTasks.length);
+        setActiveProjects(projects);
+        setAllLabels(labels);
       }
     });
     return () => {
@@ -905,21 +962,25 @@ export function Today(): ReactElement {
     return { storage, now: Temporal.Now.instant(), deviceId: getDeviceId() };
   }
 
-  /** «Выбрать» / «Готово» — вход и выход из режима выбора «Не по плану»
-   * (M09, см. заголовок файла). Выход ВСЕГДА обнуляет `selectedIds`, а не
+  /** «Выбрать» / «Готово» — вход и выход из режима выбора экрана
+   * (M37, см. заголовок файла). Выход ВСЕГДА обнуляет `selectedIds`, а не
    * только когда панель массовых действий уже применилась — незавершённый
    * выбор не переживает выход из режима (проверено тестом «повторный клик
    * «Готово» ... сбрасывает выбор»). */
-  function toggleMissedPlanSelectionMode(): void {
-    setMissedPlanSelection((current) =>
+  function toggleSelectionMode(): void {
+    // Выход ВСЕГДА обнуляет выбор: он не должен пережить режим и тем более
+    // «протечь» на другой экран (проверено живым прогоном по требованию
+    // владельца).
+    setSelection((current) =>
       current.active
         ? { active: false, selectedIds: new Set() }
         : { active: true, selectedIds: new Set() },
     );
+    setBulkCompletion(null);
   }
 
-  function toggleMissedPlanTaskSelected(id: Uuid, selected: boolean): void {
-    setMissedPlanSelection((current) => {
+  function toggleTaskSelected(id: Uuid, selected: boolean): void {
+    setSelection((current) => {
       const nextIds = new Set(current.selectedIds);
       if (selected) nextIds.add(id);
       else nextIds.delete(id);
@@ -927,20 +988,147 @@ export function Today(): ReactElement {
     });
   }
 
-  /** Bulk «Сегодня»/«Завтра» — см. заголовок файла, блок «M09» за полным
-   * разбором решений (последовательные вызовы, единственный `refreshGroups`
-   * в конце, отдельное сообщение `Toast` для частичного провала). Патч —
-   * буквально только `plannedDate`: "Bulk never changes Deadline" (`01§6`)
-   * выполняется тем, что в патче физически нет `deadlineDate`. */
-  async function runMissedPlanBulkReschedule(plannedDate: Temporal.PlainDate): Promise<void> {
-    const ids = [...missedPlanSelection.selectedIds];
+  /** Bulk «Сегодня»/«Завтра». Патч — буквально только `plannedDate`:
+   * "Bulk never changes Deadline" (`01§6`) выполняется тем, что в патче
+   * физически нет `deadlineDate`. Последовательные вызовы и один
+   * `refreshGroups` в конце; частичный провал сообщается `Toast`. */
+  async function runBulkReschedule(plannedDate: Temporal.PlainDate): Promise<void> {
+    const ids = [...selection.selectedIds];
     let anyFailed = false;
     for (const id of ids) {
       const result = await updateTaskCommand({ id, patch: { plannedDate } }, commandDeps());
       if (result.status !== 'ok') anyFailed = true;
     }
     await refreshGroups();
-    setMissedPlanSelection({ active: false, selectedIds: new Set() });
+    setSelection({ active: false, selectedIds: new Set() });
+    setErrorMessage(anyFailed ? t('today', 'errors.bulkPartialFailure') : null);
+  }
+
+  /** Массовый перенос в проект — шаг 1: считает план БЕЗ записи. Если
+   * среди выбранного есть подзадачи, чей родитель не переезжает, показывает
+   * ЕДИНСТВЕННОЕ агрегированное подтверждение отцепления (`01§12`
+   * «moving a Subtask alone to another Project requires "Подзадача станет
+   * отдельной задачей"»). Иначе — сразу применяет. */
+  async function requestBulkProjectMove(target: Project | null): Promise<void> {
+    const ids = [...selection.selectedIds];
+    if (ids.length === 0) return;
+    setBulkDialog(null);
+    const plan = await previewBulkProjectMove(ids, target?.id ?? null, commandDeps());
+    if (!plan.needsConfirmation) {
+      await runBulkProjectMove(ids, target);
+      return;
+    }
+    setBulkProjectMove({ ids, target, detachedChildCount: plan.detachedChildCount });
+  }
+
+  /** Шаг 2: применение одной транзакцией (`moveManyToProjectCommand`). */
+  async function runBulkProjectMove(ids: readonly Uuid[], target: Project | null): Promise<void> {
+    setBulkProjectMove(null);
+    const result = await moveManyToProjectCommand(
+      {
+        ids,
+        targetProjectId: target?.id ?? null,
+        // Снимок имени берётся здесь, а не внутри команды: у неё нет
+        // доступа к `ProjectRepository` (CLAUDE.md п.7).
+        targetProjectName: target?.title ?? null,
+      },
+      commandDeps(),
+    );
+    await refreshGroups();
+    setSelection({ active: false, selectedIds: new Set() });
+    setErrorMessage(result.status === 'ok' ? null : t('today', 'errors.bulkPartialFailure'));
+  }
+
+  /** Массовая смена приоритета. Иерархических правил у приоритета в ТЗ
+   * нет — он применяется ровно к выбранному, без каскада. */
+  async function runBulkPriority(priority: Priority): Promise<void> {
+    setBulkDialog(null);
+    const ids = [...selection.selectedIds];
+    let anyFailed = false;
+    for (const id of ids) {
+      const result = await updateTaskCommand({ id, patch: { priority } }, commandDeps());
+      if (result.status !== 'ok') anyFailed = true;
+    }
+    await refreshGroups();
+    setSelection({ active: false, selectedIds: new Set() });
+    setErrorMessage(anyFailed ? t('today', 'errors.bulkPartialFailure') : null);
+  }
+
+  /** Массовая метка: ставится ВСЕМ выбранным. Смысл действия в панели —
+   * «пометить выбранное», поэтому здесь `attach`, а не переключение у
+   * каждой задачи по отдельности: у разных задач состояние метки разное, и
+   * переключение дало бы взаимоисключающий результат на одном нажатии.
+   * Снятие метки со всех — отдельный пункт того же диалога. */
+  async function runBulkLabel(label: Label, attach: boolean): Promise<void> {
+    setBulkDialog(null);
+    const ids = [...selection.selectedIds];
+    let anyFailed = false;
+    for (const id of ids) {
+      const result = attach
+        ? await attachLabelToTaskCommand(
+            { taskId: id, labelId: label.id },
+            { ...commandDeps(), taskStorage: storage },
+          )
+        : await detachLabelFromTaskCommand({ taskId: id, labelId: label.id }, commandDeps());
+      if (result.status !== 'ok') anyFailed = true;
+    }
+    await refreshGroups();
+    setSelection({ active: false, selectedIds: new Set() });
+    setErrorMessage(anyFailed ? t('today', 'errors.bulkPartialFailure') : null);
+  }
+
+  /** Массовое удаление. `deleteTaskCommand` сама каскадирует подзадачи и
+   * чек-лист (`01§7`), поэтому здесь только перебор выбранного.
+   *
+   * Вызывается ТОЛЬКО после подтверждения. В ТЗ страховкой удаления
+   * назначен Undo (`01§9`, «one Undo restores graph», ST §58), но Undo в
+   * R1 ещё не реализован, а каскад по выбору из нескольких родителей
+   * уносит и невидимые в списке подзадачи. Пока страховки нет, спрашиваем
+   * — необратимое действие без единого барьера хуже лишнего диалога.
+   * Диалог снимается, когда появится Undo. */
+  async function runBulkDelete(ids: readonly Uuid[]): Promise<void> {
+    setBulkDelete(null);
+    let anyFailed = false;
+    for (const id of ids) {
+      const result = await deleteTaskCommand({ id }, commandDeps());
+      if (result.status !== 'ok') anyFailed = true;
+    }
+    await refreshGroups();
+    setSelection({ active: false, selectedIds: new Set() });
+    setErrorMessage(anyFailed ? t('today', 'errors.bulkPartialFailure') : null);
+  }
+
+  /** Шаг 1 массового завершения: СЧИТАЕТ план и, если каскад что-то
+   * добавляет, показывает ЕДИНСТВЕННОЕ агрегированное подтверждение
+   * (`01§20`). Хранилище на этом шаге не трогается вовсе — поэтому «Отмена»
+   * гарантированно не меняет ничего. */
+  async function requestBulkComplete(): Promise<void> {
+    const ids = [...selection.selectedIds];
+    if (ids.length === 0) return;
+    const plan = await previewBulkCompletion(ids, commandDeps());
+    if (!plan.needsConfirmation) {
+      await runBulkComplete(ids);
+      return;
+    }
+    setBulkCompletion({ ids, additionalChildCount: plan.additionalChildCount });
+  }
+
+  /** Шаг 2: применение. Обычные задачи — одной транзакцией
+   * (`completeManyCommand`), повторяющиеся occurrence — своей командой по
+   * одной (`01§20`: «current occurrences only»). */
+  async function runBulkComplete(ids: readonly Uuid[]): Promise<void> {
+    setBulkCompletion(null);
+    const result = await completeManyCommand({ ids }, commandDeps());
+    let anyFailed = result.status !== 'ok';
+    for (const id of result.skippedRecurringIds) {
+      const occurrence = await completeOccurrenceCommand(
+        { id, occurrenceLocalDate: Temporal.Now.plainDateISO() },
+        commandDeps(),
+      );
+      if (occurrence.status !== 'ok') anyFailed = true;
+    }
+    await refreshGroups();
+    setSelection({ active: false, selectedIds: new Set() });
     setErrorMessage(anyFailed ? t('today', 'errors.bulkPartialFailure') : null);
   }
 
@@ -1048,7 +1236,13 @@ export function Today(): ReactElement {
   const today = Temporal.Now.plainDateISO();
 
   return (
-    <div className="shagi-today">
+    <div
+      className={
+        selection.active && selection.selectedIds.size > 0
+          ? 'shagi-today shagi-today--bulk'
+          : 'shagi-today'
+      }
+    >
       {/* Шапка по макету (`[R1][M][07] Today / Normal`): заголовок экрана —
        * САМА ДАТА крупным начертанием, а не слово «Сегодня» с датой мелкой
        * строкой под ним. Слово «Сегодня» и так стоит в нижней навигации —
@@ -1083,6 +1277,12 @@ export function Today(): ReactElement {
            * экран на момент клика) как `settingsReturnScreen` сам, тем же
            * приёмом, что `openTask` для `returnScreen` — вызывающему коду не
            * нужно передавать экран явно. */}
+          {/* Вход/выход из режима множественного выбора (M37). В шапке
+           * экрана, а не в заголовке одной группы: режим общий для всех
+           * задач экрана. */}
+          <button type="button" className="shagi-today__select-mode" onClick={toggleSelectionMode}>
+            {selection.active ? t('today', 'selection.exit') : t('today', 'selection.enter')}
+          </button>
           <IconButton
             icon="settings"
             label={t('today', 'settingsButton.label')}
@@ -1108,6 +1308,261 @@ export function Today(): ReactElement {
         />
       )}
 
+      {/* Панель массовых действий (M37, макет `[R1][M][37]`): счётчик слева,
+       * действия справа, прижата к низу экрана и на время выбора закрывает
+       * нижнюю навигацию — как в макете, где на этом экране навигации нет.
+       * Раскладка целиком в CSS, там же разбор, почему `fixed`, а не
+       * `sticky` (живой прогон M37). */}
+      {selection.active && selection.selectedIds.size > 0 && (
+        <div className="shagi-today__bulk-bar">
+          <span className="shagi-today__bulk-count">
+            {t('today', 'bulk.selectedCount', { count: selection.selectedIds.size })}
+          </span>
+          {/* Ровно шесть действий матрицы M37 и `01§20`
+           * (complete / date / project / priority / labels / delete),
+           * иконками — как в макете `[R1][M][37]`. Макет рисует четыре
+           * иконки и без «Завершить»; расходимся сознательно: матрица
+           * экранов и §20 нормативнее макета (правило владельца). */}
+          <div className="shagi-today__bulk-actions">
+            <IconButton
+              size="sm"
+              icon="check"
+              label={t('today', 'bulk.complete')}
+              onClick={() => void requestBulkComplete()}
+            />
+            <IconButton
+              size="sm"
+              icon="calendar"
+              label={t('today', 'bulk.date')}
+              onClick={() => setBulkDialog('date')}
+            />
+            <IconButton
+              size="sm"
+              icon="folder"
+              label={t('today', 'bulk.project')}
+              onClick={() => setBulkDialog('project')}
+            />
+            <IconButton
+              size="sm"
+              icon="priority"
+              label={t('today', 'bulk.priority')}
+              onClick={() => setBulkDialog('priority')}
+            />
+            <IconButton
+              size="sm"
+              icon="tags"
+              label={t('today', 'bulk.labels')}
+              onClick={() => setBulkDialog('labels')}
+            />
+            <IconButton
+              size="sm"
+              icon="delete"
+              className="shagi-today__bulk-danger"
+              label={t('today', 'bulk.delete')}
+              onClick={() => setBulkDelete([...selection.selectedIds])}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* ЕДИНСТВЕННОЕ агрегированное подтверждение каскада (`01§20`): одно
+       * на весь выбор, а не по диалогу на каждого родителя, и с числом
+       * ДОПОЛНИТЕЛЬНЫХ подзадач. «Отмена» не меняет ничего — до этого
+       * момента хранилище не трогали вовсе. */}
+      {bulkCompletion !== null && (
+        <Modal
+          open
+          onClose={() => setBulkCompletion(null)}
+          title={t('today', 'bulk.confirmTitle')}
+          footer={
+            <>
+              <Button variant="ghost" onClick={() => setBulkCompletion(null)}>
+                {t('today', 'bulk.confirmCancel')}
+              </Button>
+              <Button variant="primary" onClick={() => void runBulkComplete(bulkCompletion.ids)}>
+                {t('today', 'bulk.confirmAccept')}
+              </Button>
+            </>
+          }
+        >
+          {/* Текст зависит от того, добавляет ли каскад кого-то СВЕРХ
+           * выбранного. Ноль «дополнительных» — законный случай (человек
+           * отметил родителя и всех его детей руками), и печатать
+           * «завершатся 0 подзадач» в нём нельзя. */}
+          <p>
+            {bulkCompletion.additionalChildCount > 0
+              ? t('today', 'bulk.confirmBody', { count: bulkCompletion.additionalChildCount })
+              : t('today', 'bulk.confirmBodyNoExtra')}
+          </p>
+        </Modal>
+      )}
+
+      {/* Подтверждение массового удаления — см. комментарий `runBulkDelete`. */}
+      {bulkDelete !== null && (
+        <Modal
+          open
+          onClose={() => setBulkDelete(null)}
+          title={t('today', 'bulk.deleteConfirmTitle')}
+          footer={
+            <>
+              <Button variant="ghost" onClick={() => setBulkDelete(null)}>
+                {t('today', 'bulk.confirmCancel')}
+              </Button>
+              <Button variant="destructive" onClick={() => void runBulkDelete(bulkDelete)}>
+                {t('today', 'bulk.deleteConfirmAccept')}
+              </Button>
+            </>
+          }
+        >
+          <p>{t('today', 'bulk.deleteConfirmBody', { count: bulkDelete.length })}</p>
+        </Modal>
+      )}
+
+      {/* --- Массовая дата (`01§20` «Move date») --------------------------
+       * «Сегодня»/«Завтра» — быстрые пункты, как в `01§6` для «Не по
+       * плану»; произвольная дата — тот же `DatePicker`, что у срока.
+       * Патч во всех трёх случаях только `plannedDate`: «Bulk never
+       * changes Deadline». */}
+      {bulkDialog === 'date' && (
+        <Modal open onClose={() => setBulkDialog(null)} title={t('today', 'bulk.dateDialogTitle')}>
+          <div className="shagi-today__bulk-quick-dates">
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setBulkDialog(null);
+                void runBulkReschedule(Temporal.Now.plainDateISO());
+              }}
+            >
+              {t('today', 'bulk.today')}
+            </Button>
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setBulkDialog(null);
+                void runBulkReschedule(Temporal.Now.plainDateISO().add({ days: 1 }));
+              }}
+            >
+              {t('today', 'bulk.tomorrow')}
+            </Button>
+          </div>
+          <DatePicker
+            value={null}
+            visibleMonth={bulkDateMonth}
+            onVisibleMonthChange={setBulkDateMonth}
+            onSelect={(date) => {
+              setBulkDialog(null);
+              void runBulkReschedule(
+                Temporal.PlainDate.from({ year: date.year, month: date.month, day: date.day }),
+              );
+            }}
+            today={toCalendarDate(Temporal.Now.plainDateISO())}
+            weekStartsOn={WEEKDAY_MONDAY}
+            weekdayLabels={WEEKDAY_LABELS}
+            monthLabels={MONTH_LABELS}
+            label={t('today', 'bulk.dateGridLabel')}
+            previousMonthLabel={t('today', 'deadlineDialog.prevMonth')}
+            nextMonthLabel={t('today', 'deadlineDialog.nextMonth')}
+          />
+        </Modal>
+      )}
+
+      {/* --- Массовый перенос в проект (`01§20` «Move project») ----------- */}
+      {bulkDialog === 'project' && (
+        <Modal
+          open
+          onClose={() => setBulkDialog(null)}
+          title={t('today', 'bulk.projectDialogTitle')}
+        >
+          <ul className="shagi-today__bulk-picker">
+            <li>
+              <button type="button" onClick={() => void requestBulkProjectMove(null)}>
+                {t('today', 'bulk.projectNone')}
+              </button>
+            </li>
+            {activeProjects.map((project) => (
+              <li key={project.id}>
+                <button type="button" onClick={() => void requestBulkProjectMove(project)}>
+                  {project.title}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </Modal>
+      )}
+
+      {/* Единственное агрегированное подтверждение отцепления (`01§12`). */}
+      {bulkProjectMove !== null && (
+        <Modal
+          open
+          onClose={() => setBulkProjectMove(null)}
+          title={t('today', 'bulk.detachConfirmTitle')}
+          footer={
+            <>
+              <Button variant="ghost" onClick={() => setBulkProjectMove(null)}>
+                {t('today', 'bulk.confirmCancel')}
+              </Button>
+              <Button
+                variant="primary"
+                onClick={() => void runBulkProjectMove(bulkProjectMove.ids, bulkProjectMove.target)}
+              >
+                {t('today', 'bulk.detachConfirmAccept')}
+              </Button>
+            </>
+          }
+        >
+          <p>
+            {t('today', 'bulk.detachConfirmBody', {
+              count: bulkProjectMove.detachedChildCount,
+            })}
+          </p>
+        </Modal>
+      )}
+
+      {/* --- Массовый приоритет (`01§20` «Priority») ---------------------- */}
+      {bulkDialog === 'priority' && (
+        <Modal
+          open
+          onClose={() => setBulkDialog(null)}
+          title={t('today', 'bulk.priorityDialogTitle')}
+        >
+          <ul className="shagi-today__bulk-picker">
+            {BULK_PRIORITIES.map((item) => (
+              <li key={item.labelKey}>
+                <button type="button" onClick={() => void runBulkPriority(item.level)}>
+                  {t('today', item.labelKey)}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </Modal>
+      )}
+
+      {/* --- Массовые метки (`01§20` «Labels») ---------------------------- */}
+      {bulkDialog === 'labels' && (
+        <Modal
+          open
+          onClose={() => setBulkDialog(null)}
+          title={t('today', 'bulk.labelsDialogTitle')}
+        >
+          {allLabels.length === 0 ? (
+            <p>{t('today', 'bulk.labelsEmpty')}</p>
+          ) : (
+            <ul className="shagi-today__bulk-picker">
+              {allLabels.map((label) => (
+                <li key={label.id}>
+                  <button type="button" onClick={() => void runBulkLabel(label, true)}>
+                    {t('today', 'bulk.labelAttach', { label: label.displayName })}
+                  </button>
+                  <button type="button" onClick={() => void runBulkLabel(label, false)}>
+                    {t('today', 'bulk.labelDetach', { label: label.displayName })}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Modal>
+      )}
+
       {groups !== null && (
         <div className="shagi-today__groups">
           {GROUP_ORDER.filter((group) => groups[group].length > 0).map((group) => {
@@ -1127,27 +1582,13 @@ export function Today(): ReactElement {
                 onCloseMenu={() => setOpenMenuTaskId(null)}
                 handlers={handlers}
                 onOpen={(task) => controller.openTask(task.id)}
-                // Мультивыбор — только «Не по плану» (`01§6`, см. заголовок
-                // файла блок «M09»); остальные пять групп получают `undefined`
-                // и рендерятся без кнопки «Выбрать»/панели массовых действий.
-                selection={
-                  group === 'missed_plan'
-                    ? {
-                        active: missedPlanSelection.active,
-                        selectedIds: missedPlanSelection.selectedIds,
-                        onToggleMode: toggleMissedPlanSelectionMode,
-                        onToggleTask: toggleMissedPlanTaskSelected,
-                        onBulkToday: () => {
-                          void runMissedPlanBulkReschedule(Temporal.Now.plainDateISO());
-                        },
-                        onBulkTomorrow: () => {
-                          void runMissedPlanBulkReschedule(
-                            Temporal.Now.plainDateISO().add({ days: 1 }),
-                          );
-                        },
-                      }
-                    : undefined
-                }
+                // Мультивыбор — общий для экрана (M37): выбирать можно
+                // задачи из любых групп разом.
+                selection={{
+                  active: selection.active,
+                  selectedIds: selection.selectedIds,
+                  onToggleTask: toggleTaskSelected,
+                }}
               />
             );
           })}
