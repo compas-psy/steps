@@ -110,6 +110,14 @@ function renderInboxCapturingStorage(
   };
 }
 
+/** Переводит экран из списка (M12) в разбор по одной (M13). Отдельный шаг,
+ * потому что экран теперь открывается СПИСКОМ — как в макете
+ * (`[R1][M][12] Inbox / Default`): сначала человек видит, что накопилось, и
+ * только потом решает разбирать. */
+async function enterProcessMode(user: ReturnType<typeof userEvent.setup>): Promise<void> {
+  await user.click(await screen.findByRole('button', { name: t('inbox', 'list.process') }));
+}
+
 const TODAY = Temporal.Now.plainDateISO();
 
 describe('Inbox (M12/M13) — список', () => {
@@ -139,6 +147,58 @@ describe('Inbox (M12/M13) — список', () => {
   });
 });
 
+describe('Inbox — M12 «Входящие» списком', () => {
+  it('открывается СПИСКОМ: видны все задачи разом, карточки разбора ещё нет', async () => {
+    renderInboxCapturingStorage([
+      makeTask({ title: 'Оплатить интернет', captureState: 'inbox' }),
+      makeTask({ title: 'Купить корм для кота', captureState: 'inbox' }),
+    ]);
+
+    // Обе задачи видны ОДНОВРЕМЕННО — это и отличает список от разбора по
+    // одной, где на экране всегда ровно одна карточка.
+    expect(await screen.findByText('Оплатить интернет')).toBeInTheDocument();
+    expect(screen.getByText('Купить корм для кота')).toBeInTheDocument();
+    expect(screen.getByText(t('inbox', 'list.count', { count: 2 }))).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: t('inbox', 'actions.today') }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('«Разобрать входящие» переводит в разбор по одной, «Назад» возвращает к списку', async () => {
+    const user = userEvent.setup();
+    const { controller } = renderInboxCapturingStorage([
+      makeTask({ title: 'Оплатить интернет', captureState: 'inbox' }),
+      makeTask({ title: 'Купить корм для кота', captureState: 'inbox' }),
+    ]);
+    await screen.findByText('Оплатить интернет');
+
+    await enterProcessMode(user);
+    expect(screen.getByRole('button', { name: t('inbox', 'actions.today') })).toBeInTheDocument();
+    // В разборе на экране ровно одна задача из двух.
+    expect(screen.queryByText('Купить корм для кота')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: t('inbox', 'back.label') }));
+
+    // Возврат к списку, а НЕ выброс с экрана целиком: человек всего лишь
+    // вышел из разбора.
+    expect(controller.getState().screen).toBe('inbox');
+    expect(await screen.findByText('Купить корм для кота')).toBeInTheDocument();
+  });
+
+  it('чекбокс в списке завершает задачу — она уходит из Входящих', async () => {
+    const user = userEvent.setup();
+    const task = makeTask({ title: 'Оплатить интернет', captureState: 'inbox' });
+    const { getStorage } = renderInboxCapturingStorage([task]);
+    await screen.findByText('Оплатить интернет');
+
+    await user.click(screen.getByRole('checkbox', { name: 'Оплатить интернет' }));
+
+    await waitFor(() => expect(screen.getByText(t('common', 'inbox.cleared'))).toBeInTheDocument());
+    const stored = await getStorage().tasks.findById(task.id);
+    expect(stored?.status).toBe('completed');
+  });
+});
+
 describe('Inbox — действия карточки', () => {
   it('«Сегодня» ставит plannedDate=сегодня и captureState=processed — задача уходит из Входящих', async () => {
     const user = userEvent.setup();
@@ -146,6 +206,7 @@ describe('Inbox — действия карточки', () => {
     const { getStorage } = renderInboxCapturingStorage([task]);
 
     await waitFor(() => expect(screen.getByText('Задача А')).toBeInTheDocument());
+    await enterProcessMode(user);
     await user.click(screen.getByRole('button', { name: t('inbox', 'actions.today') }));
 
     await waitFor(() => expect(screen.getByText(t('common', 'inbox.cleared'))).toBeInTheDocument());
@@ -161,6 +222,7 @@ describe('Inbox — действия карточки', () => {
     const { getStorage } = renderInboxCapturingStorage([task]);
 
     await waitFor(() => expect(screen.getByText('Задача Б')).toBeInTheDocument());
+    await enterProcessMode(user);
     await user.click(screen.getByRole('button', { name: t('inbox', 'actions.date') }));
 
     const todayCell = await screen.findByRole('gridcell', { current: 'date' });
@@ -180,6 +242,7 @@ describe('Inbox — действия карточки', () => {
     const { getStorage } = renderInboxCapturingStorage([task], [project]);
 
     await waitFor(() => expect(screen.getByText('Задача В')).toBeInTheDocument());
+    await enterProcessMode(user);
     await user.click(screen.getByRole('button', { name: t('inbox', 'actions.project') }));
     await user.click(screen.getByRole('menuitem', { name: 'Мой проект' }));
 
@@ -201,6 +264,7 @@ describe('Inbox — действия карточки', () => {
     const { getStorage } = renderInboxCapturingStorage([task], []);
 
     await waitFor(() => expect(screen.getByText('Задача Г')).toBeInTheDocument());
+    await enterProcessMode(user);
     await user.click(screen.getByRole('button', { name: t('inbox', 'actions.project') }));
 
     const emptyItem = await screen.findByRole('menuitem', {
@@ -218,6 +282,7 @@ describe('Inbox — действия карточки', () => {
     const { getStorage } = renderInboxCapturingStorage([task]);
 
     await waitFor(() => expect(screen.getByText('Задача Д')).toBeInTheDocument());
+    await enterProcessMode(user);
     await user.click(screen.getByRole('button', { name: t('inbox', 'actions.delete') }));
 
     await waitFor(() => expect(screen.getByText(t('common', 'inbox.cleared'))).toBeInTheDocument());
@@ -237,6 +302,7 @@ describe('Inbox — действия карточки', () => {
         true,
       ),
     );
+    await enterProcessMode(user);
     // Одна из двух задач показана как текущая карточка.
     const firstShown = screen.queryByText('Первая') !== null;
     const shownTitle = firstShown ? 'Первая' : 'Вторая';
@@ -262,6 +328,7 @@ describe('Inbox — действия карточки', () => {
     const { getStorage } = renderInboxCapturingStorage([task]);
 
     await waitFor(() => expect(screen.getByText('Удалённая параллельно')).toBeInTheDocument());
+    await enterProcessMode(user);
 
     await getStorage().runTransaction(async (tx) => {
       const current = await tx.tasks.findById(task.id);
@@ -307,6 +374,7 @@ describe('Inbox — клик по карточке открывает Task Detai
     const { controller, getStorage } = renderInboxCapturingStorage([task]);
 
     await waitFor(() => expect(screen.getByText('Кнопка не открывает деталь')).toBeInTheDocument());
+    await enterProcessMode(user);
     await user.click(screen.getByRole('button', { name: t('inbox', 'actions.today') }));
 
     // Эффект кнопки реально произошёл (иначе тест ничего не доказывал бы).
@@ -326,6 +394,7 @@ describe('Inbox — клик по карточке открывает Task Detai
     const { controller } = renderInboxCapturingStorage([first, second]);
 
     await waitFor(() => expect(screen.getByText('Первая карточка')).toBeInTheDocument());
+    await enterProcessMode(user);
     await user.click(screen.getByRole('button', { name: t('inbox', 'actions.skip') }));
 
     // Эффект «Пропустить» реально произошёл — фокус ушёл к следующей карточке.

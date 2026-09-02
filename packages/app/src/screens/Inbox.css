@@ -87,3 +87,42 @@
   justify-content: center;
   gap: var(--space-4);
 }
+
+/* --- M12 «Входящие» списком (макет `[R1][M][12] Inbox / Default`) --------- */
+
+.shagi-inbox__count {
+  margin: calc(var(--space-4) * -1) 0 0;
+  padding-left: calc(var(--touch-target-min) + var(--space-3));
+  font-size: var(--text-body-secondary);
+  color: var(--muted-foreground);
+}
+
+/* Список во всю ширину экрана — разделитель между задачами тянется от края
+ * до края (та же композиция, что на Today, и та же причина: список должен
+ * читаться списком). Специфичность 0-2-0 — спорим с собственным `padding`
+ * у `TaskRow`, чей CSS попадает в бандл позже. */
+.shagi-inbox__list {
+  display: flex;
+  flex-direction: column;
+  margin-inline: calc(var(--space-5) * -1);
+}
+
+.shagi-inbox__list.shagi-inbox__list > * {
+  padding-inline: var(--space-5);
+  border-bottom: 1px solid var(--border);
+}
+
+.shagi-inbox__list.shagi-inbox__list > *:last-child {
+  border-bottom: none;
+}
+
+/* Кнопка входа в разбор прижата к низу экрана — как в макете
+ * (`[R1][M][12]`: она стоит отдельным блоком у нижнего края, а не сразу
+ * под последней задачей). Для этого сам экран занимает высоту окна. */
+.shagi-inbox {
+  min-height: 100dvh;
+}
+
+.shagi-inbox__cta {
+  margin-top: auto;
+}

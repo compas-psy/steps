@@ -17,5 +17,7 @@
   "dateDialog.prevMonth": "Предыдущий месяц",
   "dateDialog.nextMonth": "Следующий месяц",
   "errors.actionFailed": "Не удалось выполнить действие. Попробуйте ещё раз.",
-  "errors.dismiss": "Закрыть"
+  "errors.dismiss": "Закрыть",
+  "list.count": "{count, plural, one {# задача} few {# задачи} many {# задач} other {# задачи}}",
+  "list.process": "Разобрать входящие →"
 }

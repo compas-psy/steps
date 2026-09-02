@@ -175,6 +175,7 @@ import { Temporal } from '@js-temporal/polyfill';
 
 import { DEFAULT_LOCALE, WEEKDAY_MONDAY, WEEKDAY_SUNDAY, t, weekdayName } from '@shagi/i18n';
 import {
+  completeTaskCommand,
   deleteTaskCommand,
   generateDeviceId,
   updateTaskCommand,
@@ -191,6 +192,7 @@ import {
   IconButton,
   Menu,
   Modal,
+  TaskRow,
   Toast,
   type CalendarDate,
   type CalendarMonth,
@@ -284,6 +286,12 @@ export function Inbox(): ReactElement {
   const [tasks, setTasks] = useState<readonly Task[] | null>(null);
   const [projects, setProjects] = useState<readonly Project[]>([]);
   const [focusIndex, setFocusIndex] = useState(0);
+  /** M12 «список» или M13 «разбор по одной». Экран открывается СПИСКОМ —
+   * так его показывает макет (`[R1][M][12] Inbox / Default`) и так это
+   * работает по смыслу: сначала человек видит, что вообще накопилось, и
+   * только потом решает разбирать. Раньше экран сразу открывался карточкой
+   * разбора, то есть состояние M12 не существовало вовсе. */
+  const [mode, setMode] = useState<'list' | 'process'>('list');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [datePicker, setDatePicker] = useState<DatePickerState | null>(null);
   const [projectMenuOpen, setProjectMenuOpen] = useState(false);
@@ -326,6 +334,13 @@ export function Inbox(): ReactElement {
 
   function commandDeps(): { storage: typeof storage; now: Temporal.Instant; deviceId: Uuid } {
     return { storage, now: Temporal.Now.instant(), deviceId: getDeviceId() };
+  }
+
+  /** Завершение прямо из списка — чекбокс в строке (`TaskRow`). Та же
+   * команда, что на Today; список перезапрашивается через общий
+   * `runCommand`. */
+  function handleComplete(task: Task): void {
+    void runCommand(completeTaskCommand({ id: task.id }, commandDeps()));
   }
 
   function handleToday(task: Task): void {
@@ -403,22 +418,41 @@ export function Inbox(): ReactElement {
   return (
     <div className="shagi-inbox">
       <div className="shagi-inbox__header">
+        {/* Из разбора «назад» возвращает к списку, а не сразу на Today: это
+         * шаг внутри одного экрана, и выбрасывать человека из «Входящих»
+         * целиком, когда он всего лишь хочет посмотреть очередь, было бы
+         * потерей его места. */}
         <IconButton
           icon="close"
           label={t('inbox', 'back.label')}
-          onClick={() => controller.goTo('todayEmpty')}
+          onClick={() => (mode === 'process' ? setMode('list') : controller.goTo('todayEmpty'))}
         />
         <h1 className="shagi-inbox__title">{t('inbox', 'pageTitle')}</h1>
-        <Button variant="secondary" onClick={() => controller.openQuickAdd('inbox')}>
-          {t('inbox', 'quickAdd.button')}
-        </Button>
+        {/* Иконкой, а не кнопкой с текстом: в шапке уже есть возврат и
+         * заголовок, и третья широкая кнопка переносилась на вторую строку,
+         * ломая ряд. Доступное имя то же самое, поэтому для скринридера и
+         * тестов ничего не изменилось. У этого экрана нет нижней навигации
+         * (он не вкладка), поэтому своя точка добавления ему нужна — в
+         * отличие от Today, где добавление живёт в центральной кнопке. */}
+        <IconButton
+          icon="add"
+          label={t('inbox', 'quickAdd.button')}
+          onClick={() => controller.openQuickAdd('inbox')}
+        />
       </div>
+
+      {/* Подпись «N задач» под заголовком — макет `[R1][M][12]`. Только в
+       * списке: в разборе то же число уже несёт прогресс-бар («Задача N из
+       * M»), и две одинаковых по смыслу подписи спорили бы друг с другом. */}
+      {mode === 'list' && tasks !== null && tasks.length > 0 && (
+        <p className="shagi-inbox__count">{t('inbox', 'list.count', { count: tasks.length })}</p>
+      )}
 
       {/* M13 Process mode (docs/spec/DESIGN, #sec-inbox): прогресс-бар +
        * «Задача N из M» — оба числа уже вычисляются ниже (`current`/
        * `tasks.length`/`focusIndex`) для самой очереди, здесь только их
        * презентация, не новая бизнес-логика. */}
-      {!isLoading && current !== null && tasks !== null && (
+      {mode === 'process' && !isLoading && current !== null && tasks !== null && (
         <div className="shagi-inbox__progress">
           <div className="shagi-inbox__progress-track">
             <div
@@ -452,7 +486,42 @@ export function Inbox(): ReactElement {
         />
       )}
 
-      {!isLoading && current !== null && (
+      {mode === 'list' && !isLoading && tasks !== null && tasks.length > 0 && (
+        <>
+          <div className="shagi-inbox__list">
+            {tasks.map((task) => (
+              <TaskRow
+                key={task.id}
+                title={task.title}
+                checkboxLabel={task.title}
+                checked={false}
+                onCheckedChange={() => handleComplete(task)}
+                onClick={(event) => {
+                  // Тот же приём, что на Today: клик по самому чекбоксу не
+                  // должен ЗАОДНО открывать карточку задачи.
+                  if ((event.target as HTMLElement).closest('input') !== null) return;
+                  controller.openTask(task.id);
+                }}
+              />
+            ))}
+          </div>
+
+          {/* Вход в разбор — крупная кнопка во всю ширину внизу списка
+           * (макет `[R1][M][12]`: `Button variant="secondary" size="lg"
+           * block`). */}
+          <Button
+            className="shagi-inbox__cta"
+            variant="secondary"
+            size="lg"
+            block
+            onClick={() => setMode('process')}
+          >
+            {t('inbox', 'list.process')}
+          </Button>
+        </>
+      )}
+
+      {mode === 'process' && !isLoading && current !== null && (
         <section
           className="shagi-inbox__card"
           aria-label={t('inbox', 'card.ariaLabel', { title: current.title })}
