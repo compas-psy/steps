@@ -1,13 +1,14 @@
 import type { ReactElement } from 'react';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { createUnavailablePlatform } from '@shagi/platform';
+import { createUnavailablePlatform, type PlatformCapabilitiesRegistry } from '@shagi/platform';
 import { t } from '@shagi/i18n';
 import { describe, expect, it } from 'vitest';
 
 import type { AppHost } from '../../src/App.js';
 import { AppProvider, useAppState } from '../../src/state/context.js';
 import { NlpOnboarding } from '../../src/screens/NlpOnboarding.js';
+import { ONBOARDING_DONE_KEY } from '../../src/state/onboarding.js';
 
 function testHost(): AppHost {
   return { platform: createUnavailablePlatform(), storageBackend: { kind: 'memory' } };
@@ -82,5 +83,32 @@ describe('NlpOnboarding (M05)', () => {
       screen.getByRole('button', { name: t('onboarding', 'nlpOnboarding.continueLabel') }),
     );
     expect(screen.getByTestId('current-screen')).toHaveTextContent('todayEmpty');
+  });
+
+  it('«Понятно» запоминает, что онбординг пройден — иначе следующий запуск начнёт его заново', async () => {
+    const user = userEvent.setup();
+    const store = new Map<string, string>();
+    const platform: PlatformCapabilitiesRegistry = {
+      ...createUnavailablePlatform(),
+      localPreferences: {
+        get: (key) => store.get(key) ?? null,
+        set: (key, value) => void store.set(key, value),
+        remove: (key) => void store.delete(key),
+      },
+    };
+    render(
+      <AppProvider host={{ platform, storageBackend: { kind: 'memory' } }}>
+        <NlpOnboarding />
+      </AppProvider>,
+    );
+
+    await user.click(
+      screen.getByRole('button', { name: t('onboarding', 'nlpOnboarding.continueLabel') }),
+    );
+
+    // Ровно тот признак, по которому `Launch` (M01) решает не показывать
+    // приветствие повторно. Без него дымовой тест на Android видел
+    // онбординг после каждого перезапуска.
+    expect(store.get(ONBOARDING_DONE_KEY)).toBe('1');
   });
 });

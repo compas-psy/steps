@@ -184,6 +184,42 @@ function clickByText(text) {
   `;
 }
 
+/**
+ * Слепок состояния хранилища ПРЯМО В СТРАНИЦЕ: origin, список баз IndexedDB
+ * с версиями, число задач в каждой и флаг пройденного онбординга.
+ *
+ * Печатается на каждом запуске — до и после `am force-stop`. Без него
+ * «задачи нет на экране» не отличить от «задача есть, но экран другой»: в
+ * первом же прогоне, дошедшем до перезапуска, приложение показало
+ * онбординг, и по одному тексту экрана нельзя было сказать, потеряно
+ * хранилище или потеряна навигация. Разница видна только так.
+ */
+const READ_STORAGE_STATE = `
+  (async () => {
+    const dbs = (await indexedDB.databases?.()) ?? [];
+    const countTasks = (name) => new Promise((resolve) => {
+      const request = indexedDB.open(name);
+      request.onerror = () => resolve('ошибка открытия');
+      request.onsuccess = () => {
+        const db = request.result;
+        if (!db.objectStoreNames.contains('tasks')) { db.close(); resolve('нет store tasks'); return; }
+        const tx = db.transaction('tasks', 'readonly');
+        const counted = tx.objectStore('tasks').count();
+        counted.onsuccess = () => { const n = counted.result; db.close(); resolve(n); };
+        counted.onerror = () => { db.close(); resolve('ошибка count'); };
+      };
+    });
+    const tasks = {};
+    for (const db of dbs) tasks[db.name + '@v' + db.version] = await countTasks(db.name);
+    return JSON.stringify({
+      origin: location.origin,
+      базы: dbs.map((db) => db.name + '@v' + db.version),
+      задач: tasks,
+      онбордингПройден: localStorage.getItem('shagi.preferences.onboardingDone'),
+    });
+  })()
+`;
+
 /** Пишет в поле ввода так, как это делает человек: через нативный сеттер
  * значения плюс событие `input`. Прямое `input.value = …` React не заметит —
  * он слушает свой синтетический `onChange` поверх нативного события. */
@@ -256,6 +292,7 @@ async function launchAndAttach(label) {
     );
   }
   console.log(`Видимый текст: ${JSON.stringify(screen.slice(0, 120))}`);
+  console.log(`Хранилище: ${await cdp.evaluate(READ_STORAGE_STATE)}`);
 
   return { cdp, screen };
 }
@@ -321,6 +358,19 @@ async function main() {
   if (stopped === null) fail('процесс не умер после `am force-stop` — перезапуск не проверить');
 
   const second = await launchAndAttach('после перезапуска');
+
+  console.log('── Онбординг не начался заново? ──');
+  // Отдельная проверка перед поиском задачи, и она первая по порядку не
+  // случайно: если приложение снова открылось приветствием, то задачи на
+  // экране нет ПО ДРУГОЙ причине, и сообщение «хранилище не пережило
+  // закрытие» было бы ложным диагнозом (ровно это и случилось в прогоне
+  // `33618474899`).
+  if (second.screen.includes('Что мне делать дальше?')) {
+    fail(
+      'после перезапуска приложение снова показало приветствие: онбординг начинается заново, ' +
+        'даже если данные на месте (M01 «Launch», `packages/app/src/screens/Launch.tsx`)',
+    );
+  }
 
   console.log('── Задача пережила перезапуск? ──');
   const afterRestart = await waitFor('восстановленный экран с задачей', 20, 1000, async () => {

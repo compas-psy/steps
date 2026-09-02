@@ -73,6 +73,7 @@ import { t } from '@shagi/i18n';
 import { Button, Card, CardBody, DataPrivacyRow, IconButton, Modal } from '@shagi/ui';
 
 import { useAppController, useHost, useStorage } from '../state/context.js';
+import { clearOnboardingDone } from '../state/onboarding.js';
 import './DataPrivacy.css';
 
 export function DataPrivacy(): ReactElement {
@@ -87,6 +88,11 @@ export function DataPrivacy(): ReactElement {
   async function erase(): Promise<void> {
     setErasing(true);
     await storage.eraseAllLocalData();
+    // Флаг «онбординг пройден» — тоже локальные данные. Без его снятия
+    // человек после стирания попал бы при следующем запуске в пустой
+    // продукт вместо приветствия, то есть НЕ туда, куда попал бы на новом
+    // устройстве (см. `../state/onboarding.ts`).
+    clearOnboardingDone(host.platform);
     setConfirmOpen(false);
     setErasing(false);
     controller.goTo('welcome');

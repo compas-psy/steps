@@ -44,7 +44,8 @@ import {
   type NowContext,
 } from '@shagi/nlp';
 
-import { useAppController } from '../state/context.js';
+import { useAppController, useHost } from '../state/context.js';
+import { markOnboardingDone } from '../state/onboarding.js';
 import './NlpOnboarding.css';
 
 const DEMO_TEXT = 'Позвонить маме завтра в 15:00 #семья @важное !2 на 20 мин';
@@ -99,6 +100,7 @@ function chipLabel(chip: AnyAcceptedChip): string {
 
 export function NlpOnboarding(): ReactElement {
   const controller = useAppController();
+  const host = useHost();
   const [text, setText] = useState(DEMO_TEXT);
 
   // Зафиксировано на момент монтирования — демонстрация, не живые часы:
@@ -149,7 +151,14 @@ export function NlpOnboarding(): ReactElement {
           variant="primary"
           size="lg"
           block
-          onClick={() => controller.goTo('todayEmpty')}
+          onClick={() => {
+            // Последний шаг потока онбординга (M02→M04→M05→Today) — здесь и
+            // только здесь он считается пройденным. Флаг переживает
+            // перезапуск, иначе продукт снова открылся бы приветствием
+            // поверх уже заведённых задач (см. `../state/onboarding.ts`).
+            markOnboardingDone(host.platform);
+            controller.goTo('todayEmpty');
+          }}
         >
           {t('onboarding', 'nlpOnboarding.continueLabel')}
         </Button>

@@ -3,13 +3,14 @@ import 'fake-indexeddb/auto';
 import { describe, expect, it } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { createUnavailablePlatform } from '@shagi/platform';
+import { createUnavailablePlatform, type PlatformCapabilitiesRegistry } from '@shagi/platform';
 import { t } from '@shagi/i18n';
 
 import type { AppHost } from '../../src/App.js';
 import { AppProvider } from '../../src/state/context.js';
 import { createAppController } from '../../src/state/store.js';
 import { DataPrivacy } from '../../src/screens/DataPrivacy.js';
+import { ONBOARDING_DONE_KEY } from '../../src/state/onboarding.js';
 import type { StorageBackend } from '../../src/state/storage-backend.js';
 
 function testHost(storageBackend: StorageBackend): AppHost {
@@ -113,6 +114,36 @@ describe('DataPrivacy (M51)', () => {
     await waitFor(() => {
       expect(controller.getState().screen).toBe('welcome');
     });
+  });
+
+  it('удаление снимает и флаг «онбординг пройден» — следующий запуск как на новом устройстве', async () => {
+    const user = userEvent.setup();
+    const store = new Map<string, string>([[ONBOARDING_DONE_KEY, '1']]);
+    const platform: PlatformCapabilitiesRegistry = {
+      ...createUnavailablePlatform(),
+      localPreferences: {
+        get: (key) => store.get(key) ?? null,
+        set: (key, value) => void store.set(key, value),
+        remove: (key) => void store.delete(key),
+      },
+    };
+    const controller = createAppController({ screen: 'dataPrivacy' });
+    render(
+      <AppProvider host={{ platform, storageBackend: MEMORY }} controller={controller}>
+        <DataPrivacy />
+      </AppProvider>,
+    );
+
+    await user.click(
+      screen.getByRole('button', { name: t('settings', 'dataPrivacy.erase.action') }),
+    );
+    await user.click(
+      screen.getByRole('button', { name: t('settings', 'dataPrivacy.erase.confirm') }),
+    );
+
+    // Иначе человек после стирания попал бы в пустой продукт вместо
+    // приветствия: данных нет, а признак «всё уже видел» остался.
+    await waitFor(() => expect(store.has(ONBOARDING_DONE_KEY)).toBe(false));
   });
 
   it('отмена в диалоге ничего не стирает', async () => {
