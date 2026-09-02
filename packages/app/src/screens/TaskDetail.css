@@ -1,0 +1,74 @@
+/**
+ * `TaskDetail` (M24/M25) — вёрстка по хендоффу дизайна (`docs/spec/DESIGN/
+ * source_unpacked/ШАГИ - R1 Design.dc.html`, `#sec-detail`): заголовок
+ * (чекбокс + заголовок задачи в одну строку) сверху, секции ниже с
+ * единообразным интервалом. `Planning`/`Organization` уже группируются в
+ * `Card` — см. заголовок `PlanningRow` в `TaskDetail.tsx` за обоснованием —
+ * этот файл не трогает их внутреннюю структуру, только внешние отступы.
+ *
+ * Пять секций (`section > h2`) стилизуются ОДНИМ селектором-потомком, а не
+ * пятью повторами className — их ровно пять, у всех одна и та же роль
+ * (подпись раздела + содержимое), дублировать className в каждой было бы
+ * тем же самым текстом пять раз.
+ *
+ * `-screen` в именах классов, не голое `shagi-task-detail*` — найдена
+ * реальная коллизия при первой попытке: `@shagi/ui` уже несёт свой
+ * контейнер `task/TaskDetail.tsx` (пакет работ E03.4, слоты header/
+ * metadata/subtasks/checklist/actions, разделённые `Divider`) с ровно теми
+ * же именами классов (`.shagi-task-detail__header` и т.д.) — его CSS
+ * загружается глобально, как только где-либо в дереве монтируется ЛЮБОЙ
+ * компонент `@shagi/ui`, независимо от того, используется ли сам
+ * `task/TaskDetail`. Этот экран его НЕ использует (собственная структура
+ * с пятью секциями не укладывается в пятислотовый API один в один) — но
+ * переезд на готовый контейнер отдельным пакетом работ обоснован (тот же
+ * паттерн «дизайн-система построила компонент, экран его не подхватил»,
+ * что уже был найден и закрыт у `Card`/`CardBody`/`Divider`/`Radio` в
+ * `Settings`/`Appearance` этим же пакетом сессии): не сделан здесь —
+ * реструктуризация пяти секций под пятислотовый API требует отдельного,
+ * осторожного прохода, не одновременно с чисто вёрсточным фиксом.
+ */
+
+.shagi-task-detail-screen {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  padding: var(--space-5) var(--space-5) var(--space-10);
+}
+
+.shagi-task-detail-screen__header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.shagi-task-detail-screen__title-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.shagi-task-detail-screen__breadcrumb {
+  font-size: var(--text-small-meta);
+  color: var(--muted-foreground);
+  margin: calc(var(--space-4) * -1) 0 0;
+}
+
+.shagi-task-detail-screen__quick-actions {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.shagi-task-detail-screen > section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.shagi-task-detail-screen > section > h2 {
+  font-size: var(--text-small-meta);
+  font-weight: var(--fw-bold);
+  color: var(--muted-foreground);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 0;
+}

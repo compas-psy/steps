@@ -203,6 +203,7 @@ import {
 } from '@shagi/ui';
 
 import { useAppController, useStorage } from '../state/context.js';
+import './TaskDetail.css';
 
 // --- Локальная идентичность устройства/владельца (см. заголовок файла) ------
 
@@ -1616,7 +1617,7 @@ export function TaskDetail(): ReactElement | null {
   }
 
   return (
-    <div>
+    <div className="shagi-task-detail-screen">
       {notice !== null && (
         <Toast
           variant={notice.variant === 'error' ? 'error' : 'default'}
@@ -1627,7 +1628,7 @@ export function TaskDetail(): ReactElement | null {
       )}
 
       {/* --- 1. Заголовок/контекст --------------------------------------- */}
-      <div>
+      <div className="shagi-task-detail-screen__header">
         <Checkbox
           aria-label={t('taskDetail', 'completeCheckbox.label', { title: task.title })}
           checked={task.status === 'completed'}
@@ -1636,24 +1637,31 @@ export function TaskDetail(): ReactElement | null {
             if (event.target.checked) handleComplete();
           }}
         />
-        <Input
-          aria-label={t('taskDetail', 'title.label')}
-          value={titleDraft}
-          onChange={(event) => setTitleDraft(event.target.value)}
-          onBlur={handleTitleBlur}
-        />
+        <div className="shagi-task-detail-screen__title-input">
+          <Input
+            aria-label={t('taskDetail', 'title.label')}
+            value={titleDraft}
+            onChange={(event) => setTitleDraft(event.target.value)}
+            onBlur={handleTitleBlur}
+          />
+        </div>
         <Button variant="ghost" onClick={() => controller.closeTask()}>
           {t('taskDetail', 'back.label')}
         </Button>
       </div>
-      <p aria-label={t('taskDetail', 'breadcrumb.ariaLabel')}>{breadcrumbText}</p>
+      <p
+        className="shagi-task-detail-screen__breadcrumb"
+        aria-label={t('taskDetail', 'breadcrumb.ariaLabel')}
+      >
+        {breadcrumbText}
+      </p>
 
       {/* M24 Simple: три частых действия — см. заголовок файла. «Добавить
        * дату» теперь открывает настоящий редактор Planned Date (тот же
        * picker, что раздел Planning ниже) — заглушка `planning.comingSoon`/
        * `quickActions.addDateUnavailable` эпика E08.2 заменена реальной
        * функциональностью. */}
-      <div>
+      <div className="shagi-task-detail-screen__quick-actions">
         <Button variant="secondary" onClick={openPlannedPicker}>
           {t('taskDetail', 'quickActions.addDate')}
         </Button>
