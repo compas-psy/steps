@@ -293,6 +293,7 @@ import {
 } from '@shagi/ui';
 
 import { useAppController, useStorage } from '../state/context.js';
+import './Today.css';
 
 /** Precedence `01§6` — порядок, в котором группы проверяются и рендерятся. */
 const GROUP_ORDER: readonly TodayGroup[] = [
@@ -688,28 +689,35 @@ function TodayGroupSection({
 
   return (
     <section aria-label={groupLabel(group)}>
-      <h2>
-        <button
-          type="button"
-          aria-expanded={!collapsed}
-          aria-controls={listId}
-          onClick={onToggleCollapse}
-        >
-          {groupLabel(group)}
-        </button>
-      </h2>
-      {/* Кнопка входа/выхода из режима выбора — только «Не по плану» (M09,
-       * см. заголовок файла), по образцу кнопки сворачивания секции выше:
-       * тот же native `<button>`, тот же уровень визуальной весомости. */}
-      {selection !== undefined && (
-        <button type="button" onClick={selection.onToggleMode}>
-          {selection.active ? t('today', 'selection.exit') : t('today', 'selection.enter')}
-        </button>
-      )}
+      <div className="shagi-today__group-header">
+        <h2>
+          <button
+            type="button"
+            className="shagi-today__group-label"
+            aria-expanded={!collapsed}
+            aria-controls={listId}
+            onClick={onToggleCollapse}
+          >
+            {groupLabel(group)}
+          </button>
+        </h2>
+        {/* Кнопка входа/выхода из режима выбора — только «Не по плану» (M09,
+         * см. заголовок файла), по образцу кнопки сворачивания секции выше:
+         * тот же native `<button>`, тот же уровень визуальной весомости. */}
+        {selection !== undefined && (
+          <button
+            type="button"
+            className="shagi-today__group-action"
+            onClick={selection.onToggleMode}
+          >
+            {selection.active ? t('today', 'selection.exit') : t('today', 'selection.enter')}
+          </button>
+        )}
+      </div>
       {/* Панель массовых действий — видна, пока выбрана хотя бы одна задача
        * (задание: не floating/sticky, минимально достаточная реализация). */}
       {selection !== undefined && selection.active && selection.selectedIds.size > 0 && (
-        <div>
+        <div className="shagi-today__bulk-bar">
           <span>{t('today', 'bulk.selectedCount', { count: selection.selectedIds.size })}</span>
           <Button variant="secondary" onClick={selection.onBulkToday}>
             {t('today', 'bulk.today')}
@@ -720,7 +728,7 @@ function TodayGroupSection({
         </div>
       )}
       {!collapsed && (
-        <div id={listId}>
+        <div id={listId} className="shagi-today__group-list">
           {tasks.map((task) => (
             <TodayTaskRow
               key={task.id}
@@ -999,32 +1007,40 @@ export function Today(): ReactElement {
   const today = Temporal.Now.plainDateISO();
 
   return (
-    <div>
-      <h1>{t('today', 'pageTitle')}</h1>
-      {/* Точка входа в Settings (M41, пакет работ «Настройки: экран-хаб и
-       * тема оформления») — см. заголовок `state/store.ts`, блок про
-       * `'settings'`. `openSettings()` запоминает `'todayEmpty'` (текущий
-       * экран на момент клика) как `settingsReturnScreen` сам, тем же
-       * приёмом, что `openTask` для `returnScreen` — вызывающему коду не
-       * нужно передавать экран явно. */}
-      <IconButton
-        icon="settings"
-        label={t('today', 'settingsButton.label')}
-        onClick={controller.openSettings}
-      />
-      <p>{formatDate(today, { weekday: 'long' })}</p>
-      <Button variant="secondary" onClick={() => controller.openQuickAdd('today')}>
-        {t('today', 'quickAdd.button')}
-      </Button>
-      {/* Бейдж Входящих — скрыт при нуле (см. заголовок файла, блок
-       * «Бейдж Входящих»), не рендерится, пока `inboxCount` не разрешился
-       * (`null`) — та же семантика "ещё не знаем", что `groups === null`. */}
-      {inboxCount !== null && inboxCount > 0 && (
-        <button type="button" onClick={() => controller.goTo('inbox')}>
-          <Icon name="archive" size={20} />
-          {t('today', 'inboxBadge.label', { count: inboxCount })}
-        </button>
-      )}
+    <div className="shagi-today">
+      <div className="shagi-today__header">
+        <h1 className="shagi-today__title">{t('today', 'pageTitle')}</h1>
+        {/* Точка входа в Settings (M41, пакет работ «Настройки: экран-хаб и
+         * тема оформления») — см. заголовок `state/store.ts`, блок про
+         * `'settings'`. `openSettings()` запоминает `'todayEmpty'` (текущий
+         * экран на момент клика) как `settingsReturnScreen` сам, тем же
+         * приёмом, что `openTask` для `returnScreen` — вызывающему коду не
+         * нужно передавать экран явно. */}
+        <IconButton
+          icon="settings"
+          label={t('today', 'settingsButton.label')}
+          onClick={controller.openSettings}
+        />
+      </div>
+      <p className="shagi-today__date">{formatDate(today, { weekday: 'long' })}</p>
+      <div className="shagi-today__toolbar">
+        <Button variant="secondary" onClick={() => controller.openQuickAdd('today')}>
+          {t('today', 'quickAdd.button')}
+        </Button>
+        {/* Бейдж Входящих — скрыт при нуле (см. заголовок файла, блок
+         * «Бейдж Входящих»), не рендерится, пока `inboxCount` не разрешился
+         * (`null`) — та же семантика "ещё не знаем", что `groups === null`. */}
+        {inboxCount !== null && inboxCount > 0 && (
+          <button
+            type="button"
+            className="shagi-today__inbox-badge"
+            onClick={() => controller.goTo('inbox')}
+          >
+            <Icon name="archive" size={20} />
+            {t('today', 'inboxBadge.label', { count: inboxCount })}
+          </button>
+        )}
+      </div>
 
       {errorMessage !== null && (
         <Toast
@@ -1043,48 +1059,51 @@ export function Today(): ReactElement {
         />
       )}
 
-      {groups !== null &&
-        GROUP_ORDER.filter((group) => groups[group].length > 0).map((group) => {
-          const tasks = groups[group];
-          const collapsed = collapsedOverride[group] ?? tasks.length > COLLAPSE_THRESHOLD;
-          return (
-            <TodayGroupSection
-              key={group}
-              group={group}
-              tasks={tasks}
-              collapsed={collapsed}
-              onToggleCollapse={() =>
-                setCollapsedOverride((prev) => ({ ...prev, [group]: !collapsed }))
-              }
-              openMenuTaskId={openMenuTaskId}
-              onToggleMenu={(id) => setOpenMenuTaskId((current) => (current === id ? null : id))}
-              onCloseMenu={() => setOpenMenuTaskId(null)}
-              handlers={handlers}
-              onOpen={(task) => controller.openTask(task.id)}
-              // Мультивыбор — только «Не по плану» (`01§6`, см. заголовок
-              // файла блок «M09»); остальные пять групп получают `undefined`
-              // и рендерятся без кнопки «Выбрать»/панели массовых действий.
-              selection={
-                group === 'missed_plan'
-                  ? {
-                      active: missedPlanSelection.active,
-                      selectedIds: missedPlanSelection.selectedIds,
-                      onToggleMode: toggleMissedPlanSelectionMode,
-                      onToggleTask: toggleMissedPlanTaskSelected,
-                      onBulkToday: () => {
-                        void runMissedPlanBulkReschedule(Temporal.Now.plainDateISO());
-                      },
-                      onBulkTomorrow: () => {
-                        void runMissedPlanBulkReschedule(
-                          Temporal.Now.plainDateISO().add({ days: 1 }),
-                        );
-                      },
-                    }
-                  : undefined
-              }
-            />
-          );
-        })}
+      {groups !== null && (
+        <div className="shagi-today__groups">
+          {GROUP_ORDER.filter((group) => groups[group].length > 0).map((group) => {
+            const tasks = groups[group];
+            const collapsed = collapsedOverride[group] ?? tasks.length > COLLAPSE_THRESHOLD;
+            return (
+              <TodayGroupSection
+                key={group}
+                group={group}
+                tasks={tasks}
+                collapsed={collapsed}
+                onToggleCollapse={() =>
+                  setCollapsedOverride((prev) => ({ ...prev, [group]: !collapsed }))
+                }
+                openMenuTaskId={openMenuTaskId}
+                onToggleMenu={(id) => setOpenMenuTaskId((current) => (current === id ? null : id))}
+                onCloseMenu={() => setOpenMenuTaskId(null)}
+                handlers={handlers}
+                onOpen={(task) => controller.openTask(task.id)}
+                // Мультивыбор — только «Не по плану» (`01§6`, см. заголовок
+                // файла блок «M09»); остальные пять групп получают `undefined`
+                // и рендерятся без кнопки «Выбрать»/панели массовых действий.
+                selection={
+                  group === 'missed_plan'
+                    ? {
+                        active: missedPlanSelection.active,
+                        selectedIds: missedPlanSelection.selectedIds,
+                        onToggleMode: toggleMissedPlanSelectionMode,
+                        onToggleTask: toggleMissedPlanTaskSelected,
+                        onBulkToday: () => {
+                          void runMissedPlanBulkReschedule(Temporal.Now.plainDateISO());
+                        },
+                        onBulkTomorrow: () => {
+                          void runMissedPlanBulkReschedule(
+                            Temporal.Now.plainDateISO().add({ days: 1 }),
+                          );
+                        },
+                      }
+                    : undefined
+                }
+              />
+            );
+          })}
+        </div>
+      )}
 
       {deadlinePicker !== null && (
         <Modal

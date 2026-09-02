@@ -1,0 +1,131 @@
+/**
+ * `Today` — вёрстка по хендоффу дизайна (`docs/spec/DESIGN/source_unpacked/
+ * ШАГИ - R1 Design.dc.html`, `#sec-today`, `[R1][M][07] Today / Normal`):
+ * заголовок с датой, группы с uppercase-подписью секции, строки задач с
+ * тонким разделителем между ними — не список компонентов без композиции
+ * страницы (см. заголовок `Welcome.css` за тем же принципом на первом
+ * экране, где он был применён).
+ *
+ * `TaskRow` (`@shagi/ui/task`) уже несёт собственные отступы/hover —
+ * секция здесь только группирует строки и рисует разделитель между ними,
+ * не дублирует то, что уже делает сам компонент.
+ */
+
+.shagi-today {
+  padding: var(--space-6) var(--space-5) var(--space-10);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.shagi-today__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.shagi-today__title {
+  font-size: var(--text-mobile-heading);
+  font-weight: var(--fw-bold);
+  color: var(--foreground);
+  margin: 0;
+}
+
+.shagi-today__date {
+  font-size: var(--text-body-primary);
+  color: var(--muted-foreground);
+  margin: calc(var(--space-3) * -1) 0 0;
+}
+
+/* `formatDate(..., {weekday:'long'})` (`@shagi/i18n`) отдаёт день недели со
+ * строчной буквы (грамматически верно вне начала предложения) — макет
+ * показывает его заглавной как первое слово строки экрана. `::first-letter`,
+ * не `text-transform: capitalize` на весь текст: последний иначе поднял бы
+ * регистр и у месяца («2 Сентября»), которого в макете нет. */
+.shagi-today__date::first-letter {
+  text-transform: uppercase;
+}
+
+.shagi-today__toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.shagi-today__inbox-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--foreground);
+  font-size: var(--text-small-meta);
+  font-weight: var(--fw-semibold);
+}
+
+.shagi-today__groups {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.shagi-today__group-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin: 0 0 var(--space-2);
+}
+
+.shagi-today__group-header h2 {
+  margin: 0;
+  font: inherit;
+}
+
+/* Обе кнопки — нативные `<button>` (заголовок группы кликабелен, M08
+ * disclosure), сбрасываем браузерный хром кнопки (рамка/фон/паддинг) —
+ * иначе поверх токенов остаётся системная обводка. */
+.shagi-today__group-label,
+.shagi-today__group-action {
+  border: none;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.shagi-today__group-label {
+  font-size: var(--text-small-meta);
+  font-weight: var(--fw-bold);
+  color: var(--muted-foreground);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.shagi-today__group-action {
+  font-size: var(--text-small-meta);
+  font-weight: var(--fw-semibold);
+  color: var(--primary);
+}
+
+.shagi-today__bulk-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-1);
+  margin-bottom: var(--space-2);
+  font-size: var(--text-small-meta);
+  color: var(--muted-foreground);
+}
+
+.shagi-today__group-list > * {
+  border-bottom: 1px solid var(--border);
+}
+
+.shagi-today__group-list > *:last-child {
+  border-bottom: none;
+}
