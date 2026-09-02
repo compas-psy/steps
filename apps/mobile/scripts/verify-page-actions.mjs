@@ -16,7 +16,11 @@
  * Запуск: `node apps/mobile/scripts/verify-page-actions.mjs [url]`
  * (по умолчанию `http://127.0.0.1:4173/` — `pnpm --filter @shagi/web preview`).
  */
-import { chromium } from 'playwright';
+// `@playwright/test`, а не `playwright`: в этом воркспейсе второй пакет —
+// транзитивная зависимость первого и из `apps/mobile` не резолвится
+// (поймано CI, а не догадкой). Версия закреплена точкой по той же причине,
+// что в `apps/web/playwright.config.ts`: браузер в контейнере один и тот же.
+import { chromium } from '@playwright/test';
 
 import {
   clickByLabel,
