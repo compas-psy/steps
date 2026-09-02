@@ -115,8 +115,16 @@ jobs:
 
   # ─────────────────────────────────────────────────────────────────────
   # Уязвимости в зависимостях — по факту установленного графа
-  # (pnpm-lock.yaml), не по декларациям package.json: ровно то, что реально
-  # едет в сборку.
+  # (pnpm-lock.yaml + оба Cargo.lock нативных мостов), не по декларациям
+  # package.json/Cargo.toml: ровно то, что реально едет в сборку.
+  #
+  # Rust-зависимости добавлены security review нового SQLite-моста
+  # (ADR-0005, P1): до этого сканировался только JS-граф, а `rusqlite` и
+  # весь Cargo.lock оболочек не проверялись вовсе. `cargo audit` — не
+  # единственный путь; `osv-scanner` понимает формат Cargo.lock нативно
+  # (та же база advisories, что и RustSec) и уже установлен этому job,
+  # так что отдельный Rust-тулчейн здесь не нужен — «эквивалентный
+  # OSV-путь», которого требует finding.
   # ─────────────────────────────────────────────────────────────────────
   vulnerabilities:
     name: Уязвимости зависимостей (osv-scanner)
@@ -138,11 +146,16 @@ jobs:
       # osv-scanner сам возвращает ненулевой код при найденных уязвимостях —
       # никакого `|| true` здесь нет, в отличие от аудита, который выводится
       # заметками (см. историю прошлых проектов): здесь red build и есть
-      # весь смысл шага.
-      - name: Скан pnpm-lock.yaml
+      # весь смысл шага. Один вызов на все три lock-файла — это ОДИН отчёт
+      # и одна точка отказа, а не три шага, которые можно молча пропустить
+      # по одному правкой workflow.
+      - name: Скан pnpm-lock.yaml и Cargo.lock (mobile, desktop)
         run: |
           set -euo pipefail
-          "$(go env GOPATH)/bin/osv-scanner" scan source --lockfile=pnpm-lock.yaml
+          "$(go env GOPATH)/bin/osv-scanner" scan source \
+            --lockfile=pnpm-lock.yaml \
+            --lockfile=apps/mobile/src-tauri/Cargo.lock \
+            --lockfile=apps/desktop/src-tauri/Cargo.lock
 
   # ─────────────────────────────────────────────────────────────────────
   # Лицензии зависимостей — allowlist, «не в списке» падает и требует
@@ -182,6 +195,15 @@ jobs:
   # «missing: … required by …» на каждой платформенной optional-зависимости
   # rolldown/oxlint. cdxgen читает pnpm-lock.yaml напрямую и с этим
   # монорепозиторием работает без обходных путей.
+  #
+  # `--type js --type cargo` (было только `js`) — security review нового
+  # SQLite-моста (ADR-0005, P1): SBOM обязан отражать то, что реально едет
+  # в APK/десктоп-бинарник, а `rusqlite` и весь Rust-граф обоих Tauri-мостов
+  # раньше в него не попадали вовсе. Одного вызова достаточно: `--type` —
+  # массив, `--recurse` (по умолчанию `true`) сам находит оба Cargo.toml
+  # под `apps/*/src-tauri` вместе с pnpm-графом — проверено локально:
+  # 159 npm + 505 cargo компонентов в одном `sbom.json`, а не «JS есть,
+  # Rust отсутствует».
   # ─────────────────────────────────────────────────────────────────────
   sbom:
     name: SBOM (CycloneDX)
@@ -202,10 +224,10 @@ jobs:
       - name: pnpm install --frozen-lockfile
         run: pnpm install --frozen-lockfile
 
-      - name: Сгенерировать SBOM
+      - name: Сгенерировать SBOM (JS + Rust/Cargo)
         run: >
           pnpm dlx "@cyclonedx/cdxgen@${CDXGEN_VERSION}"
-          --type js --spec-version 1.6 --output sbom.json .
+          --type js --type cargo --spec-version 1.6 --output sbom.json .
 
       - name: Сохранить SBOM как артефакт сборки
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
