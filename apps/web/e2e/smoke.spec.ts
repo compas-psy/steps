@@ -49,3 +49,46 @@ test('service worker регистрируется', async ({ page }) => {
   });
   expect(registered).toBe(true);
 });
+
+/**
+ * Главное действие продукта под живым указателем: человек целится в
+ * КВАДРАТИК чекбокса и ожидает, что задача завершится.
+ *
+ * Проверяется здесь, а не модульным тестом, потому что жест ловится только
+ * настоящим hit-testing: у `TaskCheckbox` (`@shagi/ui`) прозрачный `<input>`
+ * и видимый квадрат лежат в одной точке, и до исправления квадрат
+ * перехватывал клик на себя — задача не завершалась, вместо этого клик
+ * всплывал до обработчика строки и открывал карточку задачи. В jsdom такого
+ * не увидеть вовсе (там нет hit-testing), а причина этой поломки отдельно
+ * закреплена в `packages/ui/e2e/pointer.spec.ts`.
+ *
+ * Клик — `page.mouse.click` по координатам центра квадрата, а не по
+ * локатору: человек целится в точку на экране, а не в узел DOM, и после
+ * исправления верхним узлом там стал сам `<input>`.
+ */
+test('клик по квадратику чекбокса завершает задачу, а не открывает её карточку', async ({
+  page,
+}) => {
+  await page.goto('/');
+
+  // Онбординг до Today с одной настоящей задачей.
+  await page.getByRole('button', { name: 'Начать' }).click();
+  await page.locator('input, textarea').first().fill('Купить хлеб');
+  await page.getByRole('button', { name: /Добавить задачу/ }).click();
+  await page.getByRole('button', { name: 'Понятно' }).click();
+
+  const task = page.getByText('Купить хлеб');
+  await expect(task).toBeVisible();
+
+  const box = page.locator('.shagi-task-checkbox__box').first();
+  const rect = await box.boundingBox();
+  expect(rect, 'видимый квадрат чекбокса не отрисован').not.toBeNull();
+  if (rect === null) return;
+
+  await page.mouse.click(rect.x + rect.width / 2, rect.y + rect.height / 2);
+
+  // Задача ушла из списка Today (завершена), и экран остался Today —
+  // карточка задачи НЕ открылась.
+  await expect(task).toHaveCount(0);
+  await expect(page.locator('.shagi-today')).toBeVisible();
+});
