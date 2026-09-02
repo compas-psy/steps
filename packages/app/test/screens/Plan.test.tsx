@@ -33,12 +33,19 @@ async function seedTasks(storage: StoragePort, tasks: readonly Task[]): Promise<
   }
 }
 
-function SeedThenPlan({ tasks }: { tasks: readonly Task[] }): ReactElement | null {
+function SeedThenPlan({
+  tasks,
+  onStorage,
+}: {
+  tasks: readonly Task[];
+  onStorage?: (storage: StoragePort) => void;
+}): ReactElement | null {
   const storage = useStorage();
   const [seeded, setSeeded] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
+    onStorage?.(storage);
     void seedTasks(storage, tasks).then(() => {
       if (!cancelled) setSeeded(true);
     });
@@ -53,14 +60,22 @@ function SeedThenPlan({ tasks }: { tasks: readonly Task[] }): ReactElement | nul
 
 function renderPlan(tasks: readonly Task[] = []): {
   controller: ReturnType<typeof createAppController>;
+  getStorage: () => StoragePort;
 } {
   const controller = createAppController({ screen: 'plan' });
+  let captured: StoragePort | undefined;
   render(
     <AppProvider host={testHost()} controller={controller}>
-      <SeedThenPlan tasks={tasks} />
+      <SeedThenPlan tasks={tasks} onStorage={(storage) => (captured = storage)} />
     </AppProvider>,
   );
-  return { controller };
+  return {
+    controller,
+    getStorage: () => {
+      if (captured === undefined) throw new Error('storage не захвачен');
+      return captured;
+    },
+  };
 }
 
 const NOW = Temporal.Now.plainDateTimeISO();
@@ -154,6 +169,34 @@ describe('Plan — маркер Available From', () => {
     const section = heading.closest('section');
     expect(section).not.toBeNull();
     expect(section?.querySelectorAll('.shagi-task-row')).toHaveLength(1);
+  });
+});
+
+describe('Plan — чекбокс завершает задачу (живое действие, не украшение)', () => {
+  it('клик по чекбоксу завершает задачу и убирает её из повестки', async () => {
+    const user = userEvent.setup();
+    const task = makeTask({ title: 'Встреча с поставщиком', plannedDate: TOMORROW });
+    const { getStorage } = renderPlan([task]);
+    await waitForPageReady();
+    expect(screen.getByText('Встреча с поставщиком')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('checkbox', { name: 'Встреча с поставщиком' }));
+
+    // Проверяется И запись в хранилище, И исчезновение со экрана: раньше
+    // чекбокс тут рендерился `disabled` — выглядел рабочим и не делал
+    // ничего. Тест обязан покраснеть, если это вернётся.
+    await waitFor(() =>
+      expect(screen.queryByText('Встреча с поставщиком')).not.toBeInTheDocument(),
+    );
+    const stored = await getStorage().tasks.findById(task.id);
+    expect(stored?.status).toBe('completed');
+  });
+
+  it('чекбокс не отключён — по нему можно нажать', async () => {
+    renderPlan([makeTask({ title: 'Активная задача', plannedDate: TOMORROW })]);
+    await waitForPageReady();
+
+    expect(screen.getByRole('checkbox', { name: 'Активная задача' })).toBeEnabled();
   });
 });
 

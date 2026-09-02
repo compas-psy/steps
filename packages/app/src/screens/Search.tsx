@@ -242,12 +242,15 @@ import { Temporal } from '@js-temporal/polyfill';
 
 import { t } from '@shagi/i18n';
 import {
+  completeTaskCommand,
+  generateDeviceId,
   isTaskLabelActive,
   selectSystemFilters,
   SYSTEM_FILTER_IDS,
   type SystemFilterGroups,
   type SystemFilterId,
   type Task,
+  type Uuid,
 } from '@shagi/core';
 import {
   rankCandidates,
@@ -346,19 +349,36 @@ async function loadCandidates(storage: StoragePort): Promise<readonly SearchCand
   return [...taskCandidates, ...projectCandidates, ...labelCandidates];
 }
 
+/** Тот же узкий компромисс с идентичностью устройства, что в `Today.tsx`/
+ * `Plan.tsx` (см. их заголовки): постоянного порта ещё нет. */
+let cachedSearchDeviceId: Uuid | null = null;
+
+function getSearchDeviceId(): Uuid {
+  cachedSearchDeviceId ??= generateDeviceId();
+  return cachedSearchDeviceId;
+}
+
 interface TaskResultRowProps {
   readonly task: SearchableTask;
   readonly onOpen: (id: SearchableTask['id']) => void;
+  readonly onComplete: (task: SearchableTask) => void;
 }
 
-function TaskResultRow({ task, onOpen }: TaskResultRowProps): ReactElement {
+function TaskResultRow({ task, onOpen, onComplete }: TaskResultRowProps): ReactElement {
   const completed = task.status === 'completed';
   return (
     <TaskRow
       title={task.title}
       checkboxLabel={task.title}
       checked={completed}
-      disabled
+      // Активную задачу чекбокс ЗАВЕРШАЕТ — тот же дефект и то же
+      // исправление, что на «Плане»: нарисованный как везде кружок,
+      // который ничего не делает, хуже отсутствующего. Завершённая строка
+      // остаётся неинтерактивной сознательно: снятие галочки — это
+      // восстановление (`01§11.9–11.11`), у него своя классификация
+      // ситуаций и свой диалог на экране «Завершённые» (M36); свести это к
+      // клику по галочке значило бы выполнить не то, что человек попросил.
+      {...(completed ? { disabled: true } : { onCheckedChange: () => onComplete(task) })}
       state={completed ? 'completed' : 'normal'}
       {...(completed ? { statusLabel: t('search', 'status.completed') } : {})}
       onClick={(event) => {
@@ -442,6 +462,28 @@ export function Search(): ReactElement {
       cancelled = true;
     };
   }, [storage]);
+
+  /** Перезапрос после успешной команды — та же дисциплина, что на Today и
+   * «Плане»: и список кандидатов, и системные фильтры считаются заново из
+   * хранилища, иначе завершённая задача осталась бы висеть в выдаче. */
+  async function refreshCandidates(): Promise<void> {
+    const [nextCandidates, activeTasks] = await Promise.all([
+      loadCandidates(storage),
+      storage.tasks.listByStatusAndPlannedDate('active'),
+    ]);
+    setCandidates(nextCandidates);
+    setSystemFilterGroups(selectSystemFilters(activeTasks, Temporal.Now.plainDateTimeISO()));
+  }
+
+  function handleCompleteResult(task: SearchableTask): void {
+    void (async () => {
+      const result = await completeTaskCommand(
+        { id: task.id },
+        { storage, now: Temporal.Now.instant(), deviceId: getSearchDeviceId() },
+      );
+      if (result.status === 'ok') await refreshCandidates();
+    })();
+  }
 
   const trimmedQuery = query.trim();
 
@@ -543,6 +585,7 @@ export function Search(): ReactElement {
                 key={result.candidate.id}
                 task={result.candidate}
                 onOpen={controller.openTask}
+                onComplete={handleCompleteResult}
               />
             ))}
           </div>

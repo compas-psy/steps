@@ -201,6 +201,34 @@ describe('Search — M35 Results, ранжирование (01§15)', () => {
   });
 });
 
+describe('Search — чекбокс в выдаче работает, а не украшает', () => {
+  it('чекбокс активной задачи завершает её', async () => {
+    const user = userEvent.setup();
+    const task = makeTask({ title: 'Оплатить интернет' });
+    const { getStorage } = renderSearch({ tasks: [task] });
+    await user.type(await searchInput(), 'интернет');
+
+    const box = await screen.findByRole('checkbox', { name: 'Оплатить интернет' });
+    expect(box).toBeEnabled();
+    await user.click(box);
+
+    // Раньше чекбокс здесь рендерился `disabled`: выглядел как везде и не
+    // делал ничего. Тест обязан покраснеть, если это вернётся.
+    await waitFor(async () => {
+      const stored = await getStorage().tasks.findById(task.id);
+      expect(stored?.status).toBe('completed');
+    });
+  });
+
+  it('у завершённой задачи чекбокс намеренно неинтерактивен — снятие галочки это восстановление (M36)', async () => {
+    const user = userEvent.setup();
+    renderSearch({ tasks: [makeTask({ title: 'Уже сделана', status: 'completed' })] });
+    await user.type(await searchInput(), 'сделана');
+
+    expect(await screen.findByRole('checkbox', { name: 'Уже сделана' })).toBeDisabled();
+  });
+});
+
 describe('Search — переходы по клику', () => {
   it('клик по результату-задаче открывает Task Detail (controller.openTask)', async () => {
     const user = userEvent.setup();

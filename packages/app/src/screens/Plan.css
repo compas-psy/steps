@@ -12,7 +12,10 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-5);
-  padding: var(--space-5) var(--space-5) var(--space-10);
+  /* 24px по горизонтали, как в макете; списки задач из этого отступа
+   * выходят (см. `__groups`) — разделитель между задачами тянется от края
+   * до края экрана, ровно так же, как на Today. */
+  padding: var(--space-5) var(--space-6) var(--space-10);
 }
 
 .shagi-plan__title {
@@ -28,14 +31,55 @@
   gap: var(--space-3);
 }
 
-/* Семь сегментов + иконка-кнопка календаря не умещаются на мобильной
- * ширине без переноса — сама полоса скроллится по горизонтали, кнопка
- * календаря остаётся на месте (`flex-shrink:0` у неё же, второго ребёнка
- * строки, не нужен отдельный класс — единственный сосед первого). */
+/* Семь плиток + иконка-кнопка календаря не умещаются на мобильной ширине
+ * без переноса — сама полоса скроллится по горизонтали, кнопка календаря
+ * остаётся на месте (`flex-shrink:0` у неё же, второго ребёнка строки, не
+ * нужен отдельный класс — единственный сосед первого). */
 .shagi-plan__strip-row > :first-child {
   flex: 1;
   min-width: 0;
   overflow-x: auto;
+}
+
+/* --- Полоса дат по макету `[R1][M][14]` ------------------------------------
+ *
+ * Макет рисует ОТДЕЛЬНЫЕ плитки «день недели над числом», а не сегменты на
+ * общей серой подложке: подложка объединяла их в один переключатель, из-за
+ * чего выбранный день читался как «вкладка», а не как день календаря.
+ * Компонент остался прежним (`SegmentedControl` — та же доступная модель
+ * `radiogroup`), меняется только оформление. Классы продублированы
+ * (специфичность 0-2-0): спорим с собственным CSS `@shagi/ui`, который
+ * попадает в бандл позже. */
+.shagi-plan__strip.shagi-plan__strip {
+  gap: var(--space-2);
+  padding: 0;
+  background: transparent;
+}
+
+.shagi-plan__strip.shagi-plan__strip > * {
+  flex: 0 0 auto;
+  width: 44px;
+  padding: var(--space-2) 0;
+  border-radius: var(--radius-lg);
+}
+
+.shagi-plan__strip-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  line-height: 1;
+}
+
+.shagi-plan__strip-weekday {
+  font-size: var(--text-caption);
+  font-weight: var(--fw-medium);
+}
+
+.shagi-plan__strip-day {
+  font-size: var(--text-body-secondary);
+  font-weight: var(--fw-semibold);
+  font-variant-numeric: tabular-nums;
 }
 
 .shagi-plan__strip-row > :last-child {
@@ -46,6 +90,12 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-5);
+  margin-inline: calc(var(--space-6) * -1);
+}
+
+.shagi-plan__day-heading,
+.shagi-plan__available-marker {
+  padding-inline: var(--space-6);
 }
 
 .shagi-plan__day {
@@ -71,10 +121,31 @@
   margin: 0;
 }
 
-.shagi-plan__day-list > * {
+/* Специфичность 0-2-0 — спорим с собственным `padding` у `TaskRow`
+ * (`@shagi/ui`), чей CSS попадает в бандл позже. */
+.shagi-plan__day-list.shagi-plan__day-list > * {
+  padding-inline: var(--space-6);
   border-bottom: 1px solid var(--border);
 }
 
-.shagi-plan__day-list > *:last-child {
+.shagi-plan__day-list.shagi-plan__day-list > *:last-child {
   border-bottom: none;
+}
+
+/* Выбранный день — залитая плитка, как в макете (`background: forest-800`,
+ * белый текст). Пара `--primary` / `--primary-foreground` — та же, что у
+ * заполненных кнопок дизайн-системы, её контраст уже проверен для обеих
+ * тем. Тень сегмента снимается: она была нужна «приподнятой вкладке» на
+ * серой подложке, которой здесь больше нет. */
+.shagi-plan__strip.shagi-plan__strip > .shagi-segmented__option--active {
+  background: var(--primary);
+  color: var(--primary-foreground);
+  box-shadow: none;
+}
+
+/* Заголовок дня, выбранного в полосе, — цветом (макет `[R1][M][14]`:
+ * «Вторник, 1 сентября» зелёным, остальные приглушённые). Цвет не
+ * единственный признак: тот же день одновременно залит в полосе дат. */
+.shagi-plan__day-heading--selected {
+  color: var(--primary-on-surface);
 }

@@ -95,12 +95,17 @@
  * Задача → `controller.openTask(id)` (готовый переход E10.2), тот же приём
  * различения интерактивного клика внутри строки (`isInteractiveRowClick`),
  * что уже дублирован в `Today.tsx`/`Search.tsx`/`ProjectDetail.tsx` (тот же
- * узкий прецедент, не общий модуль — граница пакетов, CLAUDE.md). `TaskRow`
- * здесь без чекбокса-действия (`disabled`, `checked=false`) — тот же приём,
- * что `Search.tsx` `TaskResultRow`: задание этого пакета работ не просит
- * Complete/Reschedule на Plan (в отличие от `Today.tsx`), только просмотр и
- * переход, поэтому чекбокс декоративен, не изобретаем несуществующее
- * действие.
+ * узкий прецедент, не общий модуль — граница пакетов, CLAUDE.md). Чекбокс
+ * строки — РАБОЧИЙ (`completeTaskCommand`, та же команда, что на Today и во
+ * Входящих). Раньше он рендерился `disabled` с обоснованием «задание этого
+ * пакета работ не просит Complete на Plan». Обоснование не выдержало живой
+ * проверки: на экране нарисован круглый чекбокс ровно того же вида, что и
+ * везде, человек по нему жмёт — и не происходит НИЧЕГО. Нерабочий орган
+ * управления, неотличимый от рабочего, хуже отсутствующего (тот же принцип
+ * честного UI, по которому на экранах нет строк-заглушек). Макет
+ * `[R1][M][14]` рисует эти кружки наравне с остальными списками, а `01§8`
+ * завершения с «Плана» не запрещает — запрета не было, была граница
+ * задания.
  *
  * Дата в полосе/picker → `goToDate`: прокручивает к секции дня, если группа
  * для этой даты уже посчитана (`selectPlanAgenda` её вернула), иначе —
@@ -132,7 +137,14 @@ import {
   t,
   weekdayName,
 } from '@shagi/i18n';
-import { selectPlanAgenda, type PlanDayGroup, type Task } from '@shagi/core';
+import {
+  completeTaskCommand,
+  generateDeviceId,
+  selectPlanAgenda,
+  type PlanDayGroup,
+  type Task,
+  type Uuid,
+} from '@shagi/core';
 import {
   Button,
   DatePicker,
@@ -234,16 +246,33 @@ function dayGroupElementId(date: Temporal.PlainDate): string {
 interface PlanDayGroupSectionProps {
   readonly group: PlanDayGroup;
   readonly onOpen: (task: Task) => void;
+  readonly onComplete: (task: Task) => void;
+  /** День, выбранный в полосе дат: его заголовок выделяется цветом (макет
+   * `[R1][M][14]`). */
+  readonly selected: boolean;
 }
 
 /** Секция одного дня — заголовок (`formatDate`), маркер Available From (см.
- * заголовок файла) и список задач (`TaskRow`, декоративный чекбокс — этот
- * экран не даёт действий над задачей, только просмотр/переход). */
-function PlanDayGroupSection({ group, onOpen }: PlanDayGroupSectionProps): ReactElement {
+ * заголовок файла) и список задач (`TaskRow` с рабочим чекбоксом
+ * завершения, см. заголовок файла). */
+function PlanDayGroupSection({
+  group,
+  onOpen,
+  onComplete,
+  selected,
+}: PlanDayGroupSectionProps): ReactElement {
   const heading = formatDate(group.date, { weekday: 'long' });
   return (
     <section className="shagi-plan__day" id={dayGroupElementId(group.date)} aria-label={heading}>
-      <h2 className="shagi-plan__day-heading">{heading}</h2>
+      <h2
+        className={
+          selected
+            ? 'shagi-plan__day-heading shagi-plan__day-heading--selected'
+            : 'shagi-plan__day-heading'
+        }
+      >
+        {heading}
+      </h2>
       {group.availableFromMarker && (
         <p className="shagi-plan__available-marker">
           <Icon name="clock" size={14} />
@@ -258,7 +287,7 @@ function PlanDayGroupSection({ group, onOpen }: PlanDayGroupSectionProps): React
               title={task.title}
               checkboxLabel={task.title}
               checked={false}
-              disabled
+              onCheckedChange={() => onComplete(task)}
               state="normal"
               {...(task.plannedTime !== null ? { statusLabel: formatTime(task.plannedTime) } : {})}
               onClick={(event) => {
@@ -275,6 +304,17 @@ function PlanDayGroupSection({ group, onOpen }: PlanDayGroupSectionProps): React
 
 interface DatePickerDialogState {
   readonly visibleMonth: CalendarMonth;
+}
+
+/** Тот же узкий компромисс, что `Today.tsx` `getDeviceId` (см. его
+ * заголовок): постоянного порта идентичности устройства в дереве пакетов
+ * ещё нет, поэтому id живёт время жизни модуля. Заменяется в одном месте,
+ * когда порт появится. */
+let cachedPlanDeviceId: Uuid | null = null;
+
+function getPlanDeviceId(): Uuid {
+  cachedPlanDeviceId ??= generateDeviceId();
+  return cachedPlanDeviceId;
 }
 
 export function Plan(): ReactElement {
@@ -298,6 +338,27 @@ export function Plan(): ReactElement {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `today` фиксировано на монтирование экрана, см. заголовок файла
   }, [storage]);
+
+  /** Перезапрос повестки после успешной команды — тот же приём, что
+   * `Today.tsx` `refreshGroups`: список строится заново из хранилища, а не
+   * правится на месте, чтобы экран не разошёлся с тем, что произошло. */
+  async function refreshAgenda(): Promise<void> {
+    const tasks = await storage.tasks.listByStatusAndPlannedDate('active');
+    setGroups(selectPlanAgenda(tasks, today));
+  }
+
+  function handleComplete(task: Task): void {
+    void (async () => {
+      const result = await completeTaskCommand(
+        { id: task.id },
+        { storage, now: Temporal.Now.instant(), deviceId: getPlanDeviceId() },
+      );
+      // Провал не проглатывается: список не перезапрашивается под ошибкой,
+      // задача остаётся на экране — человек видит, что ничего не
+      // изменилось, а не пустоту на месте якобы завершённой задачи.
+      if (result.status === 'ok') await refreshAgenda();
+    })();
+  }
 
   // Прокрутка к запрошенному дню — после того, как `visibleCount` уже
   // раскрыл нужную группу (см. `goToDate`) и рендер с новым DOM-узлом
@@ -335,13 +396,22 @@ export function Plan(): ReactElement {
       <h1 className="shagi-plan__title">{t('plan', 'pageTitle')}</h1>
 
       <div className="shagi-plan__strip-row">
+        {/* Подпись каждой плитки — две строки, как в макете `[R1][M][14]`:
+         * день недели над числом. Компонент прежний (`SegmentedControl`
+         * даёт `radiogroup` с roving tabIndex — ровно семантику «одна
+         * выбранная дата»), меняется только его содержимое и оформление
+         * плиток (`Plan.css`), а не доступная модель. */}
         <SegmentedControl
+          className="shagi-plan__strip"
           label={t('plan', 'dateStrip.label')}
           options={stripDays.map((date) => ({
             value: date.toString(),
             label: (
-              <span>
-                <span>{weekdayName(date.dayOfWeek, 'short')}</span> <span>{date.day}</span>
+              <span className="shagi-plan__strip-cell">
+                <span className="shagi-plan__strip-weekday">
+                  {weekdayName(date.dayOfWeek, 'short')}
+                </span>
+                <span className="shagi-plan__strip-day">{date.day}</span>
               </span>
             ),
           }))}
@@ -369,6 +439,8 @@ export function Plan(): ReactElement {
             key={group.date.toString()}
             group={group}
             onOpen={(task) => controller.openTask(task.id)}
+            onComplete={handleComplete}
+            selected={group.date.toString() === selectedStripDate}
           />
         ))}
       </div>
