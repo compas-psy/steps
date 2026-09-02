@@ -323,10 +323,13 @@ jobs:
           set -euo pipefail
           rustup toolchain install stable --profile minimal
           rustup default stable
-          # Ровно те таргеты, которые собираются ниже. x86-таргеты нужны
-          # только эмулятору: они удваивают время сборки и вес APK, а
-          # бюджет — 30 МБ (SPEC §6).
-          rustup target add aarch64-linux-android armv7-linux-androideabi
+          # Два ARM-таргета — то, что раздаётся людям. x86_64 — отдельно и
+          # только для эмулятора (job `smoke` ниже): раннеры GitHub x86_64,
+          # ARM-пакет там не запустится вовсе. В распространяемый APK этот
+          # таргет не попадает: он собирается ОТДЕЛЬНЫМ вызовом `tauri android
+          # build` в свой каталог, а в артефакт релиза кладётся ARM-сборка —
+          # бюджет 30 МБ (SPEC §6) не трогается.
+          rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android
           rustup show
 
       - name: Кэш cargo
@@ -559,6 +562,29 @@ jobs:
           cat 'apps/mobile/src-tauri/gen/android/app/src/main/AndroidManifest.xml'
 
       # ── Сборка ────────────────────────────────────────────────────────────
+
+      # Отладочный APK под архитектуру эмулятора. Собирается ПЕРВЫМ, и это не
+      # вкусовщина: на debug-канале обе сборки пишут один и тот же файл
+      # `outputs/apk/universal/debug/*.apk`, поэтому x86_64 забирается в
+      # RUNNER_TEMP сразу, а следующий шаг спокойно перезаписывает каталог
+      # своей, раздаваемой людям сборкой. Обратный порядок молча подменил бы
+      # артефакт релиза пакетом, который не ставится ни на один телефон.
+      - name: Отладочный APK x86_64 для эмулятора
+        env:
+          CARGO_PROFILE_DEV_DEBUG: 'false'
+          CARGO_PROFILE_DEV_STRIP: 'symbols'
+        run: |
+          set -euo pipefail
+          pnpm --filter @shagi/mobile exec tauri android build --apk --debug \
+            --target x86_64
+
+          mkdir -p "${RUNNER_TEMP}/emulator"
+          mapfile -t found < <(find 'apps/mobile/src-tauri/gen/android/app/build/outputs/apk' \
+            -name '*.apk' -type f -path '*debug*' | sort)
+          [ "${#found[@]}" -gt 0 ] || { echo 'x86_64-APK не найден после сборки' >&2; exit 1; }
+          cp "${found[0]}" "${RUNNER_TEMP}/emulator/shagi-emulator-x86_64.apk"
+          echo "Для эмулятора: ${found[0]} → $(stat -c%s "${RUNNER_TEMP}/emulator/shagi-emulator-x86_64.apk") байт"
+
       - name: tauri android build
         env:
           # Отладочный профиль cargo кладёт в .so полную отладочную информацию,
@@ -582,33 +608,6 @@ jobs:
 
           echo '── что собралось ──'
           find apps/mobile/src-tauri/gen/android/app/build/outputs -name '*.apk' -type f -printf '%p\t%s байт\n'
-
-      # ── Диагностика манифеста (временно, разбор INTERNET/DYNAMIC_RECEIVER) ──
-      #
-      # `aapt dump permissions` (следующий по конвейеру шаг) печатает ИТОГ —
-      # какие `<uses-permission>` оказались в собранном APK, но не откуда они
-      # взялись. AGP на каждой сборке уже пишет ОБА ответа на этот вопрос сам:
-      # смёрженный `AndroidManifest.xml` (после слияния шаблона Tauri, любых
-      # плагинов и AndroidX) и текстовый merger-report с построчным `ADDED
-      # from ...`/`MERGED from ...` — не гадаем по комментариям в коде, откуда
-      # взялось разрешение, а читаем то, что реально написал сам AGP.
-      #
-      # Пути с `*` — конкретное имя build-варианта (`release`/`debug`) внутри
-      # `find` не хардкодится: они одинаковы что на релизе, что на debug, но
-      # который из двух собрался — зависит от канала (см. шаг «tauri android
-      # build» выше), а расписывать оба здесь дороже, чем найти реальный.
-      - name: Слепок манифеста Android (диагностика INTERNET/DYNAMIC_RECEIVER)
-        run: |
-          set -euo pipefail
-          echo '── смёрженный AndroidManifest.xml ──'
-          find apps/mobile/src-tauri/gen/android/app/build/intermediates \
-            -path '*merged_manifest*' -name 'AndroidManifest.xml' -type f \
-            -exec sh -c 'echo "=== $1 ==="; cat "$1"' _ {} \;
-
-          echo '── manifest-merger report ──'
-          find apps/mobile/src-tauri/gen/android/app/build/outputs/logs \
-            -name 'manifest-merger-*-report.txt' -type f \
-            -exec sh -c 'echo "=== $1 ==="; cat "$1"' _ {} \;
 
       # ── Подпись ───────────────────────────────────────────────────────────
       # Подписываем сами, а не конфигом Gradle: сгенерированный
@@ -787,9 +786,104 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+      # Вторая связка — не для людей, а для job `smoke`: тот же коммит, тот же
+      # конвейер, но архитектура эмулятора. В GitHub Release она не едет
+      # никогда (см. job `release`: он забирает связку по имени из
+      # `steps.collect`), поэтому и живёт один день.
+      - name: Приложить APK для эмулятора
+        uses: actions/upload-artifact@v4
+        with:
+          name: shagi-android-emulator-x86_64
+          path: ${{ runner.temp }}/emulator/*.apk
+          if-no-files-found: error
+          retention-days: 1
+
       - name: Убрать ключ подписи
         if: always()
         run: rm -rf "${RUNNER_TEMP}/signing" "${RUNNER_TEMP}/signed.apk" "${RUNNER_TEMP}/aligned.apk"
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # SMOKE — приложение реально запускается на живом Android и по нему реально
+  # можно пройти сценарий.
+  #
+  # Зачем отдельный job, а не шаг в `build`: эмулятору не нужны ни NDK, ни
+  # Rust, ни час сборки — ему нужен готовый APK. Разделение даёт понятную
+  # причину падения (собралось, но не запускается — это другая поломка, чем
+  # «не собралось») и не растит и без того 90-минутный бюджет `build`.
+  #
+  # Почему это вообще есть. «Собралось и подписалось» ничего не говорит о
+  # том, что человек увидит на экране: на вебе продукт однажды уже собирался
+  # зелёным и показывал БЕЛЫЙ ЭКРАН (`node:sqlite` в браузерном бандле —
+  # `packages/app/src/state/storage-backend.ts`). Ни типы, ни модульные
+  # тесты, ни `vite build` этого не поймали — поймал живой браузер. Здесь то
+  # же самое для Android: WebView настоящий, APK настоящий.
+  # ─────────────────────────────────────────────────────────────────────────
+  smoke:
+    name: Дымовой тест на эмуляторе
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Установить Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+
+      # sdkmanager/avdmanager — java-инструменты; версия здесь не принципиальна
+      # (AGP тут не запускается), но полагаться на «что окажется в образе» —
+      # ровно тот способ получить падение, которое нечем объяснить.
+      - name: JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Забрать APK для эмулятора
+        uses: actions/download-artifact@v4
+        with:
+          name: shagi-android-emulator-x86_64
+          path: emulator-apk
+
+      # Без доступа к /dev/kvm эмулятор поднимается программной эмуляцией и
+      # не укладывается ни в какой разумный таймаут. Правило udev — штатный
+      # приём для образов GitHub, где узел есть, но принадлежит группе kvm.
+      - name: Включить KVM
+        run: |
+          set -euo pipefail
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      # API 34: minSdk у ШАГОВ 26, но образ должен нести СВЕЖИЙ WebView —
+      # именно он и проверяется. `google_apis` вместо `default` по той же
+      # причине: в AOSP-образах WebView заметно старее.
+      - name: Запустить сценарий на эмуляторе
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          ram-size: 4096M
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: |
+            set -uo pipefail
+            apk="$(find emulator-apk -name '*.apk' -type f | head -1)"
+            [ -n "${apk}" ] || { echo 'APK для эмулятора не скачался' >&2; exit 1; }
+            id="$(node -p "require('./apps/mobile/src-tauri/tauri.conf.json').identifier")"
+
+            # logcat снимается ЗДЕСЬ, пока эмулятор ещё жив: после выхода из
+            # этого шага его уже нет вместе со всеми логами, а когда
+            # приложение падает на старте, единственный ответ «почему» — там.
+            if ! SHAGI_APPLICATION_ID="${id}" node apps/mobile/scripts/android-smoke.mjs "${apk}"; then
+              echo '── logcat ──'
+              adb logcat -d -t 2000 || true
+              exit 1
+            fi
 
   # ─────────────────────────────────────────────────────────────────────────
   # RELEASE — только на теге и только для подписанной и проверенной сборки.
@@ -804,7 +898,11 @@ jobs:
   # ─────────────────────────────────────────────────────────────────────────
   release:
     name: Релиз
-    needs: build
+    # `smoke` в зависимостях — сознательный запрет публиковать пакет, про
+    # который не проверено, что он вообще запускается. Подпись и разрешения
+    # говорят «файл правильный», дымовой тест — «приложение работает»; для
+    # людей второе важнее.
+    needs: [build, smoke]
     if: github.ref_type == 'tag' && needs.build.outputs.verified_release == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
