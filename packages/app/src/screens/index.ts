@@ -39,6 +39,8 @@ import type { ScreenId } from '../state/store.js';
 import { Appearance } from './Appearance.js';
 import { Completed } from './Completed.js';
 import { DataPrivacy } from './DataPrivacy.js';
+import { ExportData } from './ExportData.js';
+import { ImportData } from './ImportData.js';
 import { FirstTask } from './FirstTask.js';
 import { Inbox } from './Inbox.js';
 import { Launch } from './Launch.js';
@@ -56,6 +58,8 @@ import { Welcome } from './Welcome.js';
 export { Appearance } from './Appearance.js';
 export { Completed } from './Completed.js';
 export { DataPrivacy } from './DataPrivacy.js';
+export { ExportData } from './ExportData.js';
+export { ImportData } from './ImportData.js';
 export { FirstTask } from './FirstTask.js';
 export { Inbox } from './Inbox.js';
 export { Launch } from './Launch.js';
@@ -85,6 +89,8 @@ export const SCREENS: Partial<Record<ScreenId, ComponentType>> = {
   plan: Plan,
   completed: Completed,
   dataPrivacy: DataPrivacy,
+  importData: ImportData,
+  exportData: ExportData,
   settings: Settings,
   appearance: Appearance,
 };

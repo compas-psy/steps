@@ -129,6 +129,35 @@ export function DataPrivacy(): ReactElement {
           </CardBody>
         </Card>
 
+        {/* Перенос данных (M46–M49). В макете на этом экране есть строка
+         * «Экспорт данных ›»; импорт своей строки в макете не имеет, но
+         * без точки входа он был бы недостижим — матрица экранов
+         * перечисляет M46 отдельным экраном, а не частью чего-то. */}
+        <Card>
+          <CardBody padding="none" className="shagi-data-privacy__rows">
+            <DataPrivacyRow
+              title={t('settings', 'dataPrivacy.import.title')}
+              description={t('settings', 'dataPrivacy.import.description')}
+              action={{
+                kind: 'button',
+                label: t('settings', 'dataPrivacy.import.action'),
+                variant: 'secondary',
+                onClick: () => controller.goTo('importData'),
+              }}
+            />
+            <DataPrivacyRow
+              title={t('settings', 'dataPrivacy.export.title')}
+              description={t('settings', 'dataPrivacy.export.description')}
+              action={{
+                kind: 'button',
+                label: t('settings', 'dataPrivacy.export.action'),
+                variant: 'secondary',
+                onClick: () => controller.goTo('exportData'),
+              }}
+            />
+          </CardBody>
+        </Card>
+
         <Card>
           <CardBody padding="none" className="shagi-data-privacy__rows">
             <DataPrivacyRow

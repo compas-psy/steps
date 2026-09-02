@@ -445,6 +445,13 @@ export function createImportBatchRepository(driver: NodeSqliteDriver): ImportBat
       ]);
       return row === null ? null : rowToImportBatch(row);
     },
+    async findLatest() {
+      const row = await driver.queryOne<SqliteRow>(
+        `SELECT * FROM "import_batches" ORDER BY started_at DESC LIMIT 1`,
+        [],
+      );
+      return row === null ? null : rowToImportBatch(row);
+    },
   };
 }
 

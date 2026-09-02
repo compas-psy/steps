@@ -194,6 +194,9 @@ importers:
       '@shagi/i18n':
         specifier: workspace:*
         version: link:../i18n
+      '@shagi/importer':
+        specifier: workspace:*
+        version: link:../importer
       '@shagi/nlp':
         specifier: workspace:*
         version: link:../nlp

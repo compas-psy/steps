@@ -444,6 +444,14 @@ export function createImportBatchRepository(access: StoreAccess): ImportBatchRep
       const row = await getByKey<StoredImportBatch>(access, 'import_batches', id);
       return row === undefined ? null : decodeImportBatch(row);
     },
+    async findLatest() {
+      const rows = await getAllFromStore<StoredImportBatch>(access, 'import_batches');
+      let latest: StoredImportBatch | null = null;
+      for (const row of rows) {
+        if (latest === null || row.started_at > latest.started_at) latest = row;
+      }
+      return latest === null ? null : decodeImportBatch(latest);
+    },
   };
 }
 

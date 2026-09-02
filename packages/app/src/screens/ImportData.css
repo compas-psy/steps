@@ -1,0 +1,92 @@
+/**
+ * `ImportData` (M46–M48). Собственного артборда у импорта в хендоффе нет
+ * (в макете есть только строка «Экспорт данных ›» на экране «Данные и
+ * конфиденциальность»), поэтому раскладка повторяет уже принятую в этом
+ * разделе: заголовок с кнопкой возврата, дальше карточки-группы — тот же
+ * скелет, что у `DataPrivacy.css`. Своей визуальной идеи здесь нет
+ * намеренно: экран служебный, и выделяться ему нечем.
+ */
+
+.shagi-import {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  padding: var(--space-5) var(--space-5) var(--space-10);
+}
+
+.shagi-import__header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.shagi-import__title {
+  font-size: var(--text-mobile-heading);
+  font-weight: var(--fw-bold);
+  color: var(--foreground);
+  margin: 0;
+}
+
+.shagi-import__section-title {
+  font-size: var(--text-small-meta);
+  font-weight: var(--fw-bold);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted-foreground);
+  margin: 0 0 var(--space-3);
+}
+
+.shagi-import__hint {
+  font-size: var(--text-small-meta);
+  color: var(--muted-foreground);
+  margin: 0 0 var(--space-4);
+}
+
+.shagi-import__totals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-5);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--text-body);
+  color: var(--foreground);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Предупреждения — список абзацев, а не строки таблицы: каждое из них
+ * объясняет ОДНУ трансформацию целой фразой (`01§26` требует сообщать и
+ * что произошло, и с чем), и обрезать их в колонку значило бы вернуть
+ * человеку загадку вместо объяснения. */
+.shagi-import__warnings {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: 0;
+  padding-left: var(--space-5);
+  font-size: var(--text-small-meta);
+  color: var(--foreground);
+  line-height: 1.5;
+}
+
+.shagi-import__actions {
+  display: flex;
+  gap: var(--space-3);
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+/* Нативный `<input type="file">` не показывается: у него неуправляемый
+ * внешний вид, свой на каждой платформе, и он не подчиняется токенам
+ * дизайн-системы. Видимая точка входа — обычная кнопка рядом, а сам input
+ * остаётся в разметке (не `display:none`) — иначе он выпал бы из дерева
+ * доступности и его нельзя было бы найти по метке. */
+.shagi-import__file {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

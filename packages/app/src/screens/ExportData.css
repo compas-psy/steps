@@ -1,0 +1,77 @@
+/**
+ * `ExportData` (M49). Артборда у экрана в хендоффе нет — в макете есть
+ * только строка «Экспорт данных ›» на экране «Данные и конфиденциальность»,
+ * — поэтому раскладка повторяет уже принятую в этом разделе: заголовок с
+ * возвратом и карточки-группы, как в `DataPrivacy.css`/`ImportData.css`.
+ */
+
+.shagi-export {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  padding: var(--space-5) var(--space-5) var(--space-10);
+}
+
+.shagi-export__header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.shagi-export__title {
+  font-size: var(--text-mobile-heading);
+  font-weight: var(--fw-bold);
+  color: var(--foreground);
+  margin: 0;
+}
+
+.shagi-export__section-title {
+  font-size: var(--text-small-meta);
+  font-weight: var(--fw-bold);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted-foreground);
+  margin: 0 0 var(--space-3);
+}
+
+.shagi-export__hint {
+  font-size: var(--text-small-meta);
+  color: var(--muted-foreground);
+  margin: 0 0 var(--space-4);
+  line-height: 1.5;
+}
+
+/* Список проектов и кнопка — в столбец, а не в строку. На 390–420px
+ * строкой не помещается ни то, ни другое: живой прогон показал название
+ * проекта, обрезанное до «todoist-» (`bak-01-export.png`), — то есть
+ * выбирать приходилось вслепую. */
+.shagi-export__row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  align-items: stretch;
+}
+
+.shagi-export__select {
+  width: 100%;
+  min-width: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--background);
+  color: var(--foreground);
+  font: inherit;
+  font-size: var(--text-body);
+}
+
+/* См. разбор в `ImportData.css`: нативный file-input прячется визуально,
+ * но остаётся в дереве доступности. */
+.shagi-export__file {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

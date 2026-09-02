@@ -12,4 +12,14 @@ import type { ImportBatch, Uuid } from '@shagi/core';
  */
 export interface ImportBatchRepository {
   findById(id: Uuid): Promise<ImportBatch | null>;
+  /**
+   * Последняя по времени начала партия — по ней экран импорта узнаёт, есть
+   * ли ещё что откатывать.
+   *
+   * Нужен именно поиск «последней», а не список: `01§26` даёт на отмену
+   * 10 минут, но экран Import Result живёт ровно до первого перехода — уйдя
+   * с него, человек терял единственную кнопку «Отменить импорт», хотя окно
+   * ещё не истекло. Найдено живым прогоном M46–M49.
+   */
+  findLatest(): Promise<ImportBatch | null>;
 }

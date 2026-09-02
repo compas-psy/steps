@@ -114,6 +114,13 @@
  * `'dataPrivacy'` (M51 Data & Privacy) — ровно тот же случай и то же
  * решение, что `'appearance'`: единственный вход — вторая строка
  * `Settings.tsx`, возврат — `goTo('settings')`, своего поля возврата нет.
+ *
+ * `'importData'` (M46–M48) и `'exportData'` (M49) — то же самое, только
+ * вход у обоих со экрана `'dataPrivacy'`, туда же и возврат. Три экрана
+ * матрицы M46/M47/M48 — ОДИН маршрут: между ними ходит разобранный план
+ * импорта, значение с временем жизни в один сценарий, и класть его в это
+ * состояние ради разбиения на три маршрута значило бы дать ему пережить
+ * уход на другой экран (разбор — в заголовке `screens/ImportData.tsx`).
  */
 import type { Uuid } from '@shagi/core';
 
@@ -133,7 +140,9 @@ export type ScreenId =
   | 'completed'
   | 'settings'
   | 'appearance'
-  | 'dataPrivacy';
+  | 'dataPrivacy'
+  | 'importData'
+  | 'exportData';
 
 /** Откуда открыт Quick Add — см. блок про `quickAdd` в заголовке файла.
  * Только три из семи строк таблицы «Origin → Inherited values» (`01§3`) —

@@ -27,5 +27,11 @@
   "dataPrivacy.erase.dialogTitle": "Удалить все данные с этого устройства?",
   "dataPrivacy.erase.warning": "Восстановить будет неоткуда: копии в облаке нет, приложение хранит данные только здесь. Задачи, проекты, метки и история — всё будет стёрто.",
   "dataPrivacy.erase.confirm": "Удалить всё",
-  "dataPrivacy.erase.cancel": "Отмена"
+  "dataPrivacy.erase.cancel": "Отмена",
+  "dataPrivacy.import.title": "Импорт из Todoist",
+  "dataPrivacy.import.description": "Перенести проекты и задачи из экспорта Todoist — CSV одного проекта или архив целиком.",
+  "dataPrivacy.import.action": "Импортировать",
+  "dataPrivacy.export.title": "Экспорт данных",
+  "dataPrivacy.export.description": "Полный бэкап одним файлом, отдельный проект таблицей и восстановление из бэкапа.",
+  "dataPrivacy.export.action": "Открыть"
 }

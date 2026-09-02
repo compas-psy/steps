@@ -173,13 +173,23 @@ describe('DataPrivacy (M51)', () => {
       </AppProvider>,
     );
 
-    // Экспорт, тумблер согласия и «Удалить аккаунт» из макета M51 в R1 не
+    // Тумблер согласия и «Удалить аккаунт» из макета M51 в R1 не
     // реализованы или запрещены (см. заголовок `DataPrivacy.tsx`). Пока их
     // нет — их не должно быть и на экране: тест обязан покраснеть на первой
-    // же строке, дописанной «чтобы было как в макете». Две кнопки —
-    // «Назад» и «Удалить» (единственное настоящее действие экрана).
-    expect(screen.getAllByRole('button')).toHaveLength(2);
+    // же строке, дописанной «чтобы было как в макете».
+    //
+    // Кнопок ровно четыре, и каждая ведёт к работающему действию: «Назад»,
+    // «Импортировать» (M46), «Открыть» экспорт (M49) и «Удалить». Экспорт
+    // и импорт добавлены пакетом работ M46–M49 — до него их здесь не было
+    // именно потому, что вести им было некуда.
+    expect(screen.getAllByRole('button')).toHaveLength(4);
     expect(screen.queryByRole('switch')).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: t('settings', 'dataPrivacy.import.action') }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: t('settings', 'dataPrivacy.export.action') }),
+    ).toBeInTheDocument();
   });
 
   it('«Назад» возвращает в хаб настроек', async () => {

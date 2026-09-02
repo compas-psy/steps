@@ -20,6 +20,7 @@ import ruPlan from './catalog/ru-RU/plan.json' with { type: 'json' };
 // (`entry.name.slice(0, -'.json'.length)`) и сверяет его буквально со
 // строковым литералом `t('projectDetail', …)` в коде — дефис в имени файла
 // не совпал бы с этим литералом и гейт бы падал на каждый вызов `t()`.
+import ruDataTransfer from './catalog/ru-RU/dataTransfer.json' with { type: 'json' };
 import ruProjectDetail from './catalog/ru-RU/projectDetail.json' with { type: 'json' };
 import ruProjects from './catalog/ru-RU/projects.json' with { type: 'json' };
 import ruQuickAdd from './catalog/ru-RU/quickAdd.json' with { type: 'json' };
@@ -35,6 +36,7 @@ import ruToday from './catalog/ru-RU/today.json' with { type: 'json' };
 export const CATALOG_RU_RU = {
   common: ruCommon,
   completed: ruCompleted,
+  dataTransfer: ruDataTransfer,
   inbox: ruInbox,
   onboarding: ruOnboarding,
   plan: ruPlan,

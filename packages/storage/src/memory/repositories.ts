@@ -359,6 +359,16 @@ export function createImportBatchRepository(tables: TablesAccessor): ImportBatch
     async findById(id) {
       return tables().importBatches.get(id) ?? null;
     },
+    async findLatest() {
+      const all = [...tables().importBatches.values()];
+      return all.reduce<(typeof all)[number] | null>(
+        (latest, batch) =>
+          latest === null || Temporal.Instant.compare(batch.startedAt, latest.startedAt) > 0
+            ? batch
+            : latest,
+        null,
+      );
+    },
   };
 }
 

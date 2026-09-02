@@ -18,6 +18,7 @@
     "@js-temporal/polyfill": "^0.5.1",
     "@shagi/core": "workspace:*",
     "@shagi/i18n": "workspace:*",
+    "@shagi/importer": "workspace:*",
     "@shagi/nlp": "workspace:*",
     "@shagi/platform": "workspace:*",
     "@shagi/storage": "workspace:*",
