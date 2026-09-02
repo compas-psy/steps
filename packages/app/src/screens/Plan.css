@@ -1,0 +1,80 @@
+/**
+ * `Plan` (M14) — вёрстка по хендоффу дизайна (`docs/spec/DESIGN/
+ * source_unpacked/ШАГИ - R1 Design.dc.html`, `#sec-plan`): заголовок,
+ * полоска дат + кнопка календаря в одну строку, секции дней с разделителями
+ * между задачами. Полоса дат намеренно осталась `SegmentedControl` (общий
+ * фон-подложка, не отдельные плашки, как в макете) — см. заголовок
+ * `Plan.tsx`, блок «Compact date strip»: осознанное решение переиспользовать
+ * готовый примитив вместо нового компонента, эта правка его не трогает.
+ */
+
+.shagi-plan {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  padding: var(--space-5) var(--space-5) var(--space-10);
+}
+
+.shagi-plan__title {
+  font-size: var(--text-mobile-heading);
+  font-weight: var(--fw-bold);
+  color: var(--foreground);
+  margin: 0;
+}
+
+.shagi-plan__strip-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+/* Семь сегментов + иконка-кнопка календаря не умещаются на мобильной
+ * ширине без переноса — сама полоса скроллится по горизонтали, кнопка
+ * календаря остаётся на месте (`flex-shrink:0` у неё же, второго ребёнка
+ * строки, не нужен отдельный класс — единственный сосед первого). */
+.shagi-plan__strip-row > :first-child {
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+}
+
+.shagi-plan__strip-row > :last-child {
+  flex-shrink: 0;
+}
+
+.shagi-plan__groups {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.shagi-plan__day {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.shagi-plan__day-heading {
+  font-size: var(--text-small-meta);
+  font-weight: var(--fw-bold);
+  color: var(--muted-foreground);
+  margin: 0;
+}
+
+.shagi-plan__available-marker {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--muted-foreground);
+  font-size: var(--text-caption);
+  opacity: 0.65;
+  margin: 0;
+}
+
+.shagi-plan__day-list > * {
+  border-bottom: 1px solid var(--border);
+}
+
+.shagi-plan__day-list > *:last-child {
+  border-bottom: none;
+}

@@ -147,6 +147,7 @@ import {
 } from '@shagi/ui';
 
 import { useAppController, useStorage } from '../state/context.js';
+import './Plan.css';
 
 /** См. заголовок файла, блок «Compact date strip». */
 const STRIP_DAYS_COUNT = 7;
@@ -241,29 +242,33 @@ interface PlanDayGroupSectionProps {
 function PlanDayGroupSection({ group, onOpen }: PlanDayGroupSectionProps): ReactElement {
   const heading = formatDate(group.date, { weekday: 'long' });
   return (
-    <section id={dayGroupElementId(group.date)} aria-label={heading}>
-      <h2>{heading}</h2>
+    <section className="shagi-plan__day" id={dayGroupElementId(group.date)} aria-label={heading}>
+      <h2 className="shagi-plan__day-heading">{heading}</h2>
       {group.availableFromMarker && (
-        <p>
+        <p className="shagi-plan__available-marker">
           <Icon name="clock" size={14} />
           <span>{t('plan', 'availableFromMarker.label')}</span>
         </p>
       )}
-      {group.tasks.map((task) => (
-        <TaskRow
-          key={task.id}
-          title={task.title}
-          checkboxLabel={task.title}
-          checked={false}
-          disabled
-          state="normal"
-          {...(task.plannedTime !== null ? { statusLabel: formatTime(task.plannedTime) } : {})}
-          onClick={(event) => {
-            if (isInteractiveRowClick(event.target)) return;
-            onOpen(task);
-          }}
-        />
-      ))}
+      {group.tasks.length > 0 && (
+        <div className="shagi-plan__day-list">
+          {group.tasks.map((task) => (
+            <TaskRow
+              key={task.id}
+              title={task.title}
+              checkboxLabel={task.title}
+              checked={false}
+              disabled
+              state="normal"
+              {...(task.plannedTime !== null ? { statusLabel: formatTime(task.plannedTime) } : {})}
+              onClick={(event) => {
+                if (isInteractiveRowClick(event.target)) return;
+                onOpen(task);
+              }}
+            />
+          ))}
+        </div>
+      )}
     </section>
   );
 }
@@ -326,10 +331,10 @@ export function Plan(): ReactElement {
   const isEmpty = groups !== null && allGroups.length === 0;
 
   return (
-    <div>
-      <h1>{t('plan', 'pageTitle')}</h1>
+    <div className="shagi-plan">
+      <h1 className="shagi-plan__title">{t('plan', 'pageTitle')}</h1>
 
-      <div>
+      <div className="shagi-plan__strip-row">
         <SegmentedControl
           label={t('plan', 'dateStrip.label')}
           options={stripDays.map((date) => ({
@@ -358,17 +363,20 @@ export function Plan(): ReactElement {
         />
       )}
 
-      {visibleGroups.map((group) => (
-        <PlanDayGroupSection
-          key={group.date.toString()}
-          group={group}
-          onOpen={(task) => controller.openTask(task.id)}
-        />
-      ))}
+      <div className="shagi-plan__groups">
+        {visibleGroups.map((group) => (
+          <PlanDayGroupSection
+            key={group.date.toString()}
+            group={group}
+            onOpen={(task) => controller.openTask(task.id)}
+          />
+        ))}
+      </div>
 
       {hasMore && (
         <Button
           variant="secondary"
+          block
           onClick={() => setVisibleCount((current) => current + LOAD_MORE_STEP)}
         >
           {t('plan', 'loadMore.button')}
