@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+#
+# Обёртка дымового теста для job `smoke` (`.github/workflows/build-android.yml`).
+#
+# Почему это отдельный файл, а не несколько строк в YAML: шаг `script:` у
+# `reactivecircus/android-emulator-runner` исполняет КАЖДУЮ СТРОКУ отдельным
+# `sh -c` — переменные между строками не переживают, `set -e` не переживает
+# тоже. Проверено логом прогона: `sh -c apk="$(find ...)"`, следом отдельный
+# `sh -c [ -n "${apk}" ] ...` — и `${apk}` там уже пустая. Поэтому в YAML
+# остаётся ровно одна строка, вызывающая этот скрипт, а вся логика живёт
+# здесь, где её ещё и видно целиком.
+set -euo pipefail
+
+apk="$(find emulator-apk -name '*.apk' -type f | head -1)"
+if [ -z "${apk}" ]; then
+  echo '::error::APK для эмулятора не скачался: в каталоге emulator-apk нет ни одного .apk' >&2
+  ls -la emulator-apk || true
+  exit 1
+fi
+echo "APK: ${apk} ($(stat -c%s "${apk}") байт)"
+
+id="$(node -p "require('./apps/mobile/src-tauri/tauri.conf.json').identifier")"
+echo "applicationId: ${id}"
+
+# logcat снимается ЗДЕСЬ, пока эмулятор ещё жив: после выхода из шага его уже
+# нет вместе со всеми логами, а когда приложение падает на старте,
+# единственный ответ «почему» — там.
+if ! SHAGI_APPLICATION_ID="${id}" node apps/mobile/scripts/android-smoke.mjs "${apk}"; then
+  echo '── logcat (последние строки) ──'
+  adb logcat -d -t 2000 || true
+  exit 1
+fi

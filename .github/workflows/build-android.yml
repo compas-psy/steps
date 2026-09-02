@@ -870,24 +870,10 @@ jobs:
           ram-size: 4096M
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          script: |
-            # `set -eu`, а НЕ `-o pipefail`: `android-emulator-runner` запускает
-            # этот текст через `/usr/bin/sh` (dash), где `pipefail` не
-            # существует вовсе — шаг падал с `Illegal option -o pipefail`,
-            # не начав сценарий.
-            set -eu
-            apk="$(find emulator-apk -name '*.apk' -type f | head -1)"
-            [ -n "${apk}" ] || { echo 'APK для эмулятора не скачался' >&2; exit 1; }
-            id="$(node -p "require('./apps/mobile/src-tauri/tauri.conf.json').identifier")"
-
-            # logcat снимается ЗДЕСЬ, пока эмулятор ещё жив: после выхода из
-            # этого шага его уже нет вместе со всеми логами, а когда
-            # приложение падает на старте, единственный ответ «почему» — там.
-            if ! SHAGI_APPLICATION_ID="${id}" node apps/mobile/scripts/android-smoke.mjs "${apk}"; then
-              echo '── logcat ──'
-              adb logcat -d -t 2000 || true
-              exit 1
-            fi
+          # Ровно одна строка: этот шаг исполняет каждую строку отдельным
+          # `sh -c` (переменные и `set -e` между строками не живут), поэтому
+          # весь сценарий — в скрипте рядом с тестом.
+          script: bash apps/mobile/scripts/android-smoke.sh
 
   # ─────────────────────────────────────────────────────────────────────────
   # RELEASE — только на теге и только для подписанной и проверенной сборки.
