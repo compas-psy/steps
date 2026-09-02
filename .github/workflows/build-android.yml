@@ -871,7 +871,11 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: |
-            set -uo pipefail
+            # `set -eu`, а НЕ `-o pipefail`: `android-emulator-runner` запускает
+            # этот текст через `/usr/bin/sh` (dash), где `pipefail` не
+            # существует вовсе — шаг падал с `Illegal option -o pipefail`,
+            # не начав сценарий.
+            set -eu
             apk="$(find emulator-apk -name '*.apk' -type f | head -1)"
             [ -n "${apk}" ] || { echo 'APK для эмулятора не скачался' >&2; exit 1; }
             id="$(node -p "require('./apps/mobile/src-tauri/tauri.conf.json').identifier")"
