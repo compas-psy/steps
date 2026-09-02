@@ -4,6 +4,7 @@
   "back.label": "Закрыть Входящие",
   "empty.description": "Новые задачи появятся здесь, когда вы отправите их во Входящие — почтой, из виджета или без явного места.",
   "card.ariaLabel": "Разбор задачи «{title}»",
+  "progress.label": "Задача {position} из {total}",
   "actions.today": "Сегодня",
   "actions.date": "Дата",
   "actions.project": "Проект",

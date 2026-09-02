@@ -1,0 +1,89 @@
+/**
+ * `Inbox` (M12/M13) — вёрстка по хендоффу дизайна (`docs/spec/DESIGN/
+ * source_unpacked/ШАГИ - R1 Design.dc.html`, `#sec-inbox`): экран уже
+ * реализует режим «карточка за раз» (M13 Process mode, см. заголовок
+ * `Inbox.tsx`) — этот файл добавляет прогресс-бар/счётчик и композицию
+ * карточки, которых не было вовсе, не меняет саму очередь/действия.
+ */
+
+.shagi-inbox {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  padding: var(--space-5) var(--space-5) var(--space-10);
+}
+
+.shagi-inbox__header {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.shagi-inbox__title {
+  flex: 1;
+  font-size: var(--text-mobile-heading);
+  font-weight: var(--fw-bold);
+  color: var(--foreground);
+  margin: 0;
+}
+
+.shagi-inbox__progress {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.shagi-inbox__progress-track {
+  height: var(--space-1);
+  border-radius: var(--radius-full);
+  background: var(--muted);
+  overflow: hidden;
+}
+
+.shagi-inbox__progress-fill {
+  height: 100%;
+  border-radius: var(--radius-full);
+  background: var(--forest-800);
+  transition: width var(--motion-duration-base) var(--motion-easing-standard);
+}
+
+.shagi-inbox__progress-label {
+  font-size: var(--text-caption);
+  color: var(--muted-foreground);
+}
+
+.shagi-inbox__card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  padding: var(--space-8) var(--space-6);
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-card);
+  cursor: pointer;
+}
+
+.shagi-inbox__card-title {
+  text-align: center;
+  font-size: var(--text-section-title);
+  font-weight: var(--fw-bold);
+  color: var(--foreground);
+  line-height: var(--lh-section-title);
+  margin: 0;
+}
+
+.shagi-inbox__quick-row {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.shagi-inbox__footer-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-4);
+}

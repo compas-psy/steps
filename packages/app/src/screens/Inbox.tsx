@@ -198,6 +198,7 @@ import {
 } from '@shagi/ui';
 
 import { useAppController, useStorage } from '../state/context.js';
+import './Inbox.css';
 
 // --- Календарь `DatePicker` — конвертация Temporal ↔ простых чисел ------------
 // См. заголовок файла, блок «Конвертация DatePicker» — намеренное узкое
@@ -400,18 +401,39 @@ export function Inbox(): ReactElement {
         }));
 
   return (
-    <div>
-      <div>
+    <div className="shagi-inbox">
+      <div className="shagi-inbox__header">
         <IconButton
           icon="close"
           label={t('inbox', 'back.label')}
           onClick={() => controller.goTo('todayEmpty')}
         />
-        <h1>{t('inbox', 'pageTitle')}</h1>
+        <h1 className="shagi-inbox__title">{t('inbox', 'pageTitle')}</h1>
         <Button variant="secondary" onClick={() => controller.openQuickAdd('inbox')}>
           {t('inbox', 'quickAdd.button')}
         </Button>
       </div>
+
+      {/* M13 Process mode (docs/spec/DESIGN, #sec-inbox): прогресс-бар +
+       * «Задача N из M» — оба числа уже вычисляются ниже (`current`/
+       * `tasks.length`/`focusIndex`) для самой очереди, здесь только их
+       * презентация, не новая бизнес-логика. */}
+      {!isLoading && current !== null && tasks !== null && (
+        <div className="shagi-inbox__progress">
+          <div className="shagi-inbox__progress-track">
+            <div
+              className="shagi-inbox__progress-fill"
+              style={{ width: `${(((focusIndex % tasks.length) + 1) / tasks.length) * 100}%` }}
+            />
+          </div>
+          <span className="shagi-inbox__progress-label">
+            {t('inbox', 'progress.label', {
+              position: (focusIndex % tasks.length) + 1,
+              total: tasks.length,
+            })}
+          </span>
+        </div>
+      )}
 
       {errorMessage !== null && (
         <Toast
@@ -432,65 +454,70 @@ export function Inbox(): ReactElement {
 
       {!isLoading && current !== null && (
         <section
+          className="shagi-inbox__card"
           aria-label={t('inbox', 'card.ariaLabel', { title: current.title })}
           onClick={() => controller.openTask(current.id)}
         >
-          <p>{current.title}</p>
+          <p className="shagi-inbox__card-title">{current.title}</p>
 
-          <Button
-            variant="secondary"
-            onClick={(event) => {
-              event.stopPropagation();
-              handleToday(current);
-            }}
-          >
-            {t('inbox', 'actions.today')}
-          </Button>
-
-          <Button
-            variant="secondary"
-            onClick={(event) => {
-              event.stopPropagation();
-              setDatePicker({
-                task: current,
-                visibleMonth: toCalendarMonth(Temporal.Now.plainDateISO()),
-              });
-            }}
-          >
-            {t('inbox', 'actions.date')}
-          </Button>
-
-          <div style={{ position: 'relative' }} onClick={(event) => event.stopPropagation()}>
-            <Button variant="secondary" onClick={() => setProjectMenuOpen((open) => !open)}>
-              {t('inbox', 'actions.project')}
+          <div className="shagi-inbox__quick-row">
+            <Button
+              variant="secondary"
+              onClick={(event) => {
+                event.stopPropagation();
+                handleToday(current);
+              }}
+            >
+              {t('inbox', 'actions.today')}
             </Button>
-            <Menu
-              open={projectMenuOpen}
-              onClose={() => setProjectMenuOpen(false)}
-              aria-label={t('inbox', 'projectPicker.ariaLabel')}
-              sections={[{ key: 'projects', items: projectMenuItems }]}
-            />
+
+            <Button
+              variant="secondary"
+              onClick={(event) => {
+                event.stopPropagation();
+                setDatePicker({
+                  task: current,
+                  visibleMonth: toCalendarMonth(Temporal.Now.plainDateISO()),
+                });
+              }}
+            >
+              {t('inbox', 'actions.date')}
+            </Button>
+
+            <div style={{ position: 'relative' }} onClick={(event) => event.stopPropagation()}>
+              <Button variant="secondary" onClick={() => setProjectMenuOpen((open) => !open)}>
+                {t('inbox', 'actions.project')}
+              </Button>
+              <Menu
+                open={projectMenuOpen}
+                onClose={() => setProjectMenuOpen(false)}
+                aria-label={t('inbox', 'projectPicker.ariaLabel')}
+                sections={[{ key: 'projects', items: projectMenuItems }]}
+              />
+            </div>
           </div>
 
-          <Button
-            variant="destructive"
-            onClick={(event) => {
-              event.stopPropagation();
-              handleDelete(current);
-            }}
-          >
-            {t('inbox', 'actions.delete')}
-          </Button>
+          <div className="shagi-inbox__footer-row">
+            <Button
+              variant="destructive"
+              onClick={(event) => {
+                event.stopPropagation();
+                handleDelete(current);
+              }}
+            >
+              {t('inbox', 'actions.delete')}
+            </Button>
 
-          <Button
-            variant="ghost"
-            onClick={(event) => {
-              event.stopPropagation();
-              handleSkip();
-            }}
-          >
-            {t('inbox', 'actions.skip')}
-          </Button>
+            <Button
+              variant="ghost"
+              onClick={(event) => {
+                event.stopPropagation();
+                handleSkip();
+              }}
+            >
+              {t('inbox', 'actions.skip')}
+            </Button>
+          </div>
         </section>
       )}
 
