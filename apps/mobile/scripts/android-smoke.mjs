@@ -53,13 +53,32 @@ function adb(args, options = {}) {
  * Android (`/proc/net/unix`), а не собираем строку из pid: у приложения может
  * быть несколько процессов, и WebView живёт не обязательно в том, чей pid
  * первым вернул `pidof`. */
-function findDevtoolsSocket() {
-  const lines = adb(['shell', 'cat', '/proc/net/unix']).split('\n');
+function findDevtoolsSocket(pid) {
+  const lines = adbSoft(['shell', 'cat', '/proc/net/unix']).split('\n');
+  const found = new Set();
   for (const line of lines) {
     const match = /(webview_devtools_remote_\d+)/.exec(line);
-    if (match !== null) return match[1];
+    if (match !== null) found.add(match[1]);
   }
+  // Сокет НАШЕГО процесса, а не первый попавшийся: WebView есть и у других
+  // приложений эмулятора, и подключиться к чужому — значит проверять чужой
+  // экран, ничего об этом не подозревая.
+  const own = `webview_devtools_remote_${pid}`;
+  if (found.has(own)) return own;
   return null;
+}
+
+/** То же самое, но код возврата — ЧАСТЬ ОТВЕТА, а не сбой. `adb shell pidof`
+ * завершается единицей, когда процесса нет: это ровно то, что мы и
+ * спрашиваем во время ожидания запуска, а `execFileSync` на ненулевом коде
+ * бросает исключение и роняет весь тест. Поймано первым прогоном, который
+ * досюда дошёл. */
+function adbSoft(args) {
+  try {
+    return adb(args);
+  } catch {
+    return '';
+  }
 }
 
 function fail(message) {
@@ -200,13 +219,13 @@ async function launchAndAttach(label) {
   });
 
   const pid = await waitFor('процесс приложения', 30, 1000, () => {
-    const found = adb(['shell', 'pidof', APPLICATION_ID]).trim();
+    const found = adbSoft(['shell', 'pidof', APPLICATION_ID]).trim();
     return found === '' ? null : found.split(/\s+/u)[0];
   });
   if (pid === null) fail(`приложение не запустилось (${label}): процесс не появился`);
   console.log(`Процесс жив, pid=${pid}`);
 
-  const socket = await waitFor('сокет DevTools', 30, 1000, findDevtoolsSocket);
+  const socket = await waitFor('сокет DevTools', 30, 1000, () => findDevtoolsSocket(pid));
   if (socket === null) {
     fail(
       `WebView не открыл сокет отладки (${label}). В debug-сборке его включает сам wry — ` +
@@ -285,7 +304,7 @@ async function main() {
   console.log(`Задача «${taskTitle}» видна на Today.`);
 
   // Приложение не должно было умереть по дороге.
-  if (adb(['shell', 'pidof', APPLICATION_ID]).trim() === '') {
+  if (adbSoft(['shell', 'pidof', APPLICATION_ID]).trim() === '') {
     fail('приложение упало в процессе сценария');
   }
   first.cdp.close();
@@ -297,7 +316,7 @@ async function main() {
   await sleep(2000);
   adb(['shell', 'am', 'force-stop', APPLICATION_ID], { stdio: 'inherit' });
   const stopped = await waitFor('остановку процесса', 15, 1000, () =>
-    adb(['shell', 'pidof', APPLICATION_ID]).trim() === '' ? true : null,
+    adbSoft(['shell', 'pidof', APPLICATION_ID]).trim() === '' ? true : null,
   );
   if (stopped === null) fail('процесс не умер после `am force-stop` — перезапуск не проверить');
 
