@@ -49,6 +49,7 @@ import {
   READ_APP_TEXT,
   READ_BACKEND,
   READ_STORAGE_STATE,
+  READ_TASK_ROW_TITLES,
   typeIntoFirstInput,
   typeIntoLabeled,
 } from './page-actions.mjs';
@@ -459,15 +460,27 @@ async function main() {
   // на медленном эмуляторе CI это может не уложиться в фиксированный
   // таймаут, хотя приложение делает всё правильно (весь путь `await`-ится
   // до `closeQuickAdd()`). Опрашиваем экран Today до появления задачи —
-  // ровно то, что нужно, а не гадание с числом. Найдено этим же прогоном:
-  // первая версия с `sleep(1500)` реально потеряла запись под force-stop.
+  // ровно то, что нужно, а не гадание с числом.
+  //
+  // Именно СТРОКУ СПИСКА (`READ_TASK_ROW_TITLES`), не весь текст страницы
+  // (`READ_APP_TEXT`): Quick Add показывает живой предпросмотр
+  // распознанного заголовка (`ParsingPreview`) на каждое нажатие клавиши —
+  // «Полить цветы» видно на экране уже на шаге ввода текста, до всякой
+  // отправки формы. Первая версия опрашивала `READ_APP_TEXT` и матч
+  // случался на предпросмотре за секунды до реальной записи — `waitFor`
+  // «срабатывал», но задача так и не была создана, и force-stop двумя
+  // секундами позже терял её целиком (найдено разбором лога
+  // провалившегося прогона: `labels:1, taskLabels:0, recurrenceSeries:0`,
+  // самой задачи нет в `titles`). Строка списка появляется только после
+  // того, как Quick Add закрылся и Today перерисовался с сохранённой
+  // задачей — раньше её взять неоткуда.
   const created = await waitFor(
     'запись повторяющейся задачи через Quick Add',
     20,
     500,
     async () => {
-      const text = await first.cdp.evaluate(READ_APP_TEXT);
-      return typeof text === 'string' && text.includes(RECURRING_TITLE) ? text : null;
+      const rows = await first.cdp.evaluate(READ_TASK_ROW_TITLES);
+      return typeof rows === 'string' && rows.includes(RECURRING_TITLE) ? rows : null;
     },
   );
   if (created === null) {

@@ -28,6 +28,7 @@ import {
   openTaskRow,
   READ_APP_TEXT,
   READ_STORAGE_STATE,
+  READ_TASK_ROW_TITLES,
   typeIntoFirstInput,
   typeIntoLabeled,
 } from './page-actions.mjs';
@@ -37,6 +38,7 @@ const TASK = 'Проверка сборки';
 const LIVE_SUBTASK = 'Живая подзадача';
 const DOOMED_SUBTASK = 'Лишняя подзадача';
 const RECURRING = 'Полить цветы каждый день @дом';
+const RECURRING_TITLE = 'Полить цветы';
 const AFTER_ERASE = 'Задача после стирания';
 
 let failures = 0;
@@ -108,6 +110,15 @@ check(
   (await run(clickByLabel('Добавить задачу'))) === true,
 );
 await wait(1400);
+// Строка списка, не весь текст страницы: ровно то выражение, которым
+// дымовой тест Android дожидается персистентной записи (не живого
+// предпросмотра `ParsingPreview` внутри ещё открытого Quick Add) —
+// разбор случая, где это разошлось, в комментарии `android-smoke.mjs`
+// рядом с `READ_TASK_ROW_TITLES`.
+check(
+  'повторяющаяся задача — строка списка, не предпросмотр формы',
+  String(await run(READ_TASK_ROW_TITLES)).includes(RECURRING_TITLE),
+);
 
 check('состояние хранилища читается', String(await run(READ_STORAGE_STATE)).includes('origin'));
 
