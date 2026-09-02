@@ -22,6 +22,21 @@
   gap: var(--space-3);
 }
 
+/* Переключатель вида — компактный и рядом с заголовком, как в макете
+ * (`[R1][M][17]`: `SegmentedControl` 140×40 в одной строке с названием
+ * проекта). Раньше он занимал отдельную строку во всю ширину и весил
+ * больше самого содержимого экрана. Специфичность 0-2-0 — спорим с
+ * собственным CSS `@shagi/ui`. */
+.shagi-project-detail__view.shagi-project-detail__view {
+  align-self: flex-start;
+  width: fit-content;
+}
+
+.shagi-project-detail__view.shagi-project-detail__view > * {
+  flex: 0 0 auto;
+  font-size: var(--text-small-meta);
+}
+
 .shagi-project-detail__header-title {
   flex: 1;
   min-width: 0;
@@ -59,4 +74,70 @@
 .shagi-project-detail__board > * {
   flex-shrink: 0;
   width: 220px;
+}
+
+/* Стрелка «вверх» — тот же `chevron`, развёрнутый на 180°: отдельной иконки
+ * в наборе нет, а заводить вторую ради поворота — плодить сущность там, где
+ * достаточно трансформации (набор иконок один и линейный, §12). */
+.shagi-project-detail__move-up svg {
+  transform: rotate(180deg);
+}
+
+/* Заголовок раздела — прописными и приглушённым, как в макете
+ * (`[R1][M][17]`: «ИДЕИ», «СДЕЛАТЬ»), а не кнопка с рамкой: рамка делала
+ * из подписи секции поле ввода на вид. Кнопкой он остаётся — по нажатию
+ * включается переименование, — просто выглядит как подпись. */
+.shagi-project-detail__section-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.shagi-project-detail__section-title {
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--muted-foreground);
+  font-family: inherit;
+  font-size: var(--text-small-meta);
+  font-weight: var(--fw-bold);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+}
+
+/* Красный только у самой иконки, без залитой подложки — см. комментарий в
+ * `ProjectDetail.tsx` у этой кнопки. */
+.shagi-project-detail__section-delete {
+  color: var(--destructive);
+}
+
+/* Инлайн-добавление — продолжение списка, а не карточка поверх него
+ * (макет `[R1][M][17]`: приглушённая строка «+ Добавить задачу» в конце
+ * раздела). Рамку и подложку рисует обёртка `Input` из `@shagi/ui` —
+ * целимся в неё через свой контейнер, специфичность 0-2-0. */
+.shagi-project-detail__inline-add {
+  display: flex;
+  align-items: center;
+  /* Перенос обязателен: та же форма стоит и в списке (ширина экрана), и в
+   * КОЛОНКЕ ДОСКИ шириной 220px. Без переноса поле с кнопкой не влезали в
+   * колонку и наезжали на карточки соседнего раздела — поймано на снимке
+   * доски сразу после правки, до коммита. */
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-1);
+  color: var(--muted-foreground);
+}
+
+.shagi-project-detail__inline-add .shagi-input {
+  flex: 1 1 8ch;
+  min-width: 0;
+  border-color: transparent;
+  background: transparent;
+}
+
+.shagi-project-detail__inline-add .shagi-input:has(.shagi-input__field:focus-visible) {
+  border-color: var(--border);
+  background: var(--card);
 }

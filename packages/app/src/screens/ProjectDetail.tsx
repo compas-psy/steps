@@ -326,7 +326,13 @@ interface InlineAddFormProps {
 function InlineAddForm({ sectionEntry, inputRef, onSubmit }: InlineAddFormProps): ReactElement {
   const [value, setValue] = useState('');
   return (
+    // Строка «+ Добавить задачу» вровень со списком, а не белая карточка с
+    // отдельной кнопкой: макет `[R1][M][17]` показывает её приглушённой
+    // строкой в конце раздела, продолжением списка. Кнопка отправки
+    // осталась (без неё на телефоне не отправить, если клавиатура без
+    // Enter), но перестала спорить весом с самими задачами.
     <form
+      className="shagi-project-detail__inline-add"
       onSubmit={(event: FormEvent<HTMLFormElement>) => {
         event.preventDefault();
         const trimmed = value.trim();
@@ -335,6 +341,7 @@ function InlineAddForm({ sectionEntry, inputRef, onSubmit }: InlineAddFormProps)
         setValue('');
       }}
     >
+      <Icon name="add" size={18} />
       <Input
         ref={inputRef}
         aria-label={t('projectDetail', 'inlineAdd.label', { section: sectionEntry.title })}
@@ -342,7 +349,7 @@ function InlineAddForm({ sectionEntry, inputRef, onSubmit }: InlineAddFormProps)
         value={value}
         onChange={(event) => setValue(event.target.value)}
       />
-      <Button type="submit" variant="ghost">
+      <Button type="submit" variant="ghost" size="sm">
         {t('projectDetail', 'inlineAdd.submit')}
       </Button>
     </form>
@@ -453,7 +460,7 @@ function SectionTitleControls({
   onRequestDelete,
 }: SectionTitleControlsProps): ReactElement {
   return (
-    <span style={{ display: 'flex', alignItems: 'center' }}>
+    <span className="shagi-project-detail__section-controls">
       {isEditing ? (
         <Input
           aria-label={t('projectDetail', 'sections.renameFieldLabel', { title: section.title })}
@@ -471,22 +478,43 @@ function SectionTitleControls({
       ) : (
         <button
           type="button"
+          className="shagi-project-detail__section-title"
           onClick={onStartEdit}
           data-testid={`sectionTitleButton-${section.id}`}
         >
           {section.title}
         </button>
       )}
-      <Button variant="ghost" size="sm" disabled={!canMoveUp} onClick={onMoveUp}>
-        {t('projectDetail', 'sections.moveUp')}
-      </Button>
-      <Button variant="ghost" size="sm" disabled={!canMoveDown} onClick={onMoveDown}>
-        {t('projectDetail', 'sections.moveDown')}
-      </Button>
+      {/* Перемещение раздела — иконки, а не кнопки с текстом. Двумя
+       * подписями в строку заголовок раздела не помещался на мобильной
+       * ширине: «Переместить вниз» уезжала за правый край экрана и была
+       * недоступна пальцем (снято в браузере). Доступные имена не
+       * изменились — те же строки каталога, только теперь как `aria-label`. */}
+      <IconButton
+        icon="chevron"
+        size="sm"
+        className="shagi-project-detail__move-up"
+        label={t('projectDetail', 'sections.moveUp')}
+        disabled={!canMoveUp}
+        onClick={onMoveUp}
+      />
+      <IconButton
+        icon="chevron"
+        size="sm"
+        label={t('projectDetail', 'sections.moveDown')}
+        disabled={!canMoveDown}
+        onClick={onMoveDown}
+      />
+      {/* Удаление раздела — тихая иконка, а не залитая красная кнопка:
+       * в списке разделов она была самым ярким пятном экрана, притягивая
+       * взгляд к разрушающему действию (макет `[R1][M][17]` показывает
+       * заголовок раздела вовсе без кнопок). Действие осталось прежним, и
+       * подтверждение у него тоже прежнее — меняется вес в композиции. */}
       <IconButton
         icon="delete"
-        variant="destructive"
+        variant="ghost"
         size="sm"
+        className="shagi-project-detail__section-delete"
         label={t('projectDetail', 'sections.deleteLabel', { title: section.title })}
         onClick={onRequestDelete}
       />
@@ -1030,6 +1058,7 @@ export function ProjectDetail(): ReactElement | null {
       )}
 
       <SegmentedControl<Project['defaultView']>
+        className="shagi-project-detail__view"
         label={t('projectDetail', 'view.label')}
         value={view}
         onChange={setViewOverride}
