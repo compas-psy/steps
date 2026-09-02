@@ -120,7 +120,7 @@ jobs:
     outputs:
       build: ${{ steps.check.outputs.build }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
 
@@ -186,7 +186,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       # ── Канал сборки ──────────────────────────────────────────────────────
       #
@@ -244,10 +244,10 @@ jobs:
             pkg-config
 
       - name: Установить pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
 
       - name: Установить Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version-file: '.nvmrc'
 
@@ -258,13 +258,13 @@ jobs:
       #     JDK 22. То есть 17…21 — рабочий диапазон, 21 берём как верхнюю
       #     границу.
       - name: JDK 21
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
         with:
           distribution: temurin
           java-version: '21'
 
       - name: Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3.2.2
 
       # NDK: сначала смотрим, что уже распаковано в образе раннера (это
       # экономит ~2 ГБ загрузки), и только потом идём в sdkmanager. Если
@@ -333,7 +333,7 @@ jobs:
           rustup show
 
       - name: Кэш cargo
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: |
             ~/.cargo/registry
@@ -343,7 +343,7 @@ jobs:
           restore-keys: android-cargo-${{ runner.os }}-
 
       - name: Кэш pnpm store
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/.pnpm-store
           key: pnpm-${{ runner.os }}-${{ hashFiles('**/pnpm-lock.yaml') }}
@@ -777,7 +777,7 @@ jobs:
       # 7 дней, а не 90 по умолчанию: APK, который нужен надолго, приезжает в
       # GitHub Release по тегу, а не остаётся во вкладке Actions.
       - name: Приложить APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: ${{ steps.collect.outputs.bundle }}
           path: |
@@ -791,7 +791,7 @@ jobs:
       # никогда (см. job `release`: он забирает связку по имени из
       # `steps.collect`), поэтому и живёт один день.
       - name: Приложить APK для эмулятора
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: shagi-android-emulator-x86_64
           path: ${{ runner.temp }}/emulator/*.apk
@@ -825,10 +825,10 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Установить Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version-file: '.nvmrc'
 
@@ -836,13 +836,13 @@ jobs:
       # (AGP тут не запускается), но полагаться на «что окажется в образе» —
       # ровно тот способ получить падение, которое нечем объяснить.
       - name: JDK 21
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
         with:
           distribution: temurin
           java-version: '21'
 
       - name: Забрать APK для эмулятора
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: shagi-android-emulator-x86_64
           path: emulator-apk
@@ -862,7 +862,7 @@ jobs:
       # именно он и проверяется. `google_apis` вместо `default` по той же
       # причине: в AOSP-образах WebView заметно старее.
       - name: Запустить сценарий на эмуляторе
-        uses: reactivecircus/android-emulator-runner@v2
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
         with:
           api-level: 34
           target: google_apis
@@ -901,7 +901,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       # ── Имена считаются здесь заново ─────────────────────────────────────
       # Через outputs job они не ездят: значение одного из секретов
@@ -917,7 +917,7 @@ jobs:
             --version '${{ needs.build.outputs.version }}' --print
 
       - name: Забрать APK
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: ${{ steps.names.outputs.bundle }}
           path: artifacts
