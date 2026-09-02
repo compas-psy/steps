@@ -178,12 +178,16 @@ function createCdp(webSocketDebuggerUrl) {
 // --- Работа с НАСТОЯЩИМ файлом базы на устройстве ---------------------------
 
 /**
- * Список файлов в app-private каталоге приложения. `run-as` работает для
- * debug-сборки и даёт ровно те права, что у самого приложения — то есть
- * видно именно то, что видит оно.
+ * Список файлов в app-private каталоге приложения. `run-as` открывает
+ * оболочку с рабочим каталогом ПРЯМО В КОРНЕ данных приложения (`/data/
+ * user/0/<id>/`), а не в `files/`: `sqlite_open` (`src-tauri/src/sqlite.rs`)
+ * кладёт `shagi.db` через `app.path().app_data_dir()`, и на Android это
+ * корень, не `Context.getFilesDir()`. Первая версия смотрела в `files/` —
+ * там реально лежит только `profileInstalled` (ART-профилировщик),
+ * `shagi.db` там нет и не может быть.
  */
 function listAppFiles() {
-  return adbSoft(['shell', 'run-as', APPLICATION_ID, 'ls', '-l', 'files']);
+  return adbSoft(['shell', 'run-as', APPLICATION_ID, 'ls', '-l']);
 }
 
 /**
@@ -201,10 +205,14 @@ function listAppFiles() {
 function pullDatabase(label) {
   const dir = mkdtempSync(join(tmpdir(), `shagi-db-${label}-`));
   const local = join(dir, 'shagi.db');
+  // Пути — БЕЗ `files/`: см. разбор в `listAppFiles`. Первая версия смотрела
+  // не туда и снимала не файл базы, а текст ошибки `run-as` (47 байт вместо
+  // настоящей SQLite) — найдено этим же прогоном на эмуляторе, а не
+  // рассуждением: `node:sqlite` честно ответил `file is not a database`.
   for (const [remote, target] of [
-    ['files/shagi.db', local],
-    ['files/shagi.db-wal', `${local}-wal`],
-    ['files/shagi.db-shm', `${local}-shm`],
+    ['shagi.db', local],
+    ['shagi.db-wal', `${local}-wal`],
+    ['shagi.db-shm', `${local}-shm`],
   ]) {
     const bytes = execFileSync('adb', ['exec-out', 'run-as', APPLICATION_ID, 'cat', remote], {
       maxBuffer: 256 * 1024 * 1024,
