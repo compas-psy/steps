@@ -141,10 +141,10 @@ import { Temporal } from '@js-temporal/polyfill';
 
 import { formatDate, formatTime, t, weekdayName } from '@shagi/i18n';
 import {
+  BottomSheet,
   Button,
   DraftIndicator,
   InheritedContextChip,
-  Modal,
   ParsingPreview,
   QuickAdd as QuickAddInput,
   type ParsingPreviewToken,
@@ -174,6 +174,7 @@ import {
 } from '@shagi/nlp';
 
 import { useAppController, useAppState, useStorage } from '../state/context.js';
+import './QuickAdd.css';
 
 const DRAFT_STORAGE_KEY = 'shagi:quickAdd:draft';
 
@@ -599,9 +600,9 @@ export function QuickAdd(): ReactElement | null {
   });
 
   return (
-    <Modal open onClose={handleClose} title={t('quickAdd', 'overlay.title')}>
+    <BottomSheet open onClose={handleClose} title={t('quickAdd', 'overlay.title')}>
       {showDraftPrompt ? (
-        <div>
+        <div className="shagi-quick-add-overlay__body">
           <p>{t('quickAdd', 'draftPrompt.message')}</p>
           <Button variant="primary" onClick={handleContinueDraft}>
             {t('quickAdd', 'draftPrompt.continue')}
@@ -611,7 +612,7 @@ export function QuickAdd(): ReactElement | null {
           </Button>
         </div>
       ) : (
-        <>
+        <div className="shagi-quick-add-overlay__body">
           {rawText.trim().length > 0 && (
             <DraftIndicator label={t('quickAdd', 'draft.indicatorLabel')} />
           )}
@@ -655,8 +656,8 @@ export function QuickAdd(): ReactElement | null {
               ))}
             </ul>
           )}
-        </>
+        </div>
       )}
-    </Modal>
+    </BottomSheet>
   );
 }
