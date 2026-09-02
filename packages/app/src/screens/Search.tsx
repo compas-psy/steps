@@ -261,6 +261,7 @@ import type { StoragePort } from '@shagi/storage';
 import { Button, EmptyState, Filter, Icon, Input, Label, ProjectRow, TaskRow } from '@shagi/ui';
 
 import { useAppController, useStorage } from '../state/context.js';
+import './Search.css';
 
 /** См. заголовок файла, блок «Разметка результатов по видам» — та же
  * функция, что `Today.tsx`/`ProjectDetail.tsx` (узкое дублирование, тот же
@@ -461,8 +462,8 @@ export function Search(): ReactElement {
   const hasNoResults = !isEmptyQuery && candidates !== null && results.length === 0;
 
   return (
-    <div>
-      <h1>{t('search', 'pageTitle')}</h1>
+    <div className="shagi-search">
+      <h1 className="shagi-search__title">{t('search', 'pageTitle')}</h1>
       <Input
         aria-label={t('search', 'input.label')}
         placeholder={t('search', 'input.placeholder')}
@@ -474,7 +475,11 @@ export function Search(): ReactElement {
       {/* Системные фильтры (§16) — только пока запрос пуст, см. заголовок
        * файла, блок «E12.3». */}
       {isEmptyQuery && (
-        <div role="group" aria-label={t('search', 'filters.groupLabel')}>
+        <div
+          className="shagi-search__filters"
+          role="group"
+          aria-label={t('search', 'filters.groupLabel')}
+        >
           {SYSTEM_FILTER_IDS.map((id) => (
             <Filter
               key={id}
@@ -512,9 +517,11 @@ export function Search(): ReactElement {
               description={t('search', 'filters.empty.description')}
             />
           ) : (
-            systemFilterGroups[activeFilter].map((task) => (
-              <FilterResultRow key={task.id} task={task} onOpen={controller.openTask} />
-            ))
+            <div className="shagi-search__result-list">
+              {systemFilterGroups[activeFilter].map((task) => (
+                <FilterResultRow key={task.id} task={task} onOpen={controller.openTask} />
+              ))}
+            </div>
           )}
         </section>
       )}
@@ -530,20 +537,22 @@ export function Search(): ReactElement {
       {!isEmptyQuery && taskResults.length > 0 && (
         <section aria-label={t('search', 'sections.tasks')}>
           <h2>{t('search', 'sections.tasks')}</h2>
-          {taskResults.map((result) => (
-            <TaskResultRow
-              key={result.candidate.id}
-              task={result.candidate}
-              onOpen={controller.openTask}
-            />
-          ))}
+          <div className="shagi-search__result-list">
+            {taskResults.map((result) => (
+              <TaskResultRow
+                key={result.candidate.id}
+                task={result.candidate}
+                onOpen={controller.openTask}
+              />
+            ))}
+          </div>
         </section>
       )}
 
       {!isEmptyQuery && projectResults.length > 0 && (
         <section aria-label={t('search', 'sections.projects')}>
           <h2>{t('search', 'sections.projects')}</h2>
-          <ul>
+          <ul className="shagi-search__result-list">
             {projectResults.map((result) => (
               <li key={result.candidate.id}>
                 <ProjectRow
@@ -559,7 +568,7 @@ export function Search(): ReactElement {
       {!isEmptyQuery && labelResults.length > 0 && (
         <section aria-label={t('search', 'sections.labels')}>
           <h2>{t('search', 'sections.labels')}</h2>
-          <ul>
+          <ul className="shagi-search__label-list">
             {labelResults.map((result) => (
               <li key={result.candidate.id}>
                 <Label>{result.candidate.title}</Label>
