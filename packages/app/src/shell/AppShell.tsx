@@ -43,9 +43,17 @@
  *
  * Центральная кнопка «Быстрое добавление» была честно `disabled` до пакета
  * работ E05.2 (UI Quick Add не существовал) — теперь открывает оверлей
- * `controller.openQuickAdd('global')` (`state/store.ts`, `origin='global'`
- * → `01§3`: "Global/widget: inbox, no date/project"). Не `controller.goTo`:
- * оверлей — не `ScreenId`, см. заголовок `store.ts`, блок про `quickAdd`.
+ * `controller.openQuickAdd(...)`. Не `controller.goTo`: оверлей — не
+ * `ScreenId`, см. заголовок `store.ts`, блок про `quickAdd`.
+ *
+ * Происхождение зависит от того, С КАКОГО экрана нажали, и это не деталь
+ * реализации, а таблица `01§3` «Origin → Inherited values»: с Today задача
+ * заводится НА СЕГОДНЯ (`origin='today'`), отовсюду ещё — во Входящие без
+ * даты (`'global'`: "Global/widget: inbox, no date/project"). Раньше
+ * «сегодняшнее» происхождение приносила отдельная кнопка на самом экране
+ * Today; в макете (`[R1][M][07]`) такой кнопки нет — добавление живёт в
+ * центральной кнопке навигации, поэтому знание о происхождении переехало
+ * сюда, а не потерялось вместе с кнопкой.
  */
 import type { ReactElement, ReactNode } from 'react';
 
@@ -103,7 +111,7 @@ export function AppShell({ children }: { children: ReactNode }): ReactElement {
         centerAction={{
           icon: 'add',
           label: t('shell', 'bottomNav.quickAdd'),
-          onClick: () => controller.openQuickAdd('global'),
+          onClick: () => controller.openQuickAdd(screen === 'todayEmpty' ? 'today' : 'global'),
         }}
       />
     </div>

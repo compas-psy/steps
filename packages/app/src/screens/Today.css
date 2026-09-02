@@ -12,7 +12,12 @@
  */
 
 .shagi-today {
-  padding: var(--space-6) var(--space-5) var(--space-10);
+  /* По горизонтали 24px — как в макете (`[R1][M][07]`: `padding:16px 24px`).
+   * Списки задач из этого отступа ВЫХОДЯТ (см. `__groups` ниже): в макете
+   * разделитель между задачами тянется от края до края экрана, а не висит
+   * укороченной чёрточкой посередине — это заметная часть того, почему
+   * список читается как список, а не как набор карточек. */
+  padding: var(--space-6) var(--space-6) var(--space-10);
   display: flex;
   flex-direction: column;
   gap: var(--space-6);
@@ -29,48 +34,77 @@
   font-size: var(--text-mobile-heading);
   font-weight: var(--fw-bold);
   color: var(--foreground);
+  letter-spacing: -0.01em;
   margin: 0;
-}
-
-.shagi-today__date {
-  font-size: var(--text-body-primary);
-  color: var(--muted-foreground);
-  margin: calc(var(--space-3) * -1) 0 0;
+  min-width: 0;
 }
 
 /* `formatDate(..., {weekday:'long'})` (`@shagi/i18n`) отдаёт день недели со
  * строчной буквы (грамматически верно вне начала предложения) — макет
- * показывает его заглавной как первое слово строки экрана. `::first-letter`,
+ * показывает его заглавной как первое слово экрана. `::first-letter`,
  * не `text-transform: capitalize` на весь текст: последний иначе поднял бы
  * регистр и у месяца («2 Сентября»), которого в макете нет. */
-.shagi-today__date::first-letter {
+.shagi-today__title::first-letter {
   text-transform: uppercase;
 }
 
-.shagi-today__toolbar {
+.shagi-today__header-actions {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
-  flex-wrap: wrap;
+  gap: var(--space-2);
+  flex-shrink: 0;
 }
 
-.shagi-today__inbox-badge {
+/* Иконка «Входящие» с числом-кружком поверх — макет `[R1][M][07]`. Кнопка
+ * без рамки и фона: в шапке рядом стоит `IconButton`, и второй элемент с
+ * собственной подложкой сделал бы из шапки панель кнопок. */
+.shagi-today__inbox {
+  position: relative;
   display: inline-flex;
   align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-2) var(--space-3);
+  justify-content: center;
+  min-width: var(--touch-target-min);
+  min-height: var(--touch-target-min);
+  padding: 0;
+  border: none;
   border-radius: var(--radius-full);
-  border: 1px solid var(--border);
-  background: var(--card);
+  background: transparent;
   color: var(--foreground);
-  font-size: var(--text-small-meta);
-  font-weight: var(--fw-semibold);
+  cursor: pointer;
+}
+
+.shagi-today__inbox-count {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  min-width: 16px;
+  padding: 0 var(--space-1);
+  border-radius: var(--radius-full);
+  /* Тёмно-зелёным по золоту, а не белым, как в макете: белый на `--gold-500`
+   * даёт 2.45 (разбор прямо в шапке `colors.css`), и число становится
+   * трудночитаемым. Пара «палитровый золотой + тёмный лес» одинакова в обеих
+   * темах — бейдж не зависит от того, светлая тема или тёмная. */
+  background: var(--gold-500);
+  color: var(--forest-900);
+  font-size: var(--text-caption);
+  font-weight: var(--fw-bold);
+  line-height: 16px;
+  text-align: center;
 }
 
 .shagi-today__groups {
   display: flex;
   flex-direction: column;
   gap: var(--space-6);
+  /* Во всю ширину экрана — отрицательным полем компенсируется горизонтальный
+   * отступ страницы; текст внутри строк возвращается на место собственным
+   * отступом строки (ниже). */
+  margin-inline: calc(var(--space-6) * -1);
+}
+
+.shagi-today__group-header,
+.shagi-today__bulk-bar {
+  padding-inline: var(--space-6);
 }
 
 .shagi-today__group-header {
@@ -106,6 +140,23 @@
   letter-spacing: 0.05em;
 }
 
+/* «Главное» — единственная группа, выделенная цветом (макет `[R1][M][07]`:
+ * подпись секции золотая, у остальных приглушённая). `--amber-500`, а не
+ * `--gold-500`: это ЧИТАЕМЫЙ текст на фоне страницы, а золотой из палитры
+ * даёт на нём 2.22 (разбор в шапке `colors.css`) и не проходит AA. Цвет —
+ * не единственный признак: подпись группы остаётся словом «Главное», а у
+ * задач в ней золотая рамка чекбокса (§11 «state never color-only»). */
+.shagi-today__group-label--focus {
+  color: var(--amber-500);
+}
+
+.shagi-today__group-count {
+  margin-left: auto;
+  font-size: var(--text-small-meta);
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+}
+
 .shagi-today__group-action {
   font-size: var(--text-small-meta);
   font-weight: var(--fw-semibold);
@@ -122,10 +173,15 @@
   color: var(--muted-foreground);
 }
 
-.shagi-today__group-list > * {
+/* Класс продублирован намеренно (специфичность 0-2-0): собственный
+ * `padding` у `TaskRow` (`@shagi/ui`) объявлен с той же специфичностью, а
+ * его CSS попадает в бандл позже — при равенстве выиграл бы он. Тот же
+ * приём и та же причина, что у разделителей в настройках. */
+.shagi-today__group-list.shagi-today__group-list > * {
+  padding-inline: var(--space-6);
   border-bottom: 1px solid var(--border);
 }
 
-.shagi-today__group-list > *:last-child {
+.shagi-today__group-list.shagi-today__group-list > *:last-child {
   border-bottom: none;
 }

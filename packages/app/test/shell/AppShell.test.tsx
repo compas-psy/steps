@@ -97,9 +97,31 @@ describe('AppShell', () => {
     expect(controller.getState().screen).toBe('search');
   });
 
-  it('центральная кнопка «Быстрое добавление» открывает Quick Add с origin=global (эпик E05.2)', async () => {
+  it('центральная кнопка с экрана Today заводит задачу НА СЕГОДНЯ (origin=today, `01§3`)', async () => {
     const user = userEvent.setup();
     const controller = createAppController({ screen: 'todayEmpty' });
+    render(
+      <AppProvider host={testHost()} controller={controller}>
+        <AppShell>
+          <div>контент</div>
+        </AppShell>
+      </AppProvider>,
+    );
+
+    await user.click(screen.getByRole('button', { name: t('shell', 'bottomNav.quickAdd') }));
+
+    // Таблица `01§3` «Origin → Inherited values»: с Today задача планируется
+    // на сегодня, а не падает во Входящие без даты. Раньше это приносила
+    // отдельная кнопка на самом экране Today; в макете её нет, поэтому знание
+    // о происхождении живёт здесь — и проверяется здесь же.
+    expect(controller.getState().quickAdd).toEqual({ origin: 'today' });
+    expect(controller.getState().screen).toBe('todayEmpty');
+  });
+
+  it('она же с любого другого экрана — origin=global, задача уходит во Входящие (`01§3`)', async () => {
+    const user = userEvent.setup();
+    // Не Today: именно на Today действует особое правило выше.
+    const controller = createAppController({ screen: 'projects' });
     render(
       <AppProvider host={testHost()} controller={controller}>
         <AppShell>
@@ -115,6 +137,6 @@ describe('AppShell', () => {
 
     expect(controller.getState().quickAdd).toEqual({ origin: 'global' });
     // Экран под низом не меняется — оверлей не подменяет `screen` (D12).
-    expect(controller.getState().screen).toBe('todayEmpty');
+    expect(controller.getState().screen).toBe('projects');
   });
 });

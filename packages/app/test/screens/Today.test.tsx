@@ -4,7 +4,7 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Temporal } from '@js-temporal/polyfill';
 import { createUnavailablePlatform } from '@shagi/platform';
-import { t } from '@shagi/i18n';
+import { formatDate, t } from '@shagi/i18n';
 import { makeOutboxEntry, makeTask } from '@shagi/storage/contract';
 import type { StoragePort } from '@shagi/storage';
 import { generateUuidV7, makeOccurrenceSeq, type RecurrenceSeries, type Task } from '@shagi/core';
@@ -336,7 +336,11 @@ describe('Today (M06 Empty / M07 Normal)', () => {
   it('заголовок экрана — сегодняшняя дата (не жёстко закодированная строка)', async () => {
     renderToday([]);
     await waitFor(() => expect(screen.getByText(t('common', 'today.doneAll'))).toBeInTheDocument());
-    expect(screen.getByText(t('today', 'pageTitle'))).toBeInTheDocument();
+    // Заголовок — САМА ДАТА (макет `[R1][M][07]`), а не слово «Сегодня»:
+    // проверяется через тот же `formatDate`, что и экран, иначе тест
+    // превратился бы во вторую реализацию форматирования даты.
+    const heading = screen.getByRole('heading', { level: 1 });
+    expect(heading).toHaveTextContent(formatDate(Temporal.Now.plainDateISO(), { weekday: 'long' }));
   });
 
   it('задача, подходящая под индексы planned_date И focus_date разом, отрендерена ровно один раз — в высшей по прецедансу группе "Главное", не в "Сегодня"', async () => {
@@ -989,17 +993,41 @@ describe('Today — клик по строке открывает Task Detail (E
   });
 });
 
-describe('Today — кнопка Quick Add (эпик E05.2)', () => {
-  it('открывает оверлей Quick Add с origin=today, не меняя экран под низом', async () => {
-    const user = userEvent.setup();
-    const { controller } = renderTodayWithController([]);
+describe('Today — закрытие Quick Add обновляет список', () => {
+  it('задача, созданная в оверлее, появляется на Today сразу после его закрытия', async () => {
+    const { getStorage, controller } = renderTodayWithController([]);
+    await waitFor(() => expect(screen.getByText(t('common', 'today.doneAll'))).toBeInTheDocument());
 
-    await user.click(await screen.findByRole('button', { name: t('today', 'quickAdd.button') }));
+    // Открыт оверлей; пока он открыт, задача заводится «снаружи» — ровно то,
+    // что делает настоящий Quick Add, у которого своё состояние и свой
+    // командный слой, а Today под ним даже не перемонтируется.
+    controller.openQuickAdd('today');
+    const storage = getStorage();
+    const created = makeTask({ title: 'Заведено в оверлее', plannedDate: TODAY });
+    await storage.runTransaction(async (tx) => {
+      await tx.applyMutation({
+        writes: [{ entity: 'task', value: created }],
+        outbox: [makeOutboxEntry('task', created.id)],
+      });
+    });
 
-    expect(controller.getState().quickAdd).toEqual({ origin: 'today' });
-    expect(controller.getState().screen).toBe('todayEmpty');
+    // До закрытия экран под низом ничего не знает — и не обязан.
+    expect(screen.queryByText('Заведено в оверлее')).not.toBeInTheDocument();
+
+    controller.closeQuickAdd();
+
+    // А вот после закрытия обязан: без этого человек нажимает «+», заводит
+    // задачу и не видит её на экране — поломка, которую видно с первой
+    // минуты пользования.
+    expect(await screen.findByText('Заведено в оверлее')).toBeInTheDocument();
   });
 });
+
+/* Кнопки «Быстрое добавление» на самом экране Today больше нет — в макете
+ * (`[R1][M][07]`) её нет, добавление живёт в центральной кнопке нижней
+ * навигации. Проверка того, что оттуда задача заводится ИМЕННО на сегодня
+ * (`01§3` «Origin → Inherited values»), переехала вместе с поведением в
+ * `test/shell/AppShell.test.tsx` — не исчезла. */
 
 describe('Today — вход в Settings (M41, значок-шестерёнка)', () => {
   it('клик по значку-шестерёнке ведёт на settings с settingsReturnScreen=todayEmpty', async () => {

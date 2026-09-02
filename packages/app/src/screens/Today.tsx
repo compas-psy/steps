@@ -222,11 +222,16 @@
  * empty state" буквально требует эту кнопку на этом экране) вызывает
  * `controller.openQuickAdd('today')` (`state/store.ts`), НЕ `goTo` — оверлей
  * не подменяет экран под собой (см. заголовок `store.ts`, блок про
- * `quickAdd`), список Today не перезапрашивается при открытии/закрытии
- * (создание задачи закрывает оверлей, а не возвращает управление сюда
- * напрямую — свежий список подхватится обычным перемонтированием `Today`
- * при следующем заходе; синхронный рефреш после создания вне объёма этого
- * пакета работ, тот же принцип «минимально достаточная реализация»).
+ * `quickAdd`).
+ *
+ * Список ПЕРЕЗАПРАШИВАЕТСЯ, когда оверлей закрывается. Раньше не
+ * перезапрашивался — и это было не «минимально достаточно», а поломка,
+ * которую видно с первой минуты: человек нажимает «+», заводит задачу,
+ * оверлей закрывается, а на Today ничего не появляется, потому что экран
+ * под низом не перемонтировался. Отслеживается ПЕРЕХОД «был открыт →
+ * закрылся» (`useRef` с прошлым значением), а не сам факт `quickAdd ===
+ * null`: иначе эффект перезапрашивал бы список на каждый рендер с
+ * закрытым оверлеем.
  *
  * --- Открытие Task Detail по клику на строку (эпик E10.2) ------------------
  *
@@ -252,7 +257,7 @@
  *    `button` вместо стопа распространения у источника, которого у этого
  *    экрана нет доступа поменять.
  */
-import { useEffect, useState, type ReactElement } from 'react';
+import { useEffect, useRef, useState, type ReactElement } from 'react';
 import { Temporal } from '@js-temporal/polyfill';
 
 import {
@@ -292,7 +297,7 @@ import {
   type TaskRowState,
 } from '@shagi/ui';
 
-import { useAppController, useStorage } from '../state/context.js';
+import { useAppController, useAppState, useStorage } from '../state/context.js';
 import './Today.css';
 
 /** Precedence `01§6` — порядок, в котором группы проверяются и рендерятся. */
@@ -693,7 +698,11 @@ function TodayGroupSection({
         <h2>
           <button
             type="button"
-            className="shagi-today__group-label"
+            className={
+              group === 'focus'
+                ? 'shagi-today__group-label shagi-today__group-label--focus'
+                : 'shagi-today__group-label'
+            }
             aria-expanded={!collapsed}
             aria-controls={listId}
             onClick={onToggleCollapse}
@@ -701,6 +710,14 @@ function TodayGroupSection({
             {groupLabel(group)}
           </button>
         </h2>
+        {/* Число задач в группе — макет `[R1][M][07]` показывает счётчик
+         * справа от подписи секции. `aria-hidden`: заголовок секции уже
+         * назван (`groupLabel`), а список под ним и так перечисляет задачи —
+         * скринридеру число здесь ничего не добавляет, кроме лишнего
+         * произнесения при каждом переходе по заголовкам. */}
+        <span className="shagi-today__group-count" aria-hidden="true">
+          {tasks.length}
+        </span>
         {/* Кнопка входа/выхода из режима выбора — только «Не по плану» (M09,
          * см. заголовок файла), по образцу кнопки сворачивания секции выше:
          * тот же native `<button>`, тот же уровень визуальной весомости. */}
@@ -817,6 +834,11 @@ export function Today(): ReactElement {
     readonly selectedIds: ReadonlySet<Uuid>;
   }>({ active: false, selectedIds: new Set() });
 
+  // Открыт ли оверлей Quick Add — нужен ИМЕННО переход «был → закрылся»
+  // (см. заголовок файла, блок «Кнопка Quick Add»).
+  const quickAddOpen = useAppState().quickAdd !== null;
+  const quickAddWasOpen = useRef(quickAddOpen);
+
   useEffect(() => {
     let cancelled = false;
     const now = Temporal.Now.plainDateTimeISO();
@@ -836,6 +858,25 @@ export function Today(): ReactElement {
       cancelled = true;
     };
   }, [storage]);
+
+  useEffect(() => {
+    const closedJustNow = quickAddWasOpen.current && !quickAddOpen;
+    quickAddWasOpen.current = quickAddOpen;
+    if (!closedJustNow) return;
+    let cancelled = false;
+    const now = Temporal.Now.plainDateTimeISO();
+    void Promise.all([
+      selectTodayTasks(storage, now),
+      storage.tasks.listByCaptureStateAndStatus('inbox', 'active'),
+    ]).then(([result, inboxTasks]) => {
+      if (cancelled) return;
+      setGroups(result);
+      setInboxCount(inboxTasks.length);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [quickAddOpen, storage]);
 
   /** Перезапрашивает `selectTodayTasks` после успешной команды — задание:
    * "самый правильный способ — перезапросить selectTodayTasks после
@@ -1008,38 +1049,46 @@ export function Today(): ReactElement {
 
   return (
     <div className="shagi-today">
+      {/* Шапка по макету (`[R1][M][07] Today / Normal`): заголовок экрана —
+       * САМА ДАТА крупным начертанием, а не слово «Сегодня» с датой мелкой
+       * строкой под ним. Слово «Сегодня» и так стоит в нижней навигации —
+       * повторять его заголовком значило бы занять самое заметное место
+       * страницы тем, что человек уже знает, вместо того, что ему нужно
+       * увидеть. Кнопки — иконками справа, как в макете. */}
       <div className="shagi-today__header">
-        <h1 className="shagi-today__title">{t('today', 'pageTitle')}</h1>
-        {/* Точка входа в Settings (M41, пакет работ «Настройки: экран-хаб и
-         * тема оформления») — см. заголовок `state/store.ts`, блок про
-         * `'settings'`. `openSettings()` запоминает `'todayEmpty'` (текущий
-         * экран на момент клика) как `settingsReturnScreen` сам, тем же
-         * приёмом, что `openTask` для `returnScreen` — вызывающему коду не
-         * нужно передавать экран явно. */}
-        <IconButton
-          icon="settings"
-          label={t('today', 'settingsButton.label')}
-          onClick={controller.openSettings}
-        />
-      </div>
-      <p className="shagi-today__date">{formatDate(today, { weekday: 'long' })}</p>
-      <div className="shagi-today__toolbar">
-        <Button variant="secondary" onClick={() => controller.openQuickAdd('today')}>
-          {t('today', 'quickAdd.button')}
-        </Button>
-        {/* Бейдж Входящих — скрыт при нуле (см. заголовок файла, блок
-         * «Бейдж Входящих»), не рендерится, пока `inboxCount` не разрешился
-         * (`null`) — та же семантика "ещё не знаем", что `groups === null`. */}
-        {inboxCount !== null && inboxCount > 0 && (
-          <button
-            type="button"
-            className="shagi-today__inbox-badge"
-            onClick={() => controller.goTo('inbox')}
-          >
-            <Icon name="archive" size={20} />
-            {t('today', 'inboxBadge.label', { count: inboxCount })}
-          </button>
-        )}
+        <h1 className="shagi-today__title">{formatDate(today, { weekday: 'long' })}</h1>
+        <div className="shagi-today__header-actions">
+          {/* Бейдж Входящих — скрыт при нуле (см. заголовок файла, блок
+           * «Бейдж Входящих»), не рендерится, пока `inboxCount` не разрешился
+           * (`null`) — та же семантика "ещё не знаем", что `groups === null`.
+           * Само число — золотой кружок поверх иконки (макет), доступное имя
+           * несёт кнопка целиком, поэтому число `aria-hidden`: иначе
+           * скринридер прочитал бы «Входящие: 3 3». */}
+          {inboxCount !== null && inboxCount > 0 && (
+            <button
+              type="button"
+              className="shagi-today__inbox"
+              aria-label={t('today', 'inboxBadge.label', { count: inboxCount })}
+              onClick={() => controller.goTo('inbox')}
+            >
+              <Icon name="archive" size={21} />
+              <span className="shagi-today__inbox-count" aria-hidden="true">
+                {inboxCount}
+              </span>
+            </button>
+          )}
+          {/* Точка входа в Settings (M41, пакет работ «Настройки: экран-хаб и
+           * тема оформления») — см. заголовок `state/store.ts`, блок про
+           * `'settings'`. `openSettings()` запоминает `'todayEmpty'` (текущий
+           * экран на момент клика) как `settingsReturnScreen` сам, тем же
+           * приёмом, что `openTask` для `returnScreen` — вызывающему коду не
+           * нужно передавать экран явно. */}
+          <IconButton
+            icon="settings"
+            label={t('today', 'settingsButton.label')}
+            onClick={controller.openSettings}
+          />
+        </div>
       </div>
 
       {errorMessage !== null && (
