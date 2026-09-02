@@ -241,6 +241,54 @@ fn generate_checkpoint_token() -> String {
     format!("chk-{nanos:x}-{counter:x}")
 }
 
+/// Классы SQL-операторов, которым разрешён проход через `sqlite_execute`/
+/// `sqlite_query` (security review ADR-0005, P1). Список — не эстетика, а
+/// периметр: он равен ровно тому набору, что реально используется
+/// `@shagi/storage` (обзор `packages/storage/src/sqlite/*.ts` на момент
+/// фикса — `BEGIN [IMMEDIATE]`, `COMMIT`, `ROLLBACK[ TO SAVEPOINT …]`,
+/// `SAVEPOINT …`, `RELEASE[ SAVEPOINT …]`, `SELECT`, `INSERT`, `UPDATE`,
+/// `DELETE`, `CREATE TABLE`, `CREATE INDEX`, `CREATE VIRTUAL TABLE`,
+/// `DROP TABLE`, `DROP INDEX` — ни одного `PRAGMA` через этот канал не
+/// идёт, режимы `00§2` выставляются напрямую при открытии).
+///
+/// Здесь НЕ парсер SQL — грубая классификация по первому-второму слову.
+/// Этого достаточно, чтобы закрыть класс операций, обращающихся к
+/// файловой системе или схеме SQLite в обход `@shagi/storage`: `ATTACH`
+/// открывает произвольный файл как базу, `VACUUM INTO` пишет произвольный
+/// файл, `PRAGMA writable_schema` подделывает системную таблицу схемы.
+/// Схема SQL по-прежнему целиком принадлежит `@shagi/storage` (SPEC/00
+/// §3) — список ниже не добавляет сюда знания о таблицах, только о форме
+/// операторов.
+///
+/// Многосоставный smuggling через `;` эту границу не обходит и без гейта:
+/// `rusqlite::Connection::execute` целиком отказывается выполнять строку,
+/// в которой больше одного оператора («Multiple statements provided»), —
+/// склеенный вторым оператором `DROP TABLE` не может проехать приклеенным
+/// к разрешённому `INSERT`. Проверено тестом
+/// `smuggling_cherez_tochku_s_zapyatoj_ne_rabotaet`.
+fn classify_statement(sql: &str) -> Result<(), String> {
+    let upper = sql.to_ascii_uppercase();
+    let mut words = upper.split_whitespace();
+    let first = words.next().unwrap_or("");
+    let second = words.next().unwrap_or("");
+
+    let allowed = match first {
+        "SELECT" | "INSERT" | "UPDATE" | "DELETE" | "BEGIN" | "COMMIT" | "ROLLBACK"
+        | "SAVEPOINT" | "RELEASE" => true,
+        "CREATE" => matches!(second, "TABLE" | "INDEX" | "VIRTUAL"),
+        "DROP" => matches!(second, "TABLE" | "INDEX"),
+        _ => false,
+    };
+
+    if allowed {
+        Ok(())
+    } else {
+        Err(format!(
+            "SQL-оператор запрещён на границе IPC (security review ADR-0005, P1): {first} {second}"
+        ))
+    }
+}
+
 #[tauri::command]
 pub fn sqlite_execute(
     state: State<'_, SqliteState>,
@@ -251,6 +299,7 @@ pub fn sqlite_execute(
 }
 
 pub fn execute_on(db: &OpenDb, sql: &str, params: &[Json]) -> Result<(), String> {
+    classify_statement(sql)?;
     let values = params
         .iter()
         .map(json_to_sql)
@@ -271,6 +320,7 @@ pub fn sqlite_query(
 }
 
 pub fn query_on(db: &OpenDb, sql: &str, params: &[Json]) -> Result<Vec<Map<String, Json>>, String> {
+    classify_statement(sql)?;
     {
         let values = params
             .iter()
@@ -448,6 +498,108 @@ mod tests {
         let mut object = Map::new();
         object.insert("i64".to_string(), Json::String(value.to_string()));
         Json::Object(object)
+    }
+
+    #[test]
+    fn attach_otklonyaetsya_na_granice_ipc() {
+        // ATTACH открывает произвольный файл как базу — файловый примитив,
+        // которого у `@shagi/storage` нет и быть не должно (P1).
+        let (_dir, db, _info) = temp_db("gate.db");
+        let error = execute_on(&db, "ATTACH DATABASE '/tmp/evil.db' AS evil", &[]).unwrap_err();
+        assert!(error.contains("запрещён"), "ATTACH обязан быть отклонён: {error}");
+    }
+
+    #[test]
+    fn vacuum_into_otklonyaetsya_na_granice_ipc() {
+        // VACUUM INTO пишет произвольный файл — тот самый примитив,
+        // которым сейчас легально пользуется только сам мост изнутри
+        // (`snapshot_checkpoint`), напрямую через `db.connection`, в обход
+        // этой границы. Через IPC ему хода нет.
+        let (_dir, db, _info) = temp_db("gate.db");
+        let error = execute_on(&db, "VACUUM INTO '/tmp/evil.db'", &[]).unwrap_err();
+        assert!(error.contains("запрещён"), "VACUUM INTO обязан быть отклонён: {error}");
+
+        let error = execute_on(&db, "VACUUM", &[]).unwrap_err();
+        assert!(error.contains("запрещён"), "голый VACUUM обязан быть отклонён: {error}");
+    }
+
+    #[test]
+    fn pragma_writable_schema_otklonyaetsya_na_granice_ipc() {
+        // `PRAGMA writable_schema` подделывает системную таблицу схемы —
+        // и вообще ни один PRAGMA через этот канал не идёт (`00§2`
+        // выставляется напрямую при открытии, не через `sqlite_execute`).
+        let (_dir, db, _info) = temp_db("gate.db");
+        let error = execute_on(&db, "PRAGMA writable_schema = ON", &[]).unwrap_err();
+        assert!(error.contains("запрещён"), "PRAGMA обязан быть отклонён: {error}");
+
+        let error = query_on(&db, "PRAGMA table_info(sqlite_master)", &[]).unwrap_err();
+        assert!(
+            error.contains("запрещён"),
+            "PRAGMA обязан быть отклонён и в query_on: {error}"
+        );
+    }
+
+    #[test]
+    fn create_trigger_i_create_view_otklonyayutsya() {
+        // Разрешены ровно CREATE TABLE/INDEX/VIRTUAL TABLE — то, чем
+        // реально пользуется `@shagi/storage`. Остальные формы CREATE не
+        // нужны и потому закрыты, а не «пока не понадобились».
+        let (_dir, db, _info) = temp_db("gate.db");
+        let error = execute_on(&db, "CREATE TRIGGER t AFTER INSERT ON x BEGIN END", &[]).unwrap_err();
+        assert!(error.contains("запрещён"), "CREATE TRIGGER обязан быть отклонён: {error}");
+
+        let error = execute_on(&db, "CREATE VIEW v AS SELECT 1", &[]).unwrap_err();
+        assert!(error.contains("запрещён"), "CREATE VIEW обязан быть отклонён: {error}");
+    }
+
+    #[test]
+    fn razreshyonnye_klassy_prohodyat_granicu() {
+        // Позитивная сторона того же гейта: набор, которым реально
+        // пользуется `@shagi/storage`, гейт не трогает.
+        let (_dir, db, _info) = temp_db("gate.db");
+        execute_on(&db, "CREATE TABLE t (id TEXT PRIMARY KEY)", &[]).expect("CREATE TABLE");
+        execute_on(&db, "CREATE INDEX idx ON t (id)", &[]).expect("CREATE INDEX");
+        execute_on(&db, "BEGIN IMMEDIATE", &[]).expect("BEGIN");
+        execute_on(&db, "SAVEPOINT s", &[]).expect("SAVEPOINT");
+        execute_on(&db, "INSERT INTO t VALUES (?1)", &[Json::String("a".into())]).expect("INSERT");
+        execute_on(&db, "UPDATE t SET id = ?1 WHERE id = ?2", &[Json::String("b".into()), Json::String("a".into())])
+            .expect("UPDATE");
+        execute_on(&db, "RELEASE SAVEPOINT s", &[]).expect("RELEASE");
+        execute_on(&db, "COMMIT", &[]).expect("COMMIT");
+        query_on(&db, "SELECT id FROM t", &[]).expect("SELECT");
+        execute_on(&db, "DELETE FROM t WHERE id = ?1", &[Json::String("b".into())]).expect("DELETE");
+        execute_on(&db, "DROP INDEX idx", &[]).expect("DROP INDEX");
+        execute_on(&db, "DROP TABLE t", &[]).expect("DROP TABLE");
+    }
+
+    #[test]
+    fn smuggling_cherez_tochku_s_zapyatoj_ne_rabotaet() {
+        // Даже если бы гейт классов пропустил что-то незапланированное,
+        // `rusqlite::Connection::execute` целиком отказывается выполнять
+        // строку с более чем одним оператором («Multiple statements
+        // provided») — второй оператор после `;` не может проскочить
+        // приклеенным к разрешённому первому.
+        let (_dir, db, _info) = temp_db("gate.db");
+        execute_on(&db, "CREATE TABLE t (id TEXT PRIMARY KEY)", &[]).unwrap();
+        execute_on(&db, "INSERT INTO t VALUES (?1)", &[Json::String("a".into())]).unwrap();
+
+        let error = execute_on(
+            &db,
+            "INSERT INTO t VALUES (?1); DROP TABLE t",
+            &[Json::String("b".into())],
+        )
+        .unwrap_err();
+        assert!(
+            error.contains("Multiple statements") || error.to_lowercase().contains("multiple"),
+            "составная строка обязана быть отклонена целиком: {error}"
+        );
+
+        let rows = query_on(&db, "SELECT id FROM t", &[]).unwrap();
+        assert_eq!(
+            rows.len(),
+            1,
+            "ни склеенный INSERT, ни DROP TABLE не должны были выполниться"
+        );
     }
 
     #[test]
