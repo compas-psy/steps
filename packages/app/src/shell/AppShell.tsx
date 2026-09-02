@@ -54,6 +54,7 @@ import { BottomNav, type BottomNavItem } from '@shagi/ui';
 
 import { useAppController, useAppState } from '../state/context.js';
 import type { ScreenId } from '../state/store.js';
+import './AppShell.css';
 
 /** Экраны этого набора получают постоянную нижнюю навигацию — растёт по
  * мере поступления новых «главных» экранов (План/Поиск, E12), тем же
@@ -91,9 +92,10 @@ export function AppShell({ children }: { children: ReactNode }): ReactElement {
   const activeValue = screen as MainTabValue;
 
   return (
-    <div>
-      <div>{children}</div>
+    <div className="shagi-app-shell">
+      <div className="shagi-app-shell__content">{children}</div>
       <BottomNav
+        className="shagi-app-shell__nav"
         label={t('shell', 'bottomNav.label')}
         items={NAV_ITEMS}
         value={activeValue}
