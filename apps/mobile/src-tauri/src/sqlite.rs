@@ -25,6 +25,7 @@
 //! обязательные свойства базы из `00§2` (WAL, внешние ключи, FTS5).
 
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 
 use rusqlite::types::ValueRef;
@@ -33,10 +34,15 @@ use serde::Serialize;
 use serde_json::{Map, Value as Json};
 use tauri::{AppHandle, Manager, State};
 
-/// Открытая база: соединение и путь к файлу.
+/// Открытая база: соединение, путь к файлу и токен последнего снимка.
 pub struct OpenDb {
     connection: Connection,
     path: PathBuf,
+    /// Токен, выданный последним `sqlite_snapshot()`. НЕ путь: путь к
+    /// чекпойнту всегда вычисляет нативная сторона (`checkpoint_path`), а
+    /// `sqlite_restore` лишь сверяет присланный токен с этим полем —
+    /// security review ADR-0005, P0: путь от WebView здесь недопустим.
+    checkpoint_token: Option<String>,
 }
 
 /// Состояние плагина. `Mutex` — не оптимизация, а условие корректности:
@@ -202,7 +208,37 @@ pub fn open_db_at(path: PathBuf) -> Result<(OpenDb, SqliteInfo), String> {
         foreign_keys: foreign_keys == 1,
         fts5: fts5 == 1,
     };
-    Ok((OpenDb { connection, path }, info))
+    Ok((
+        OpenDb {
+            connection,
+            path,
+            checkpoint_token: None,
+        },
+        info,
+    ))
+}
+
+/// Путь чекпойнта для базы — ВСЕГДА вычисляется нативной стороной из пути
+/// уже открытой базы, никогда не принимается от вызывающей стороны.
+fn checkpoint_path(db_path: &std::path::Path) -> PathBuf {
+    db_path.with_extension("checkpoint")
+}
+
+static CHECKPOINT_TOKEN_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+/// Непрозрачный токен снимка. Это НЕ путь и сам по себе не открывает
+/// доступ ни к какому файлу: `sqlite_restore` лишь сверяет присланный
+/// токен со значением, сохранённым при создании снимка (`OpenDb.checkpoint_token`).
+/// Токен одноразовый — успешное восстановление открывает базу заново с
+/// `checkpoint_token: None`, так что повторно предъявить тот же токен
+/// нельзя.
+fn generate_checkpoint_token() -> String {
+    let counter = CHECKPOINT_TOKEN_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or(0);
+    format!("chk-{nanos:x}-{counter:x}")
 }
 
 #[tauri::command]
@@ -274,45 +310,102 @@ pub fn query_on(db: &OpenDb, sql: &str, params: &[Json]) -> Result<Vec<Map<Strin
 /// Согласованная копия базы одним файлом — `VACUUM INTO`. Это и есть
 /// «native atomic DB backup/checkpoint» из `02§15`: протокол миграций
 /// снимает её перед каждым шагом.
+///
+/// Возвращает НЕ путь, а непрозрачный токен (security review ADR-0005,
+/// P0): путь к чекпойнту фронтенду не сообщается вовсе, потому что
+/// `sqlite_restore` по нему не работает — только по токену.
 #[tauri::command]
 pub fn sqlite_snapshot(state: State<'_, SqliteState>) -> Result<String, String> {
-    with_db(&state, |db| {
-        let target = db.path.with_extension("checkpoint");
-        if target.exists() {
-            std::fs::remove_file(&target)
-                .map_err(|error| to_error("не удалить прежний снимок", error))?;
-        }
-        db.connection
-            .execute("VACUUM INTO ?1", [target.to_string_lossy().to_string()])
-            .map_err(|error| to_error("не снять снимок базы", error))?;
-        Ok(target.to_string_lossy().to_string())
-    })
-}
-
-/// Возврат к снимку: соединение закрывается, файл заменяется, соединение
-/// открывается заново. Полумеры здесь недопустимы — восстановление
-/// вызывается только когда миграция уже сломала базу.
-#[tauri::command]
-pub fn sqlite_restore(state: State<'_, SqliteState>, snapshot_path: String) -> Result<(), String> {
     let mut guard = state
         .0
         .lock()
         .map_err(|error| to_error("состояние SQLite повреждено", error))?;
     let db = guard
-        .take()
+        .as_mut()
         .ok_or_else(|| "база не открыта: сначала sqlite_open".to_string())?;
+    snapshot_checkpoint(db)
+}
+
+/// Снимает чекпойнт и заводит для него новый токен — вынесено из команды,
+/// чтобы проверяться юнит-тестом без Tauri-рантайма.
+pub fn snapshot_checkpoint(db: &mut OpenDb) -> Result<String, String> {
+    let target = checkpoint_path(&db.path);
+    if target.exists() {
+        std::fs::remove_file(&target).map_err(|error| to_error("не удалить прежний снимок", error))?;
+    }
+    db.connection
+        .execute("VACUUM INTO ?1", [target.to_string_lossy().to_string()])
+        .map_err(|error| to_error("не снять снимок базы", error))?;
+    let token = generate_checkpoint_token();
+    db.checkpoint_token = Some(token.clone());
+    Ok(token)
+}
+
+/// Возврат к снимку. Принимает ТОЛЬКО токен, выданный `sqlite_snapshot()`
+/// для текущей открытой базы — не путь (security review ADR-0005, P0:
+/// `sqlite_restore` раньше делало `std::fs::copy(snapshot_path, ...)` с
+/// путём прямо из WebView — было возможно указать любой файл в песочнице
+/// приложения). Путь к чекпойнту нативная сторона вычисляет сама
+/// (`checkpoint_path`), из аргумента команды путь получить нельзя в
+/// принципе — его в сигнатуре просто нет.
+///
+/// Токен сверяется ДО того, как соединение закрывается: неверный токен —
+/// это отказ без побочных эффектов, база остаётся открытой и рабочей.
+/// После успешной сверки полумеры недопустимы — реальная ошибка
+/// восстановления (файл чекпойнта пропал, инварианты `00§2` не сошлись)
+/// оставляет базу закрытой, а не в неизвестном состоянии.
+#[tauri::command]
+pub fn sqlite_restore(state: State<'_, SqliteState>, token: String) -> Result<(), String> {
+    let mut guard = state
+        .0
+        .lock()
+        .map_err(|error| to_error("состояние SQLite повреждено", error))?;
+    {
+        let db = guard
+            .as_ref()
+            .ok_or_else(|| "база не открыта: сначала sqlite_open".to_string())?;
+        if db.checkpoint_token.as_deref() != Some(token.as_str()) {
+            return Err("неверный или просроченный токен снимка".to_string());
+        }
+    }
+    let db = guard.take().expect("токен только что сверен");
+    let restored = restore_checkpoint(db, &token)?;
+    *guard = Some(restored);
+    Ok(())
+}
+
+/// Собственно восстановление — вынесено из команды, чтобы проверяться
+/// юнит-тестом без Tauri-рантайма. Принимает открытую базу по значению:
+/// на успехе возвращает новую (переоткрытую и заново проверенную по
+/// `00§2`), на ошибке база считается закрытой.
+pub fn restore_checkpoint(db: OpenDb, token: &str) -> Result<OpenDb, String> {
+    if db.checkpoint_token.as_deref() != Some(token) {
+        return Err("неверный или просроченный токен снимка".to_string());
+    }
     let path = db.path.clone();
+    let checkpoint = checkpoint_path(&path);
+    // Соединение закрывается ПЕРЕД заменой файла: активные WAL/SHM не
+    // дают перезаписать основной файл начисто.
     drop(db);
 
-    std::fs::copy(&snapshot_path, &path)
+    if !checkpoint.exists() {
+        return Err("снимок не найден: сначала sqlite_snapshot".to_string());
+    }
+    std::fs::copy(&checkpoint, &path)
         .map_err(|error| to_error("не восстановить базу из снимка", error))?;
-    let connection =
-        Connection::open(&path).map_err(|error| to_error("не открыть восстановленную базу", error))?;
-    connection
-        .pragma_update(None, "foreign_keys", true)
-        .map_err(|error| to_error("не включить внешние ключи", error))?;
-    *guard = Some(OpenDb { connection, path });
-    Ok(())
+
+    let (restored, info) = open_db_at(path)?;
+    // Повторная проверка обязательных инвариантов `00§2` — не полагаемся
+    // на то, что `open_db_at` их молча выставил: если чекпойнт оказался
+    // повреждён и WAL/внешние ключи не встали, это обязано быть громкой
+    // ошибкой, а не тихим откатом на половинчатую базу.
+    if info.journal_mode != "wal" || !info.foreign_keys {
+        return Err(format!(
+            "восстановленная база не проходит обязательные инварианты 00§2: journal_mode={}, foreign_keys={}",
+            info.journal_mode, info.foreign_keys
+        ));
+    }
+    Ok(restored)
 }
 
 #[tauri::command]
@@ -339,6 +432,16 @@ mod tests {
         let dir = tempfile::tempdir().expect("временный каталог");
         let (db, info) = open_db_at(dir.path().join(name)).expect("база открылась");
         (dir, db, info)
+    }
+
+    /// `OpenDb` намеренно без `Debug` (внутри — живое соединение), поэтому
+    /// `unwrap_err()` на `Result<OpenDb, String>` не собирается — берём
+    /// ошибку явным матчем.
+    fn expect_restore_err(result: Result<OpenDb, String>) -> String {
+        match result {
+            Ok(_) => panic!("восстановление обязано было провалиться"),
+            Err(error) => error,
+        }
     }
 
     fn i64_param(value: i64) -> Json {
@@ -481,25 +584,135 @@ mod tests {
 
     #[test]
     fn snimok_i_vosstanovlenie_vozvrashchayut_prezhnee_sostoyanie() {
-        // `VACUUM INTO` — checkpoint протокола миграций (`02§15`).
+        // Ровно тот путь, что и команда: `snapshot_checkpoint` →
+        // `restore_checkpoint` по токену, не по файлу напрямую.
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("snap.db");
-        let (db, _info) = open_db_at(path.clone()).unwrap();
+        let (mut db, _info) = open_db_at(path.clone()).unwrap();
         execute_on(&db, "CREATE TABLE t (id TEXT PRIMARY KEY)", &[]).unwrap();
         execute_on(&db, "INSERT INTO t VALUES (?1)", &[Json::String("до".into())]).unwrap();
 
-        let snapshot = path.with_extension("checkpoint");
-        db.connection
-            .execute("VACUUM INTO ?1", [snapshot.to_string_lossy().to_string()])
-            .unwrap();
+        let token = snapshot_checkpoint(&mut db).unwrap();
 
         execute_on(&db, "INSERT INTO t VALUES (?1)", &[Json::String("после".into())]).unwrap();
         assert_eq!(query_on(&db, "SELECT id FROM t", &[]).unwrap().len(), 2);
-        drop(db);
 
-        std::fs::copy(&snapshot, &path).unwrap();
-        let (restored, _info) = open_db_at(path).unwrap();
+        let restored = restore_checkpoint(db, &token).unwrap();
         let rows = query_on(&restored, "SELECT id FROM t", &[]).unwrap();
         assert_eq!(rows.len(), 1, "восстановление обязано вернуть состояние снимка");
+        assert_eq!(rows[0].get("id").unwrap(), &Json::String("до".into()));
+    }
+
+    #[test]
+    fn vosstanovlenie_s_nevernym_tokenom_otklonyaetsya_i_ne_menyaet_bazu() {
+        // P0 (security review ADR-0005): токен — не пароль-приличие, а
+        // единственная проверка перед тем, как база вообще будет закрыта.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("snap.db");
+        let (mut db, _info) = open_db_at(path.clone()).unwrap();
+        execute_on(&db, "CREATE TABLE t (id TEXT PRIMARY KEY)", &[]).unwrap();
+        execute_on(&db, "INSERT INTO t VALUES (?1)", &[Json::String("до".into())]).unwrap();
+        let _token = snapshot_checkpoint(&mut db).unwrap();
+        execute_on(&db, "INSERT INTO t VALUES (?1)", &[Json::String("после".into())]).unwrap();
+
+        let error = expect_restore_err(restore_checkpoint(db, "совсем-не-тот-токен"));
+        assert!(error.contains("токен"), "ошибка обязана называть причину: {error}");
+    }
+
+    #[test]
+    fn token_ne_prinimaet_absolyutnyj_put_kak_svoj() {
+        // Именно та атака, ради которой сделан этот фикс: путь от WebView
+        // в поле `token` не должен становиться путём для `std::fs::copy`.
+        // Проверяем, что подсунутый путь к постороннему файлу отклоняется
+        // ровно как любой другой неверный токен — и файл-приманка не
+        // читается и не трогается.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("snap.db");
+        let (mut db, _info) = open_db_at(path.clone()).unwrap();
+        execute_on(&db, "CREATE TABLE t (id TEXT PRIMARY KEY)", &[]).unwrap();
+        execute_on(&db, "INSERT INTO t VALUES (?1)", &[Json::String("настоящие".into())]).unwrap();
+        let _token = snapshot_checkpoint(&mut db).unwrap();
+
+        let decoy = dir.path().join("decoy.db");
+        let (decoy_db, _decoy_info) = open_db_at(decoy.clone()).unwrap();
+        execute_on(&decoy_db, "CREATE TABLE t (id TEXT PRIMARY KEY)", &[]).unwrap();
+        execute_on(
+            &decoy_db,
+            "INSERT INTO t VALUES (?1)",
+            &[Json::String("чужие".into())],
+        )
+        .unwrap();
+        drop(decoy_db);
+        let decoy_bytes_before = std::fs::read(&decoy).unwrap();
+
+        for malicious_token in [
+            decoy.to_string_lossy().to_string(),
+            "../decoy.db".to_string(),
+            "/etc/passwd".to_string(),
+        ] {
+            let error = expect_restore_err(restore_checkpoint(
+                {
+                    let (fresh, _info) = open_db_at(path.clone()).unwrap();
+                    fresh
+                },
+                &malicious_token,
+            ));
+            assert!(
+                error.contains("токен"),
+                "путь {malicious_token} обязан быть отклонён как токен: {error}"
+            );
+        }
+
+        let decoy_bytes_after = std::fs::read(&decoy).unwrap();
+        assert_eq!(
+            decoy_bytes_before, decoy_bytes_after,
+            "файл-приманка не должен читаться при неудачной проверке токена"
+        );
+    }
+
+    #[test]
+    fn token_odnorazovyj() {
+        // После успешного восстановления база переоткрыта заново — старый
+        // токен к ней больше не относится. Предъявить его снова нельзя.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("snap.db");
+        let (mut db, _info) = open_db_at(path.clone()).unwrap();
+        execute_on(&db, "CREATE TABLE t (id TEXT PRIMARY KEY)", &[]).unwrap();
+        let token = snapshot_checkpoint(&mut db).unwrap();
+
+        let restored = restore_checkpoint(db, &token).unwrap();
+
+        let error = expect_restore_err(restore_checkpoint(restored, &token));
+        assert!(error.contains("токен"), "повторное предъявление обязано отклоняться: {error}");
+    }
+
+    #[test]
+    fn vosstanovlenie_bez_snimka_otklonyaetsya() {
+        // Токена никогда не было — значит, и сверять нечего: строка любой
+        // формы обязана быть отклонена, а не превратиться в чтение файла.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("snap.db");
+        let (db, _info) = open_db_at(path).unwrap();
+
+        let error = expect_restore_err(restore_checkpoint(db, "что-угодно"));
+        assert!(error.contains("токен"), "ошибка обязана называть причину: {error}");
+    }
+
+    #[test]
+    fn povrezhdyonnyj_chekpojnt_otklonyaetsya_gromko() {
+        // Даже если токен верный, а на месте чекпойнта оказался не
+        // SQLite-файл (диск попортил данные, гонка с другим процессом),
+        // восстановление обязано провалиться явно, а не открыть
+        // полуживую базу молча.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("snap.db");
+        let (mut db, _info) = open_db_at(path.clone()).unwrap();
+        execute_on(&db, "CREATE TABLE t (id TEXT PRIMARY KEY)", &[]).unwrap();
+        let token = snapshot_checkpoint(&mut db).unwrap();
+
+        std::fs::write(checkpoint_path(&path), b"not a sqlite file at all").unwrap();
+
+        let error = expect_restore_err(restore_checkpoint(db, &token));
+        assert!(!error.is_empty());
     }
 }

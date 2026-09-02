@@ -75,11 +75,22 @@ export interface NativeSqlBridge {
   execute(sql: string, params: readonly NativeSqlValue[]): Promise<void>;
   query(sql: string, params: readonly NativeSqlValue[]): Promise<readonly NativeSqlRow[]>;
   close(): Promise<void>;
-  /** Атомарный снимок БД в файл (`VACUUM INTO`) — checkpoint миграций
-   * (`02§15`). Возвращает путь снимка. */
+  /**
+   * Атомарный снимок БД в файл (`VACUUM INTO`) — checkpoint миграций
+   * (`02§15`). Путь чекпойнта выбирает и хранит нативная сторона —
+   * значение, которое возвращает этот метод, НЕ путь и не годится им:
+   * это непрозрачный токен, который `restore()` только сверяет с тем,
+   * что нативная сторона сохранила при снятии снимка (security review:
+   * `sqlite_restore` не смеет доверять пути от WebView).
+   */
   snapshot(): Promise<string>;
-  /** Восстановление из снимка, сделанного `snapshot()`. */
-  restore(snapshotPath: string): Promise<void>;
+  /**
+   * Восстановление из снимка, сделанного `snapshot()`. Принимает ровно
+   * тот токен, что вернул `snapshot()` — не путь; попытка передать
+   * произвольную строку (путь, `../…`, чужой токен) отклоняется нативной
+   * стороной, а не превращается в чтение произвольного файла.
+   */
+  restore(token: string): Promise<void>;
 }
 
 function encodeParam(value: SqliteParam): NativeSqlValue {

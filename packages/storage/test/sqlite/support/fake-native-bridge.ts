@@ -130,9 +130,14 @@ export function createFakeNativeBridge(options: FakeBridgeOptions = {}): NativeS
       required().exec(`VACUUM INTO '${path.replaceAll("'", "''")}'`);
       return path;
     },
-    async restore(snapshotPath) {
+    async restore(token) {
+      // Настоящая проверка токена — на нативной стороне (`sqlite.rs`,
+      // юнит-тесты там же). Здесь токен фиктивного моста — тот же путь,
+      // что вернул `snapshot()`: этого достаточно, чтобы проверить
+      // TS-плагинг (`createBridgedMigrationCheckpoint`, `BridgedSqliteDriver`),
+      // не дублируя security-границу, которая целиком в Rust.
       required().close();
-      copyFileSync(snapshotPath, dbPath);
+      copyFileSync(token, dbPath);
       db = new DatabaseSync(dbPath, { readBigInts: true });
       db.exec(relaxForeignKeys ? 'PRAGMA foreign_keys = OFF' : 'PRAGMA foreign_keys = ON');
     },

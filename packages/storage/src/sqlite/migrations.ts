@@ -118,6 +118,11 @@ export const sqliteMigrationCheckpoint: MigrationCheckpointPort<NodeSqliteDriver
  * `02§15` называет «native atomic DB backup/checkpoint», и единственный
  * способ снять снимок, не перегоняя всю базу через IPC.
  *
+ * `string` здесь — не путь файла, а непрозрачный токен: путь к чекпойнту
+ * знает только нативная сторона (`sqlite.rs`), из WebView его передать
+ * нельзя (security review ADR-0005, см. addendum). Этот код лишь проносит
+ * токен между `snapshot()` и `restore()`, не заглядывая внутрь.
+ *
  * Фабрика, а не константа: сам снимок умеет делать мост, а `runMigrations`
  * передаёт в хуки только executor (драйвер) — мост приходит замыканием.
  */

@@ -27,8 +27,8 @@ export function createNativeSqlBridge(): NativeSqlBridge {
       await invoke('sqlite_close');
     },
     snapshot: () => invoke<string>('sqlite_snapshot'),
-    restore: async (snapshotPath) => {
-      await invoke('sqlite_restore', { snapshotPath });
+    restore: async (token) => {
+      await invoke('sqlite_restore', { token });
     },
   };
 }
