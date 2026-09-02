@@ -16,6 +16,7 @@ export type {
   StoragePort,
   StorageWriteTransaction,
   TombstonePurgeSummary,
+  WorkspaceExport,
 } from './storage-port.js';
 export type { SyncConflictRepository } from './sync-conflict-repository.js';
 export type { SyncOutboxRepository } from './sync-outbox-repository.js';

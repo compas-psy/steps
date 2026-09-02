@@ -1,0 +1,11 @@
+﻿TYPE,CONTENT,DESCRIPTION,PRIORITY,INDENT,AUTHOR,RESPONSIBLE,DATE,DATE_LANG,TIMEZONE,DURATION,DURATION_UNIT,DEADLINE,meta
+,,,,,,,,,,,,,view_style=list
+section,Планёрка,,,,,,,,,,,,
+task,Собрать отчёт @работа,"Первая строка
+Вторая строка",4,1,Илья (12345),Илья (12345),2026-09-10 14:00,ru,Europe/Moscow,45,minute,2026-09-12,
+note,"Комментарий: уточнить цифры у бухгалтерии",,,,,,,,,,,,
+task,Выгрузить данные,,3,2,,,2026-09-09,ru,Europe/Moscow,,,,
+task,Проверить формулы,,1,3,,,,,,,,,
+task,Полить цветы,,1,1,,,every day,en,,,,,
+section,Разное,,,,,,,,,,,,
+task,Купить бумагу,,2,1,,,"12 сент. 2026 г.",ru,,,,,

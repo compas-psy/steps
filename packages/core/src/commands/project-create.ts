@@ -2,7 +2,7 @@ import type { Project, ProjectDefaultView } from '../entities/project.js';
 import { generateUuidV7 } from '../identity/index.js';
 import type { SyncOutboxEntry } from '../entities/sync-outbox.js';
 import { validateDomainMutation } from '../validation/index.js';
-import type { ProjectValidationInput } from '../validation/project.js';
+import type { ProjectMutationOrigin, ProjectValidationInput } from '../validation/project.js';
 import type { NewRank } from './project-rank.js';
 import { resolveRank } from './project-rank.js';
 import {
@@ -42,6 +42,20 @@ export interface CreateProjectInput {
   readonly favorite?: boolean;
   readonly hasProEntitlement: boolean;
   readonly rank: NewRank;
+  /**
+   * Происхождение создания. По умолчанию `'create'` — обычное создание
+   * руками, гейтится лимитом 10 активных проектов на Free (правило 27).
+   *
+   * Импорт и восстановление из бэкапа обязаны передавать `'import'` /
+   * `'restore'`: `01§26` про это дословно — «Import/backup/account-merge
+   * exception: migration never discards data. If migration yields >10
+   * active projects, all remain readable/editable; only later
+   * create/reactivate is gated». Гейт по origin уже реализован в
+   * `validation/project.ts` (`GATED_ORIGINS`); до этого пакета работ у
+   * команды просто не было способа его сообщить, и импорт двенадцати
+   * проектов Todoist на Free упирался бы в лимит, теряя два.
+   */
+  readonly origin?: ProjectMutationOrigin;
 }
 
 /**
@@ -71,7 +85,7 @@ export async function createProjectCommand(
     entity: 'project',
     data: validationInput,
     context: {
-      origin: 'create',
+      origin: input.origin ?? 'create',
       activeProjectCountExcludingThis,
       hasProEntitlement: input.hasProEntitlement,
     },

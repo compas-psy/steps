@@ -1,10 +1,13 @@
 import type { Temporal } from '@js-temporal/polyfill';
 
+import type { ImportBatch } from '@shagi/core';
+
 import type {
   DomainMutation,
   StoragePort,
   StorageWriteTransaction,
   TombstonePurgeSummary,
+  WorkspaceExport,
 } from '../ports/index.js';
 import { isTombstoneExpired } from '../tombstone/index.js';
 import { isNonEmptyArray } from '../values.js';
@@ -96,6 +99,21 @@ export class InMemoryStorage implements StoragePort {
     this.tables = createEmptyTables();
   }
 
+  async exportAllEntities(): Promise<WorkspaceExport> {
+    return {
+      projects: alive(this.tables.projects),
+      sections: alive(this.tables.sections),
+      tasks: alive(this.tables.tasks),
+      labels: alive(this.tables.labels),
+      taskLabels: [...this.tables.taskLabels.values()],
+      checklistItems: alive(this.tables.checklistItems),
+      reminders: [...this.tables.reminders.values()],
+      recurrenceSeries: [...this.tables.recurrenceSeries.values()],
+      taskLinks: [...this.tables.taskLinks.values()],
+      attachments: [...this.tables.attachments.values()],
+    };
+  }
+
   async purgeExpiredTombstones(now: Temporal.Instant): Promise<TombstonePurgeSummary> {
     const summary: TombstonePurgeSummary = {
       task: purgeTable(this.tables.tasks, now),
@@ -106,6 +124,14 @@ export class InMemoryStorage implements StoragePort {
     };
     return summary;
   }
+}
+
+/** Живые записи таблицы, без tombstone: удалённое остаётся удалённым и в
+ * копии (см. `StoragePort.exportAllEntities`). */
+function alive<T extends { deletedAt?: Temporal.Instant | null }>(
+  table: Map<unknown, T>,
+): readonly T[] {
+  return [...table.values()].filter((row) => (row.deletedAt ?? null) === null);
 }
 
 function purgeTable<K, V extends { deletedAt: Temporal.Instant | null }>(
@@ -128,6 +154,9 @@ function createWriteTransaction(draft: InMemoryTables): StorageWriteTransaction 
     ...query,
     async applyMutation(mutation: DomainMutation): Promise<void> {
       applyMutationToTables(draft, mutation);
+    },
+    async saveImportBatch(batch: ImportBatch): Promise<void> {
+      draft.importBatches.set(batch.id, batch);
     },
   };
 }

@@ -1,0 +1,4 @@
+TYPE,CONTENT,DESCRIPTION,PRIORITY,INDENT,AUTHOR,RESPONSIBLE,DATE,DATE_LANG,TIMEZONE,DURATION,DURATION_UNIT,DEADLINE,IS_COLLAPSED,meta,NEW_COLUMN,ANOTHER_ONE
+task,Родитель,,1,1,,,,,,,,,1,,значение,ещё
+task,Повторяющийся ребёнок,,1,2,,,every 2 weeks,en,,,,,0,,,
+task,Глубокий внук,,1,4,,,,,,,,,0,,,

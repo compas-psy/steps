@@ -330,6 +330,117 @@ export function runStorageContract(name: string, factory: () => StoragePort): vo
         await expect(storage.syncOutbox.listPending()).resolves.toEqual([]);
       });
 
+      it('exportAllEntities отдаёт ВСЁ, включая задачу без даты, проекта и родителя', async () => {
+        // Именно этот случай и есть причина отдельного метода: такая
+        // задача не попадает ни в одну индексную выборку репозиториев, и
+        // бэкап, собранный из них, потерял бы её молча.
+        const storage = factory();
+        const project = makeProject();
+        const orphan = makeTask({ title: 'Ничья задача' });
+        const inProject = makeTask({ projectId: project.id });
+
+        await storage.runTransaction(async (tx) => {
+          await tx.applyMutation({
+            writes: [
+              { entity: 'project', value: project },
+              { entity: 'task', value: orphan },
+              { entity: 'task', value: inProject },
+            ],
+            outbox: [makeOutboxEntry('task', orphan.id)],
+          });
+        });
+
+        const exported = await storage.exportAllEntities();
+        expect(exported.projects).toHaveLength(1);
+        expect(exported.tasks.map((task) => task.id).toSorted()).toEqual(
+          [orphan.id, inProject.id].toSorted(),
+        );
+      });
+
+      it('exportAllEntities не отдаёт удалённое (tombstone)', async () => {
+        const storage = factory();
+        const alive = makeTask({ title: 'Живая' });
+        const removed = makeTask({
+          title: 'Удалённая',
+          deletedAt: Temporal.Instant.fromEpochMilliseconds(1_700_000_000_000),
+        });
+
+        await storage.runTransaction(async (tx) => {
+          await tx.applyMutation({
+            writes: [
+              { entity: 'task', value: alive },
+              { entity: 'task', value: removed },
+            ],
+            outbox: [makeOutboxEntry('task', alive.id)],
+          });
+        });
+
+        const exported = await storage.exportAllEntities();
+        expect(exported.tasks).toHaveLength(1);
+        expect(exported.tasks[0]?.id).toBe(alive.id);
+      });
+
+      it('saveImportBatch пишет партию импорта и обновляет её по тому же id', async () => {
+        // `import_batches` не входит в `EntityType` и пишется своим методом
+        // (`01§26`, разбор — в `StorageWriteTransaction.saveImportBatch`).
+        // Проверяется здесь, в общем контракте, а не в тестах одного
+        // адаптера: иначе поведение разъедется между SQLite и IndexedDB.
+        const storage = factory();
+        const startedAt = Temporal.Instant.fromEpochMilliseconds(1_700_000_000_000);
+        const batch = {
+          id: makeProject().id,
+          source: 'todoist_csv',
+          startedAt,
+          finishedAt: null,
+          rollbackDeadline: startedAt.add({ minutes: 10 }),
+          status: 'applied',
+          reportJson: { tasks: 3 },
+        };
+
+        await storage.runTransaction(async (tx) => {
+          await tx.saveImportBatch(batch);
+        });
+        const stored = await storage.importBatches.findById(batch.id);
+        expect(stored?.status).toBe('applied');
+        expect(stored?.reportJson).toEqual({ tasks: 3 });
+        expect(stored?.rollbackDeadline.epochMilliseconds).toBe(
+          batch.rollbackDeadline.epochMilliseconds,
+        );
+
+        // Откат импорта помечает ТУ ЖЕ партию, а не заводит вторую.
+        await storage.runTransaction(async (tx) => {
+          await tx.saveImportBatch({ ...batch, status: 'rolled_back', finishedAt: startedAt });
+        });
+        const updated = await storage.importBatches.findById(batch.id);
+        expect(updated?.status).toBe('rolled_back');
+        expect(updated?.finishedAt?.epochMilliseconds).toBe(startedAt.epochMilliseconds);
+      });
+
+      it('откат транзакции отменяет и запись партии импорта', async () => {
+        const storage = factory();
+        const startedAt = Temporal.Instant.fromEpochMilliseconds(1_700_000_000_000);
+        const batch = {
+          id: makeProject().id,
+          source: 'todoist_csv',
+          startedAt,
+          finishedAt: null,
+          rollbackDeadline: startedAt.add({ minutes: 10 }),
+          status: 'applied',
+          reportJson: {},
+        };
+
+        await expect(
+          storage.runTransaction(async (tx) => {
+            await tx.saveImportBatch(batch);
+            throw new Error('сбой посреди импорта');
+          }),
+        ).rejects.toThrow('сбой посреди импорта');
+
+        // Партия — часть той же транзакции, что и импортируемые сущности:
+        // если транзакция не состоялась, следа импорта остаться не должно.
+        await expect(storage.importBatches.findById(batch.id)).resolves.toBeNull();
+      });
+
       it('после eraseAllLocalData хранилищем можно продолжать пользоваться', async () => {
         const storage = factory();
         const before = makeProject();

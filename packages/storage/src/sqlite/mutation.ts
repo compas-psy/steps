@@ -12,9 +12,10 @@ import {
   TASK_LABELS_TABLE,
   TASK_LINKS_TABLE,
   TASKS_TABLE,
+  IMPORT_BATCHES_TABLE,
 } from '../schema/tables.js';
 import type { TableDefinition } from '../schema/types.js';
-import type { SyncOutboxEntry } from '@shagi/core';
+import type { ImportBatch, SyncOutboxEntry } from '@shagi/core';
 
 import { buildUpsertSql } from './ddl.js';
 import type { SqliteParam, SqliteRow } from './driver-port.js';
@@ -31,6 +32,7 @@ import {
   taskLabelToRow,
   taskLinkToRow,
   taskToRow,
+  importBatchToRow,
 } from './mappers.js';
 import type { NodeSqliteDriver } from './node-sqlite-driver.js';
 import type { DomainMutation } from '../ports/transaction.js';
@@ -113,4 +115,15 @@ export async function applyMutationSql(
   for (const entry of mutation.outbox) {
     await writeOutboxEntry(driver, entry);
   }
+}
+
+/**
+ * Запись `import_batches` — отдельно от `applyMutationSql` и без outbox,
+ * см. разбор в `StorageWriteTransaction.saveImportBatch` (`ports/storage-port.ts`).
+ */
+export async function saveImportBatchSql(
+  driver: NodeSqliteDriver,
+  batch: ImportBatch,
+): Promise<void> {
+  await upsert(driver, IMPORT_BATCHES_TABLE, importBatchToRow(batch));
 }

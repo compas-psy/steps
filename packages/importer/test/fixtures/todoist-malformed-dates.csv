@@ -1,0 +1,4 @@
+TYPE,CONTENT,DESCRIPTION,PRIORITY,INDENT,AUTHOR,RESPONSIBLE,DATE,DATE_LANG,TIMEZONE,DURATION,DURATION_UNIT,DEADLINE,meta
+task,Дата словами без года,,1,1,,,"32 фев.",ru,,,,,
+task,Совсем не дата,,1,1,,,"когда-нибудь потом",ru,,,,,
+task,Непредставимый повтор,,1,1,,,"every 3rd workday",en,,,,,

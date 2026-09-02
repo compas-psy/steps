@@ -6,19 +6,26 @@ import type {
   StoragePort,
   StorageWriteTransaction,
   TombstonePurgeSummary,
+  WorkspaceExport,
 } from '../ports/index.js';
 import type { SearchResultRef } from '../search/index.js';
 import { isNonEmptyArray } from '../values.js';
 import { isTombstoneExpired } from '../tombstone/index.js';
 
 import {
+  decodeAttachment,
   decodeChecklistItem,
   decodeLabel,
   decodeProject,
+  decodeRecurrenceSeries,
+  decodeReminder,
   decodeSection,
   decodeTask,
+  decodeTaskLabel,
+  decodeTaskLink,
   encodeAttachment,
   encodeChecklistItem,
+  encodeImportBatch,
   encodeLabel,
   encodeProject,
   encodeReminder,
@@ -190,6 +197,11 @@ export class IndexedDbStorage implements StoragePort {
     const tx: StorageWriteTransaction = {
       ...query,
       applyMutation: (mutation: DomainMutation) => applyMutationToStores(access, mutation),
+      // См. разбор в `StorageWriteTransaction.saveImportBatch`: у batch свой
+      // путь записи, потому что он не `EntityType` и не имеет outbox.
+      saveImportBatch: async (batch) => {
+        await putInStore(access, 'import_batches', encodeImportBatch(batch));
+      },
     };
 
     let result: T;
@@ -207,6 +219,39 @@ export class IndexedDbStorage implements StoragePort {
       throw error;
     }
 
+    await transactionDone(idbTx);
+    return result;
+  }
+
+  async exportAllEntities(): Promise<WorkspaceExport> {
+    // Только живые записи: удалённое остаётся удалённым и в копии
+    // (`StoragePort.exportAllEntities`).
+    const db = await this.dbPromise;
+    const idbTx = db.transaction(allObjectStoreNames(), 'readonly');
+    const access = storeAccessFor(idbTx);
+    const read = async <TRow, TEntity>(
+      store: string,
+      decode: (row: TRow) => TEntity,
+      keepAll = false,
+    ): Promise<readonly TEntity[]> => {
+      const rows = (await getAllFromStore(access, store)) as TRow[];
+      const alive = keepAll
+        ? rows
+        : rows.filter((row) => (row as { deleted_at?: bigint | null }).deleted_at == null);
+      return alive.map((row) => decode(row));
+    };
+    const result: WorkspaceExport = {
+      projects: await read('projects', decodeProject),
+      sections: await read('sections', decodeSection),
+      tasks: await read('tasks', decodeTask),
+      labels: await read('labels', decodeLabel),
+      taskLabels: await read('task_labels', decodeTaskLabel, true),
+      checklistItems: await read('checklist_items', decodeChecklistItem),
+      reminders: await read('reminders', decodeReminder, true),
+      recurrenceSeries: await read('recurrence_series', decodeRecurrenceSeries, true),
+      taskLinks: await read('task_links', decodeTaskLink, true),
+      attachments: await read('attachments', decodeAttachment, true),
+    };
     await transactionDone(idbTx);
     return result;
   }

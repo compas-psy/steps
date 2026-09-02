@@ -7,17 +7,30 @@ import type {
   StoragePort,
   StorageWriteTransaction,
   TombstonePurgeSummary,
+  WorkspaceExport,
 } from '../ports/index.js';
 import { isTombstoneExpired } from '../tombstone/index.js';
 
 import type { SqliteRow } from './driver-port.js';
-import { applyMutationSql } from './mutation.js';
+import { applyMutationSql, saveImportBatchSql } from './mutation.js';
 import {
   createSqliteMigrations,
   detectCurrentSchemaVersion,
   schemaOperationUpSql,
   sqliteMigrationCheckpoint,
 } from './migrations.js';
+import {
+  rowToAttachment,
+  rowToChecklistItem,
+  rowToLabel,
+  rowToProject,
+  rowToRecurrenceSeries,
+  rowToReminder,
+  rowToSection,
+  rowToTask,
+  rowToTaskLabel,
+  rowToTaskLink,
+} from './mappers.js';
 import { NodeSqliteDriver } from './node-sqlite-driver.js';
 import { createQueryPort } from './repositories.js';
 
@@ -91,6 +104,7 @@ export class SqliteStorage implements StoragePort {
       const tx: StorageWriteTransaction = {
         ...createQueryPort(this.driver),
         applyMutation: (mutation) => applyMutationSql(this.driver, mutation),
+        saveImportBatch: (batch) => saveImportBatchSql(this.driver, batch),
       };
       return run(tx);
     });
@@ -108,6 +122,49 @@ export class SqliteStorage implements StoragePort {
       }
       await this.driver.execute('DELETE FROM tasks_fts');
     });
+  }
+
+  async exportAllEntities(): Promise<WorkspaceExport> {
+    // Только живые записи: удалённое остаётся удалённым и в копии
+    // (`StoragePort.exportAllEntities`). У связей `task_labels`/
+    // `task_links`/`reminders`/серий поля `deleted_at` нет вовсе — они
+    // выбираются целиком.
+    const alive = ' WHERE deleted_at IS NULL';
+    const [
+      projects,
+      sections,
+      tasks,
+      labels,
+      taskLabels,
+      checklistItems,
+      reminders,
+      recurrenceSeries,
+      taskLinks,
+      attachments,
+    ] = await Promise.all([
+      this.driver.queryAll<SqliteRow>(`SELECT * FROM "projects"${alive}`, []),
+      this.driver.queryAll<SqliteRow>(`SELECT * FROM "sections"${alive}`, []),
+      this.driver.queryAll<SqliteRow>(`SELECT * FROM "tasks"${alive}`, []),
+      this.driver.queryAll<SqliteRow>(`SELECT * FROM "labels"${alive}`, []),
+      this.driver.queryAll<SqliteRow>('SELECT * FROM "task_labels"', []),
+      this.driver.queryAll<SqliteRow>(`SELECT * FROM "checklist_items"${alive}`, []),
+      this.driver.queryAll<SqliteRow>('SELECT * FROM "reminders"', []),
+      this.driver.queryAll<SqliteRow>('SELECT * FROM "recurrence_series"', []),
+      this.driver.queryAll<SqliteRow>('SELECT * FROM "task_links"', []),
+      this.driver.queryAll<SqliteRow>('SELECT * FROM "attachments"', []),
+    ]);
+    return {
+      projects: projects.map(rowToProject),
+      sections: sections.map(rowToSection),
+      tasks: tasks.map(rowToTask),
+      labels: labels.map(rowToLabel),
+      taskLabels: taskLabels.map(rowToTaskLabel),
+      checklistItems: checklistItems.map(rowToChecklistItem),
+      reminders: reminders.map(rowToReminder),
+      recurrenceSeries: recurrenceSeries.map(rowToRecurrenceSeries),
+      taskLinks: taskLinks.map(rowToTaskLink),
+      attachments: attachments.map(rowToAttachment),
+    };
   }
 
   async purgeExpiredTombstones(now: Temporal.Instant): Promise<TombstonePurgeSummary> {

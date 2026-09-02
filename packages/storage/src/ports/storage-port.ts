@@ -1,5 +1,19 @@
 import type { Temporal } from '@js-temporal/polyfill';
 
+import type {
+  Attachment,
+  ChecklistItem,
+  ImportBatch,
+  Label,
+  Project,
+  RecurrenceSeries,
+  Reminder,
+  Section,
+  Task,
+  TaskLabel,
+  TaskLink,
+} from '@shagi/core';
+
 import type { DomainMutation } from './transaction.js';
 import type { StorageQueryPort } from './query-port.js';
 
@@ -22,6 +36,25 @@ import type { StorageQueryPort } from './query-port.js';
  */
 export interface StorageWriteTransaction extends StorageQueryPort {
   applyMutation(mutation: DomainMutation): Promise<void>;
+
+  /**
+   * Запись `import_batches` — единственная сущность со своим write-методом,
+   * а не через `applyMutation` (`01§26`, «Every import has
+   * `import_batch_id`»).
+   *
+   * Причина ровно та, что уже записана в `import-batch-repository.ts`:
+   * `import_batch` СОЗНАТЕЛЬНО не входит в `EntityType` (`@shagi/core`) —
+   * он не синхронизируется обычным merge'ем и не имеет outbox-записи, а
+   * `applyMutation` без outbox запрещена и типом, и рантайм-проверкой.
+   * Втащить batch в `EntityType` значило бы объявить его синхронизируемым,
+   * то есть соврать про модель; поэтому у него собственный путь записи —
+   * зато В ТОЙ ЖЕ транзакции, что и импортируемые сущности, когда это
+   * нужно.
+   *
+   * Идемпотентна по `id`: повторная запись того же batch обновляет его
+   * (импорт помечает batch завершённым, а откат — отменённым, тем же id).
+   */
+  saveImportBatch(batch: ImportBatch): Promise<void>;
 }
 
 /** Итог чистки просроченных tombstone (`../tombstone/tombstone.ts`) — по
@@ -80,4 +113,36 @@ export interface StoragePort extends StorageQueryPort {
    * человек считает, что данных нет, а часть осталась.
    */
   eraseAllLocalData(): Promise<void>;
+
+  /**
+   * Полное содержимое рабочего пространства — источник для экспорта бэкапа
+   * (`01§27`).
+   *
+   * Отдельный метод, а не набор вызовов репозиториев, по простой причине:
+   * репозитории отвечают на вопросы ЭКРАНОВ («задачи этого проекта», «на
+   * эту дату», «этой серии»), и собрать из них ВСЁ невозможно — задача без
+   * даты, без проекта и без родителя не попадает ни в одну выборку.
+   * Бэкап, потерявший такую задачу, хуже отсутствующего: человек считает,
+   * что копия есть.
+   *
+   * Что сюда НЕ входит и почему — `@shagi/importer`
+   * `backup/snapshot.ts`: очередь синхронизации, конфликты, партии импорта
+   * и любые секреты (`01§27`: «Never include auth/device secrets»).
+   * Включая tombstone: удалённое остаётся удалённым и в копии.
+   */
+  exportAllEntities(): Promise<WorkspaceExport>;
+}
+
+/** Полный граф рабочего пространства — то, что уезжает в бэкап. */
+export interface WorkspaceExport {
+  readonly projects: readonly Project[];
+  readonly sections: readonly Section[];
+  readonly tasks: readonly Task[];
+  readonly labels: readonly Label[];
+  readonly taskLabels: readonly TaskLabel[];
+  readonly checklistItems: readonly ChecklistItem[];
+  readonly reminders: readonly Reminder[];
+  readonly recurrenceSeries: readonly RecurrenceSeries[];
+  readonly taskLinks: readonly TaskLink[];
+  readonly attachments: readonly Attachment[];
 }
