@@ -1,0 +1,62 @@
+/**
+ * `ProjectDetail` (M17/M18) — вёрстка по хендоффу дизайна (`docs/spec/DESIGN/
+ * source_unpacked/ШАГИ - R1 Design.dc.html`, `#sec-projects`): заголовок с
+ * кнопкой «назад», переключатель Список/Доска, интервалы между секциями,
+ * горизонтальный скролл колонок Доски (макет прямо показывает
+ * `overflow-x:auto` на ряде колонок). `SectionHeader`/`BoardColumn`/
+ * `TaskListRow`/`TaskBoardCard`/`InlineAddForm`/`CreateSectionForm`
+ * (`@shagi/ui`) уже несут собственную стилизацию — этот файл только внешняя
+ * раскладка вокруг них, их внутреннюю структуру не трогает.
+ */
+
+.shagi-project-detail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  padding: var(--space-5) var(--space-5) var(--space-10);
+}
+
+.shagi-project-detail__header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.shagi-project-detail__header-title {
+  flex: 1;
+  min-width: 0;
+}
+
+.shagi-project-detail__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.shagi-project-detail__section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.shagi-project-detail__section-tasks > * {
+  border-bottom: 1px solid var(--border);
+}
+
+.shagi-project-detail__section-tasks > *:last-child {
+  border-bottom: none;
+}
+
+/* Ряд колонок Доски — горизонтальный скролл, не перенос (макет:
+ * `overflow-x:auto;overflow-y:hidden`, `#sec-projects` `[R1][M][18]`). */
+.shagi-project-detail__board {
+  display: flex;
+  gap: var(--space-3);
+  overflow-x: auto;
+  padding-bottom: var(--space-2);
+}
+
+.shagi-project-detail__board > * {
+  flex-shrink: 0;
+  width: 220px;
+}

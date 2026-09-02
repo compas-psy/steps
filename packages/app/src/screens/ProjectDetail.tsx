@@ -157,6 +157,7 @@ import {
 } from '@shagi/ui';
 
 import { useAppController, useStorage } from '../state/context.js';
+import './ProjectDetail.css';
 
 // --- Локальная идентичность устройства/владельца (см. заголовок файла) ------
 
@@ -998,22 +999,26 @@ export function ProjectDetail(): ReactElement | null {
   if (project === null || sections === null) return null;
 
   return (
-    <div>
-      <IconButton
-        icon="back"
-        label={t('projectDetail', 'back.label')}
-        onClick={() => controller.goTo('projects')}
-      />
-      <ProjectHeader
-        title={project.title}
-        menuOpen={false}
-        onMenuOpenChange={() => {
-          /* см. заголовок файла: у проекта пока нет действий в этом пакете работ */
-        }}
-        menuSections={[]}
-        menuLabel={t('projectDetail', 'header.menuLabel')}
-        triggerLabel={t('projectDetail', 'header.menuTriggerLabel')}
-      />
+    <div className="shagi-project-detail">
+      <div className="shagi-project-detail__header">
+        <IconButton
+          icon="back"
+          label={t('projectDetail', 'back.label')}
+          onClick={() => controller.goTo('projects')}
+        />
+        <div className="shagi-project-detail__header-title">
+          <ProjectHeader
+            title={project.title}
+            menuOpen={false}
+            onMenuOpenChange={() => {
+              /* см. заголовок файла: у проекта пока нет действий в этом пакете работ */
+            }}
+            menuSections={[]}
+            menuLabel={t('projectDetail', 'header.menuLabel')}
+            triggerLabel={t('projectDetail', 'header.menuTriggerLabel')}
+          />
+        </div>
+      </div>
 
       {errorMessage !== null && (
         <Toast
@@ -1059,7 +1064,7 @@ export function ProjectDetail(): ReactElement | null {
       />
 
       {view === 'list' ? (
-        <div>
+        <div className="shagi-project-detail__list">
           {sectionEntries.map((entry) => {
             const section = sections.find((candidate) => candidate.id === entry.sectionId) ?? null;
             const sectionIndex =
@@ -1068,6 +1073,7 @@ export function ProjectDetail(): ReactElement | null {
                 : sections.findIndex((candidate) => candidate.id === section.id);
             return (
               <div
+                className="shagi-project-detail__section"
                 key={sectionKeyOf(entry.sectionId)}
                 data-testid={`section-${sectionKeyOf(entry.sectionId)}`}
                 onDragOver={preventDefault}
@@ -1107,27 +1113,31 @@ export function ProjectDetail(): ReactElement | null {
                     />
                   </div>
                 )}
-                {entry.tasks.map((task) => (
-                  <TaskListRow
-                    key={task.id}
-                    task={task}
-                    sectionEntry={entry}
-                    dragging={draggedTask?.task.id === task.id}
-                    menuOpen={openMenuTaskId === task.id}
-                    onToggleMenu={() =>
-                      setOpenMenuTaskId((id) => (id === task.id ? null : task.id))
-                    }
-                    onCloseMenu={() => setOpenMenuTaskId(null)}
-                    handlers={{
-                      onComplete: handleComplete,
-                      onMoveToSection: handleMoveToSection,
-                      onDelete: handleDelete,
-                    }}
-                    onDragStart={handleDragStart}
-                    onDropOnTask={handleDropOnTask}
-                    onOpen={(openedTask) => controller.openTask(openedTask.id)}
-                  />
-                ))}
+                {entry.tasks.length > 0 && (
+                  <div className="shagi-project-detail__section-tasks">
+                    {entry.tasks.map((task) => (
+                      <TaskListRow
+                        key={task.id}
+                        task={task}
+                        sectionEntry={entry}
+                        dragging={draggedTask?.task.id === task.id}
+                        menuOpen={openMenuTaskId === task.id}
+                        onToggleMenu={() =>
+                          setOpenMenuTaskId((id) => (id === task.id ? null : task.id))
+                        }
+                        onCloseMenu={() => setOpenMenuTaskId(null)}
+                        handlers={{
+                          onComplete: handleComplete,
+                          onMoveToSection: handleMoveToSection,
+                          onDelete: handleDelete,
+                        }}
+                        onDragStart={handleDragStart}
+                        onDropOnTask={handleDropOnTask}
+                        onOpen={(openedTask) => controller.openTask(openedTask.id)}
+                      />
+                    ))}
+                  </div>
+                )}
                 <InlineAddForm
                   sectionEntry={entry}
                   inputRef={(el) => {
@@ -1141,7 +1151,7 @@ export function ProjectDetail(): ReactElement | null {
           })}
         </div>
       ) : (
-        <div style={{ display: 'flex' }}>
+        <div className="shagi-project-detail__board">
           {sectionEntries.map((entry) => {
             const section = sections.find((candidate) => candidate.id === entry.sectionId) ?? null;
             const sectionIndex =
