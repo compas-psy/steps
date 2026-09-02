@@ -20,5 +20,12 @@
   "dataPrivacy.analytics.description": "Приложение не считает ни открытий, ни действий и не передаёт их никому.",
   "dataPrivacy.crashes.title": "Отчёты о сбоях",
   "dataPrivacy.crashes.badge": "Не отправляем",
-  "dataPrivacy.crashes.description": "Если приложение упадёт, отчёт не уйдёт никуда — его некому получать."
+  "dataPrivacy.crashes.description": "Если приложение упадёт, отчёт не уйдёт никуда — его некому получать.",
+  "dataPrivacy.erase.title": "Удалить локальные данные",
+  "dataPrivacy.erase.description": "Стереть с этого устройства все задачи, проекты и метки.",
+  "dataPrivacy.erase.action": "Удалить",
+  "dataPrivacy.erase.dialogTitle": "Удалить все данные с этого устройства?",
+  "dataPrivacy.erase.warning": "Восстановить будет неоткуда: копии в облаке нет, приложение хранит данные только здесь. Задачи, проекты, метки и история — всё будет стёрто.",
+  "dataPrivacy.erase.confirm": "Удалить всё",
+  "dataPrivacy.erase.cancel": "Отмена"
 }

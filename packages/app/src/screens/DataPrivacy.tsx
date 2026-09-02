@@ -24,15 +24,32 @@
  *     нарисовать выключенный переключатель.
  *   * Юридические документы — в репозитории их нет ни одного (ни текста, ни
  *     адреса), ссылаться не на что.
- *   * `Удалить локальные данные` — у `StoragePort` (`@shagi/storage`) нет
- *     операции полного стирания; она заводится вместе с адаптерами и
- *     контрактными тестами, это отдельный пакет работ, а не строка в
- *     разметке.
  *   * `Удалить аккаунт` — аккаунтов в R1 нет вовсе (сервера нет).
  *
  * Тот же принцип, по которому `Settings.tsx` держит ровно одну строку:
  * никогда не изображать нерабочую функциональность. Каждый следующий пакет
  * работ допишет сюда свою строку сам.
+ *
+ * --- M52 «Удалить локальные данные» (локальная половина) --------------------
+ *
+ * Единственное ДЕЙСТВИЕ на экране — и оно настоящее: `storage.eraseAllLocalData()`
+ * (`@shagi/storage`, покрыт общим контрактом на всех трёх адаптерах). §13
+ * `05_SECURITY_PRIVACY_LEGAL.md` требует двух вещей, обе выполнены буквально:
+ *
+ *   1. подтверждение — диалог, а не мгновенное срабатывание строки;
+ *   2. предупреждение, ПРЯМО говорящее, что восстановления из облака нет
+ *      (`dataPrivacy.erase.warning`) — не «действие необратимо» вообще, а
+ *      именно «копии в облаке нет».
+ *
+ * «Удалить аккаунт» рядом НЕ появляется: та же §13 запрещает смешивать
+ * локальное удаление с удалением аккаунта, а аккаунтов в R1 нет вовсе —
+ * строка была бы и обманом, и нарушением требования разделять эти два
+ * действия.
+ *
+ * После стирания — `controller.goTo('welcome')`: экраны читают хранилище
+ * при монтировании, и оставаться на настройках поверх пустого хранилища
+ * значило бы показывать состояние, которого больше нет. Человек попадает
+ * туда же, куда попал бы на новом устройстве.
  *
  * --- Строка «Хранение» отвечает по факту, а не по намерению ----------------
  *
@@ -50,18 +67,30 @@
  * заводить память об источнике под одно значение не за чем (см. заголовок
  * `state/store.ts`).
  */
-import type { ReactElement } from 'react';
+import { useState, type ReactElement } from 'react';
 
 import { t } from '@shagi/i18n';
-import { Card, CardBody, DataPrivacyRow, IconButton } from '@shagi/ui';
+import { Button, Card, CardBody, DataPrivacyRow, IconButton, Modal } from '@shagi/ui';
 
-import { useAppController, useHost } from '../state/context.js';
+import { useAppController, useHost, useStorage } from '../state/context.js';
 import './DataPrivacy.css';
 
 export function DataPrivacy(): ReactElement {
   const controller = useAppController();
   const host = useHost();
+  const storage = useStorage();
   const isMemory = host.storageBackend.kind === 'memory';
+
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [erasing, setErasing] = useState(false);
+
+  async function erase(): Promise<void> {
+    setErasing(true);
+    await storage.eraseAllLocalData();
+    setConfirmOpen(false);
+    setErasing(false);
+    controller.goTo('welcome');
+  }
 
   return (
     <div className="shagi-data-privacy">
@@ -108,7 +137,44 @@ export function DataPrivacy(): ReactElement {
             />
           </CardBody>
         </Card>
+
+        <Card>
+          <CardBody padding="none" className="shagi-data-privacy__rows">
+            <DataPrivacyRow
+              title={
+                <span className="shagi-data-privacy__destructive">
+                  {t('settings', 'dataPrivacy.erase.title')}
+                </span>
+              }
+              description={t('settings', 'dataPrivacy.erase.description')}
+              action={{
+                kind: 'button',
+                label: t('settings', 'dataPrivacy.erase.action'),
+                variant: 'destructive',
+                onClick: () => setConfirmOpen(true),
+              }}
+            />
+          </CardBody>
+        </Card>
       </div>
+
+      <Modal
+        open={confirmOpen}
+        onClose={() => setConfirmOpen(false)}
+        title={t('settings', 'dataPrivacy.erase.dialogTitle')}
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setConfirmOpen(false)} disabled={erasing}>
+              {t('settings', 'dataPrivacy.erase.cancel')}
+            </Button>
+            <Button variant="destructive" loading={erasing} onClick={() => void erase()}>
+              {t('settings', 'dataPrivacy.erase.confirm')}
+            </Button>
+          </>
+        }
+      >
+        <p className="shagi-data-privacy__warning">{t('settings', 'dataPrivacy.erase.warning')}</p>
+      </Modal>
     </div>
   );
 }

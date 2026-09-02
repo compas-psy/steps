@@ -299,6 +299,60 @@ export function runStorageContract(name: string, factory: () => StoragePort): vo
         await expect(storage.projects.findById(expired.id)).resolves.toBeNull();
         await expect(storage.projects.findById(fresh.id)).resolves.not.toBeNull();
       });
+
+      it('eraseAllLocalData стирает всё: и живые записи, и tombstone, и очередь синхронизации', async () => {
+        const storage = factory();
+        const project = makeProject();
+        const task = makeTask({ projectId: project.id });
+        const tombstoned = makeProject({
+          deletedAt: Temporal.Instant.fromEpochMilliseconds(1_700_000_000_000),
+        });
+
+        await storage.runTransaction(async (tx) => {
+          await tx.applyMutation({
+            writes: [
+              { entity: 'project', value: project },
+              { entity: 'project', value: tombstoned },
+              { entity: 'task', value: task },
+            ],
+            outbox: [makeOutboxEntry('task', task.id)],
+          });
+        });
+
+        await storage.eraseAllLocalData();
+
+        // Проверяются ВСЕ три вида содержимого, а не только очевидные
+        // задачи: наполовину стёртое хранилище хуже нестёртого — человек
+        // считает, что данных нет, а часть осталась.
+        await expect(storage.tasks.findById(task.id)).resolves.toBeNull();
+        await expect(storage.projects.findById(project.id)).resolves.toBeNull();
+        await expect(storage.projects.findById(tombstoned.id)).resolves.toBeNull();
+        await expect(storage.syncOutbox.listPending()).resolves.toEqual([]);
+      });
+
+      it('после eraseAllLocalData хранилищем можно продолжать пользоваться', async () => {
+        const storage = factory();
+        const before = makeProject();
+        await storage.runTransaction(async (tx) => {
+          await tx.applyMutation({
+            writes: [{ entity: 'project', value: before }],
+            outbox: [makeOutboxEntry('project', before.id)],
+          });
+        });
+
+        await storage.eraseAllLocalData();
+
+        // Стирание — не «закрыть базу»: экран настроек остаётся открытым, и
+        // человек сразу заводит первую задачу заново.
+        const fresh = makeProject();
+        await storage.runTransaction(async (tx) => {
+          await tx.applyMutation({
+            writes: [{ entity: 'project', value: fresh }],
+            outbox: [makeOutboxEntry('project', fresh.id)],
+          });
+        });
+        await expect(storage.projects.findById(fresh.id)).resolves.not.toBeNull();
+      });
     });
 
     describe('Интеграция с валидатором @shagi/core — не второй валидатор, а прямое использование', () => {

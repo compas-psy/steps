@@ -45,6 +45,7 @@ import {
 } from './search-index.js';
 import { allObjectStoreNames } from './schema.js';
 import {
+  clearStore,
   deleteFromStore,
   getAllFromStore,
   putInStore,
@@ -208,6 +209,23 @@ export class IndexedDbStorage implements StoragePort {
 
     await transactionDone(idbTx);
     return result;
+  }
+
+  async eraseAllLocalData(): Promise<void> {
+    const db = await this.dbPromise;
+    // Одна транзакция на ВСЕ store (`allObjectStoreNames` — тот же список,
+    // что и у записи): наполовину стёртая база хуже нестёртой, человек
+    // считает, что данных нет, а часть осталась. База не удаляется целиком
+    // (`deleteDatabase`) намеренно — это потребовало бы закрыть соединение
+    // и переоткрыть его со всеми миграциями, тогда как приложение с этим
+    // `StoragePort` продолжает работать здесь же, сразу после стирания.
+    const idbTx = db.transaction(allObjectStoreNames(), 'readwrite');
+    const access = storeAccessFor(idbTx);
+    for (const name of allObjectStoreNames()) {
+      // eslint-disable-next-line no-await-in-loop -- store'ы чистятся в ОДНОЙ транзакции, параллелить их нечем
+      await clearStore(access, name);
+    }
+    await transactionDone(idbTx);
   }
 
   async purgeExpiredTombstones(now: Temporal.Instant): Promise<TombstonePurgeSummary> {

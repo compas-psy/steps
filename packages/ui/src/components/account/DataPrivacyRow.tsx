@@ -19,7 +19,7 @@
 import type { ReactElement, ReactNode } from 'react';
 
 import { Badge, type BadgeVariant } from '../Badge.js';
-import { Button } from '../Button.js';
+import { Button, type ButtonVariant } from '../Button.js';
 import { Icon } from '../Icon.js';
 import { Switch } from '../Switch.js';
 import './DataPrivacyRow.css';
@@ -41,6 +41,10 @@ export type DataPrivacyRowAction =
       readonly label: ReactNode;
       readonly onClick: () => void;
       readonly disabled?: boolean;
+      /** По умолчанию `ghost` — обычное действие строки. `destructive`
+       * обязателен там, где кнопка стирает данные: акцентный зелёный на
+       * такой кнопке читается как «безопасно», а это ровно наоборот. */
+      readonly variant?: ButtonVariant;
     }
   | {
       readonly kind: 'navigate';
@@ -85,7 +89,12 @@ function ActionSlot({ action }: { readonly action: DataPrivacyRowAction }): Reac
       );
     case 'button':
       return (
-        <Button variant="ghost" size="sm" disabled={action.disabled} onClick={action.onClick}>
+        <Button
+          variant={action.variant ?? 'ghost'}
+          size="sm"
+          disabled={action.disabled}
+          onClick={action.onClick}
+        >
           {action.label}
         </Button>
       );

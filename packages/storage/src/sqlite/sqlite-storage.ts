@@ -1,6 +1,7 @@
 import { Temporal } from '@js-temporal/polyfill';
 
 import { BASELINE_SCHEMA_PLAN } from '../migration/baseline-schema-plan.js';
+import { ALL_TABLES } from '../schema/index.js';
 import { runMigrations } from '../migration/migration.js';
 import type {
   StoragePort,
@@ -92,6 +93,20 @@ export class SqliteStorage implements StoragePort {
         applyMutation: (mutation) => applyMutationSql(this.driver, mutation),
       };
       return run(tx);
+    });
+  }
+
+  async eraseAllLocalData(): Promise<void> {
+    // Список таблиц берётся из схемы (`ALL_TABLES`), а не переписывается
+    // здесь: второй список однажды отстанет ровно на ту таблицу, которую
+    // забудут стереть. `tasks_fts` — не в `ALL_TABLES` (это виртуальная
+    // FTS5-таблица, `./fts.ts`), поэтому названа отдельно и явно.
+    await this.driver.transaction(async () => {
+      for (const table of ALL_TABLES) {
+        // eslint-disable-next-line no-await-in-loop -- одна транзакция, порядок неважен, параллелить нечем
+        await this.driver.execute(`DELETE FROM "${table.name}"`);
+      }
+      await this.driver.execute('DELETE FROM tasks_fts');
     });
   }
 

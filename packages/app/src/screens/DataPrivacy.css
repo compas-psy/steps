@@ -44,3 +44,17 @@
 .shagi-data-privacy__rows.shagi-data-privacy__rows > * + * {
   border-top: 1px solid var(--border);
 }
+
+/* Разрушающее действие названо цветом И словом («Удалить»), а не одним
+ * цветом — §11 «state never color-only». */
+.shagi-data-privacy__destructive {
+  color: var(--destructive);
+  font-weight: var(--fw-semibold);
+}
+
+.shagi-data-privacy__warning {
+  margin: 0;
+  color: var(--foreground);
+  font-size: var(--text-body-secondary);
+  line-height: var(--lh-body-secondary);
+}

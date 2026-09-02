@@ -10,7 +10,7 @@ import { isTombstoneExpired } from '../tombstone/index.js';
 import { isNonEmptyArray } from '../values.js';
 
 import { createQueryPort } from './repositories.js';
-import { cloneTables, taskLabelKey, type InMemoryTables } from './tables.js';
+import { cloneTables, createEmptyTables, taskLabelKey, type InMemoryTables } from './tables.js';
 
 /**
  * Эталонная реализация `StoragePort` в памяти (задание пакета работ E02.1,
@@ -86,6 +86,14 @@ export class InMemoryStorage implements StoragePort {
     // пробрасывает его вызывающему сам), `draft` просто теряется — откат.
     this.tables = draft;
     return result;
+  }
+
+  async eraseAllLocalData(): Promise<void> {
+    // Целиком новый набор пустых таблиц, а не `.clear()` по каждой из
+    // тринадцати: список таблиц живёт в `createEmptyTables`, и повторять
+    // его здесь значило бы завести второй список, который однажды отстанет
+    // от первого ровно на ту таблицу, которую забудут стереть.
+    this.tables = createEmptyTables();
   }
 
   async purgeExpiredTombstones(now: Temporal.Instant): Promise<TombstonePurgeSummary> {

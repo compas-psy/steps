@@ -1,7 +1,7 @@
 // eslint-disable-next-line import/no-unassigned-import -- побочный эффект: регистрирует indexedDB в globalThis, присваивать нечего
 import 'fake-indexeddb/auto';
 import { describe, expect, it } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createUnavailablePlatform } from '@shagi/platform';
 import { t } from '@shagi/i18n';
@@ -70,6 +70,71 @@ describe('DataPrivacy (M51)', () => {
     expect(screen.getByText(t('settings', 'dataPrivacy.crashes.badge'))).toBeInTheDocument();
   });
 
+  it('удаление данных требует подтверждения и прямо говорит, что восстановить неоткуда', async () => {
+    const user = userEvent.setup();
+    render(
+      <AppProvider host={testHost(MEMORY)}>
+        <DataPrivacy />
+      </AppProvider>,
+    );
+
+    // Сама строка НЕ стирает ничего — §13 `05_SECURITY_PRIVACY_LEGAL.md`
+    // требует подтверждения.
+    await user.click(
+      screen.getByRole('button', { name: t('settings', 'dataPrivacy.erase.action') }),
+    );
+
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    // Предупреждение обязано быть именно про отсутствие облачной копии, а
+    // не абстрактное «действие необратимо».
+    expect(screen.getByText(t('settings', 'dataPrivacy.erase.warning'))).toBeInTheDocument();
+  });
+
+  it('подтверждение действительно стирает хранилище и уводит на первый экран', async () => {
+    const user = userEvent.setup();
+    const controller = createAppController({ screen: 'dataPrivacy' });
+    const host = testHost(MEMORY);
+    render(
+      <AppProvider host={host} controller={controller}>
+        <DataPrivacy />
+      </AppProvider>,
+    );
+
+    await user.click(
+      screen.getByRole('button', { name: t('settings', 'dataPrivacy.erase.action') }),
+    );
+    await user.click(
+      screen.getByRole('button', { name: t('settings', 'dataPrivacy.erase.confirm') }),
+    );
+
+    // Проверяется не «диалог закрылся», а что экран увёл человека туда, куда
+    // он попал бы на новом устройстве: оставаться на настройках поверх
+    // пустого хранилища значило бы показывать состояние, которого нет.
+    await waitFor(() => {
+      expect(controller.getState().screen).toBe('welcome');
+    });
+  });
+
+  it('отмена в диалоге ничего не стирает', async () => {
+    const user = userEvent.setup();
+    const controller = createAppController({ screen: 'dataPrivacy' });
+    render(
+      <AppProvider host={testHost(MEMORY)} controller={controller}>
+        <DataPrivacy />
+      </AppProvider>,
+    );
+
+    await user.click(
+      screen.getByRole('button', { name: t('settings', 'dataPrivacy.erase.action') }),
+    );
+    await user.click(
+      screen.getByRole('button', { name: t('settings', 'dataPrivacy.erase.cancel') }),
+    );
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(controller.getState().screen).toBe('dataPrivacy');
+  });
+
   it('не рисует ни одного нерабочего действия: только «Назад» и ни одного тумблера', () => {
     render(
       <AppProvider host={testHost(INDEXEDDB)}>
@@ -77,11 +142,12 @@ describe('DataPrivacy (M51)', () => {
       </AppProvider>,
     );
 
-    // Экспорт, удаление данных и тумблер согласия из макета M51 в R1 не
-    // реализованы (см. заголовок `DataPrivacy.tsx`). Пока их нет — их не
-    // должно быть и на экране: тест обязан покраснеть на первой же строке,
-    // дописанной «чтобы было как в макете».
-    expect(screen.getAllByRole('button')).toHaveLength(1);
+    // Экспорт, тумблер согласия и «Удалить аккаунт» из макета M51 в R1 не
+    // реализованы или запрещены (см. заголовок `DataPrivacy.tsx`). Пока их
+    // нет — их не должно быть и на экране: тест обязан покраснеть на первой
+    // же строке, дописанной «чтобы было как в макете». Две кнопки —
+    // «Назад» и «Удалить» (единственное настоящее действие экрана).
+    expect(screen.getAllByRole('button')).toHaveLength(2);
     expect(screen.queryByRole('switch')).not.toBeInTheDocument();
   });
 

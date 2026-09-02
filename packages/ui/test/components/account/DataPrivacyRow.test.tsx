@@ -80,6 +80,20 @@ describe('DataPrivacyRow', () => {
     expect(screen.queryByRole('switch')).not.toBeInTheDocument();
   });
 
+  it('action="button" с variant="destructive" рисует разрушающую кнопку, а не акцентную', () => {
+    render(
+      <DataPrivacyRow
+        title="Удалить локальные данные"
+        action={{ kind: 'button', label: 'Удалить', onClick: vi.fn(), variant: 'destructive' }}
+      />,
+    );
+    // Зелёная акцентная кнопка на стирании данных читается как «безопасно» —
+    // это ровно наоборот, поэтому вид проверяется, а не оставляется на глаз.
+    expect(screen.getByRole('button', { name: 'Удалить' })).toHaveClass(
+      'shagi-button--destructive',
+    );
+  });
+
   it('action="status" показывает статус справа и ничего не делает интерактивного', () => {
     render(
       <DataPrivacyRow
