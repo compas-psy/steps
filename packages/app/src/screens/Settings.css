@@ -1,0 +1,36 @@
+/**
+ * `Settings` (M41) — та же композиция страницы, что у остальных экранов
+ * сессии по хендоффу (`docs/spec/DESIGN/source_unpacked/ШАГИ - R1
+ * Design.dc.html`, `id="sec-settings"`): отступы страницы, ряд «кнопка
+ * возврата + заголовок», карточка со строками и линией между ними.
+ * До этого файла экран рендерился голыми `<div>` без единого отступа.
+ */
+
+.shagi-settings {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  padding: var(--space-5) var(--space-5) var(--space-10);
+}
+
+.shagi-settings__header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.shagi-settings__title {
+  font-size: var(--text-mobile-heading);
+  font-weight: var(--fw-bold);
+  color: var(--foreground);
+  margin: 0;
+}
+
+/* Класс продублирован намеренно (специфичность 0-2-0, а не 0-1-0): строки
+ * приходят из `@shagi/ui`, чей CSS попадает в бандл ПОЗЖЕ этого файла, и
+ * при равной специфичности выигрывал бы он. `border-top` у каждой строки
+ * кроме первой — то же самое, что `border-bottom` у всех кроме последней,
+ * но без отдельного правила-исключения. */
+.shagi-settings__rows.shagi-settings__rows > * + * {
+  border-top: 1px solid var(--border);
+}

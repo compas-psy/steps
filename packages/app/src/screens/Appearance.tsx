@@ -71,6 +71,7 @@ import {
   isThemePreference,
   type ThemePreference,
 } from '../theme/preference.js';
+import './Appearance.css';
 
 export function Appearance(): ReactElement {
   const controller = useAppController();
@@ -100,14 +101,14 @@ export function Appearance(): ReactElement {
   }
 
   return (
-    <div>
-      <div>
+    <div className="shagi-appearance">
+      <div className="shagi-appearance__header">
         <IconButton
           icon="close"
           label={t('settings', 'appearance.back.label')}
           onClick={() => controller.goTo('settings')}
         />
-        <h1>{t('settings', 'appearance.pageTitle')}</h1>
+        <h1 className="shagi-appearance__title">{t('settings', 'appearance.pageTitle')}</h1>
       </div>
 
       <Card padding="sm">

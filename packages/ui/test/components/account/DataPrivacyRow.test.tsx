@@ -80,6 +80,21 @@ describe('DataPrivacyRow', () => {
     expect(screen.queryByRole('switch')).not.toBeInTheDocument();
   });
 
+  it('action="status" показывает статус справа и ничего не делает интерактивного', () => {
+    render(
+      <DataPrivacyRow
+        title="Хранение"
+        description="Данные лежат только на этом устройстве"
+        action={{ kind: 'status', label: 'Только здесь' }}
+      />,
+    );
+    expect(screen.getByText('Только здесь')).toBeInTheDocument();
+    // Статус — сообщение, а не действие: если он вдруг станет кликабельным,
+    // человек будет по нему тыкать и ничего не получать.
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
+    expect(screen.queryByRole('switch')).not.toBeInTheDocument();
+  });
+
   it('action="switch" с disabled отключает переключатель', () => {
     render(
       <DataPrivacyRow

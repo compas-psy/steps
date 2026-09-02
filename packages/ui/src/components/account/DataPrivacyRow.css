@@ -10,14 +10,23 @@
   gap: var(--space-3);
   width: 100%;
   min-height: var(--touch-target-min);
-  padding: var(--space-3) var(--space-1);
-  border: none;
+  /* 16px по горизонтали — как в макете (`[R1][M][51]`, строки карточки
+   * `padding:13px 16px`). Было `--space-1`: текст лип к краю карточки. */
+  padding: var(--space-3) var(--space-4);
   background: transparent;
   font-family: var(--font-sans);
   text-align: left;
 }
 
 button.shagi-data-privacy-row {
+  /* Сброс рамки — ТОЛЬКО для кнопочного варианта: рамку по умолчанию рисует
+   * браузер у `<button>`, у `<div>` её нет вовсе. Раньше `border: none`
+   * стоял в общем правиле и молча съедал разделители, которые экран
+   * рисовал снаружи через `.список > *` (та же специфичность 0-1-0, а
+   * CSS `@shagi/ui` идёт в бандле позже — выигрывал он). Поймано осмотром
+   * собранного CSS, а не догадкой: `border-bottom-width` на строке
+   * действительно был `0px`. */
+  border: none;
   cursor: pointer;
   border-radius: var(--radius-sm);
   transition: background-color var(--motion-duration-fast) var(--motion-easing-standard);
@@ -58,6 +67,15 @@ button.shagi-data-privacy-row {
   display: inline-flex;
   flex-shrink: 0;
   align-items: center;
+}
+
+/* Статус выравнивается по ЗАГОЛОВКУ строки, а не по её середине: когда под
+ * заголовком есть описание в три строки, бейдж, висящий по центру, читается
+ * как относящийся к описанию, а не к строке. Макет `[R1][M][51]` рисует его
+ * ровно напротив заголовка. */
+.shagi-data-privacy-row__action--status {
+  align-self: flex-start;
+  padding-top: 1px;
 }
 
 .shagi-data-privacy-row__chevron {

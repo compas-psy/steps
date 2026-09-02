@@ -6,11 +6,11 @@
  * целиком как образец: `Card`/`CardBody padding="none"`/`DataPrivacyRow`,
  * без ручного `Divider` между строками, когда строка ровно одна).
  *
- * ЧЕСТНО: список несёт РОВНО ОДНУ строку — «Оформление» → `'appearance'`
- * (M42). Notifications/Account/Import-Export/Data & Privacy — из мокапа
- * M51 «Data & Privacy» (`docs/spec/DESIGN/source_unpacked/ШАГИ - R1 Design.dc.html`,
- * `id="sec-settings"`) и других разделов ТЗ, но ни один из этих экранов ещё
- * не реализован ни одним пакетом работ. Дописывать сюда строки, ведущие в
+ * ЧЕСТНО: список несёт РОВНО ДВЕ строки — «Оформление» → `'appearance'`
+ * (M42) и «Данные и конфиденциальность» → `'dataPrivacy'` (M51). Вторая
+ * появилась вместе со своим экраном, а не заранее. Notifications/Account/
+ * Import-Export — из других разделов ТЗ, но ни один из этих экранов ещё не
+ * реализован ни одним пакетом работ. Дописывать сюда строки, ведущие в
  * никуда («скоро», заглушка, недостижимый переход) — прямое нарушение
  * принципа «честный UI, никогда не изображай нерабочую функциональность»
  * (`.ultraplan/plan.md`, повторяется по всей истории пакетов работ). Каждый
@@ -36,29 +36,38 @@ import { t } from '@shagi/i18n';
 import { Card, CardBody, DataPrivacyRow, IconButton } from '@shagi/ui';
 
 import { useAppController } from '../state/context.js';
+import './Settings.css';
 
 export function Settings(): ReactElement {
   const controller = useAppController();
 
   return (
-    <div>
-      <div>
+    <div className="shagi-settings">
+      <div className="shagi-settings__header">
         <IconButton
           icon="close"
           label={t('settings', 'root.back.label')}
           onClick={controller.closeSettings}
         />
-        <h1>{t('settings', 'root.pageTitle')}</h1>
+        <h1 className="shagi-settings__title">{t('settings', 'root.pageTitle')}</h1>
       </div>
 
       <Card>
-        <CardBody padding="none">
+        <CardBody padding="none" className="shagi-settings__rows">
           <DataPrivacyRow
             title={t('settings', 'root.appearance.title')}
             action={{
               kind: 'navigate',
               label: t('settings', 'root.appearance.title'),
               onClick: () => controller.goTo('appearance'),
+            }}
+          />
+          <DataPrivacyRow
+            title={t('settings', 'root.dataPrivacy.title')}
+            action={{
+              kind: 'navigate',
+              label: t('settings', 'root.dataPrivacy.title'),
+              onClick: () => controller.goTo('dataPrivacy'),
             }}
           />
         </CardBody>

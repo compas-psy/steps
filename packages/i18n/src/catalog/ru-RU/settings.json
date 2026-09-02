@@ -6,5 +6,19 @@
   "appearance.back.label": "Назад",
   "appearance.options.system": "Как в системе",
   "appearance.options.light": "Светлая",
-  "appearance.options.dark": "Тёмная"
+  "appearance.options.dark": "Тёмная",
+  "root.dataPrivacy.title": "Данные и конфиденциальность",
+  "dataPrivacy.pageTitle": "Данные и конфиденциальность",
+  "dataPrivacy.back.label": "Назад",
+  "dataPrivacy.storage.title": "Хранение",
+  "dataPrivacy.storage.local.badge": "На этом устройстве",
+  "dataPrivacy.storage.local.description": "Задачи, проекты и настройки лежат в этом приложении и никуда не отправляются: сервера у этой версии нет.",
+  "dataPrivacy.storage.memory.badge": "До перезапуска",
+  "dataPrivacy.storage.memory.description": "Эта сборка держит данные в памяти: после закрытия приложения они не сохраняются. Постоянное хранилище появится позже.",
+  "dataPrivacy.analytics.title": "Аналитика",
+  "dataPrivacy.analytics.badge": "Не собираем",
+  "dataPrivacy.analytics.description": "Приложение не считает ни открытий, ни действий и не передаёт их никому.",
+  "dataPrivacy.crashes.title": "Отчёты о сбоях",
+  "dataPrivacy.crashes.badge": "Не отправляем",
+  "dataPrivacy.crashes.description": "Если приложение упадёт, отчёт не уйдёт никуда — его некому получать."
 }

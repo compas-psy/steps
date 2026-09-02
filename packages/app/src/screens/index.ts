@@ -28,12 +28,17 @@
  * `settings`/`appearance` (M41 Settings Root / M42 Appearance) — пакет работ
  * «Настройки: экран-хаб и тема оформления»: см. заголовок `state/store.ts`,
  * блок про `'settings'`/`'appearance'`, и заголовки `Settings.tsx`/`Appearance.tsx`.
+ *
+ * `dataPrivacy` (M51 Data & Privacy) — вторая строка хаба настроек: см.
+ * заголовок `DataPrivacy.tsx` за разбором, почему из шести строк макета
+ * честными для R1 остаются только сообщающие.
  */
 import type { ComponentType } from 'react';
 
 import type { ScreenId } from '../state/store.js';
 import { Appearance } from './Appearance.js';
 import { Completed } from './Completed.js';
+import { DataPrivacy } from './DataPrivacy.js';
 import { FirstTask } from './FirstTask.js';
 import { Inbox } from './Inbox.js';
 import { Launch } from './Launch.js';
@@ -50,6 +55,7 @@ import { Welcome } from './Welcome.js';
 
 export { Appearance } from './Appearance.js';
 export { Completed } from './Completed.js';
+export { DataPrivacy } from './DataPrivacy.js';
 export { FirstTask } from './FirstTask.js';
 export { Inbox } from './Inbox.js';
 export { Launch } from './Launch.js';
@@ -78,6 +84,7 @@ export const SCREENS: Partial<Record<ScreenId, ComponentType>> = {
   search: Search,
   plan: Plan,
   completed: Completed,
+  dataPrivacy: DataPrivacy,
   settings: Settings,
   appearance: Appearance,
 };

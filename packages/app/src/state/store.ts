@@ -110,6 +110,10 @@
  * `Settings.tsx`, и она же единственный путь назад (задание прямо это
  * оговаривает) — заводить память под источник, у которого нет других
  * значений, кроме одного, было бы состоянием ради состояния.
+ *
+ * `'dataPrivacy'` (M51 Data & Privacy) — ровно тот же случай и то же
+ * решение, что `'appearance'`: единственный вход — вторая строка
+ * `Settings.tsx`, возврат — `goTo('settings')`, своего поля возврата нет.
  */
 import type { Uuid } from '@shagi/core';
 
@@ -128,7 +132,8 @@ export type ScreenId =
   | 'plan'
   | 'completed'
   | 'settings'
-  | 'appearance';
+  | 'appearance'
+  | 'dataPrivacy';
 
 /** Откуда открыт Quick Add — см. блок про `quickAdd` в заголовке файла.
  * Только три из семи строк таблицы «Origin → Inherited values» (`01§3`) —

@@ -14,7 +14,7 @@ function testHost(): AppHost {
 }
 
 describe('Settings (M41)', () => {
-  it('рендерит заголовок и РОВНО одну строку «Оформление» (честный UI — никаких заглушек)', () => {
+  it('рендерит заголовок и РОВНО две строки хаба (честный UI — никаких заглушек)', () => {
     render(
       <AppProvider host={testHost()}>
         <Settings />
@@ -27,11 +27,13 @@ describe('Settings (M41)', () => {
     expect(
       screen.getByRole('button', { name: t('settings', 'root.appearance.title') }),
     ).toBeInTheDocument();
-    // Ровно одна строка-переход — единственная кнопка со строкой каталога,
-    // распознаваемой по совпадению текста «Оформление», не считая «Назад».
     expect(
-      screen.getAllByRole('button').filter((button) => button.textContent?.includes('Оформление')),
-    ).toHaveLength(1);
+      screen.getByRole('button', { name: t('settings', 'root.dataPrivacy.title') }),
+    ).toBeInTheDocument();
+    // Ровно две строки-перехода плюс «Назад» — и ни одной заглушки сверх
+    // того. Проверка обязана падать на первой же строке, дописанной «на
+    // будущее»: именно ради этого она считает кнопки, а не ищет знакомые.
+    expect(screen.getAllByRole('button')).toHaveLength(3);
   });
 
   it('клик по строке «Оформление» ведёт на экран appearance', async () => {
@@ -46,6 +48,20 @@ describe('Settings (M41)', () => {
     await user.click(screen.getByRole('button', { name: t('settings', 'root.appearance.title') }));
 
     expect(controller.getState().screen).toBe('appearance');
+  });
+
+  it('клик по строке «Данные и конфиденциальность» ведёт на экран dataPrivacy', async () => {
+    const user = userEvent.setup();
+    const controller = createAppController({ screen: 'settings' });
+    render(
+      <AppProvider host={testHost()} controller={controller}>
+        <Settings />
+      </AppProvider>,
+    );
+
+    await user.click(screen.getByRole('button', { name: t('settings', 'root.dataPrivacy.title') }));
+
+    expect(controller.getState().screen).toBe('dataPrivacy');
   });
 
   it('«Назад» возвращает на экран, с которого Settings был открыт (settingsReturnScreen)', async () => {

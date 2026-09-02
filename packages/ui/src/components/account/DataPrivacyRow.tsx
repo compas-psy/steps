@@ -18,6 +18,7 @@
  */
 import type { ReactElement, ReactNode } from 'react';
 
+import { Badge, type BadgeVariant } from '../Badge.js';
 import { Button } from '../Button.js';
 import { Icon } from '../Icon.js';
 import { Switch } from '../Switch.js';
@@ -46,6 +47,18 @@ export type DataPrivacyRowAction =
       /** Доступное имя всей строки-кнопки — см. заголовок файла. */
       readonly label: string;
       readonly onClick: () => void;
+    }
+  | {
+      /**
+       * Строка ничего не делает — она СООБЩАЕТ состояние (макет M51 «Data &
+       * Privacy»: «Хранение» + бейдж справа). Отдельный вид, а не `'none'` с
+       * бейджем в `title`: у `'none'` правого слота нет вовсе, а положить
+       * `Badge` в заголовок — значит поставить статус в поток текста слева,
+       * то есть нарисовать не то, что показывает макет.
+       */
+      readonly kind: 'status';
+      readonly label: ReactNode;
+      readonly variant?: BadgeVariant;
     };
 
 export interface DataPrivacyRowProps {
@@ -82,6 +95,10 @@ function ActionSlot({ action }: { readonly action: DataPrivacyRowAction }): Reac
           <Icon name="chevron" size={16} />
         </span>
       );
+    case 'status':
+      // `secondary` по умолчанию — статус описывает положение дел, а не
+      // достижение и не тревогу; звать глаз тут нечем (§11).
+      return <Badge variant={action.variant ?? 'secondary'}>{action.label}</Badge>;
   }
 }
 
@@ -123,7 +140,13 @@ export function DataPrivacyRow({
     <div className={classes}>
       {content}
       {action.kind !== 'none' && (
-        <span className="shagi-data-privacy-row__action">
+        <span
+          className={
+            action.kind === 'status'
+              ? 'shagi-data-privacy-row__action shagi-data-privacy-row__action--status'
+              : 'shagi-data-privacy-row__action'
+          }
+        >
           <ActionSlot action={action} />
         </span>
       )}
