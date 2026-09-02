@@ -149,10 +149,17 @@ jobs:
       # весь смысл шага. Один вызов на все три lock-файла — это ОДИН отчёт
       # и одна точка отказа, а не три шага, которые можно молча пропустить
       # по одному правкой workflow.
+      #
+      # `--config .osv-scanner.toml` — явно, а не автоподхватом (тот же
+      # приём, что у gitleaks выше в этом файле): узкий список игнорируемых
+      # ID транзитивных GTK/glib-advisory `tauri`, без фикса без смены его
+      # мажорной версии — разбор целиком в самом `.osv-scanner.toml`. Новая
+      # уязвимость в любом другом пакете по-прежнему валит job.
       - name: Скан pnpm-lock.yaml и Cargo.lock (mobile, desktop)
         run: |
           set -euo pipefail
           "$(go env GOPATH)/bin/osv-scanner" scan source \
+            --config .osv-scanner.toml \
             --lockfile=pnpm-lock.yaml \
             --lockfile=apps/mobile/src-tauri/Cargo.lock \
             --lockfile=apps/desktop/src-tauri/Cargo.lock
