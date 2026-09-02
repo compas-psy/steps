@@ -26,17 +26,13 @@
  *    задача — то есть работает не только рендер, но и доменный слой поверх
  *    хранилища.
  *
- * ── Чего здесь НЕТ и почему ────────────────────────────────────────────────
- *
- * Проверки «закрыть приложение, открыть заново, задача на месте» здесь нет
- * СОЗНАТЕЛЬНО: `apps/mobile/src/main.tsx` передаёт `storageBackend:
- * {kind:'memory'}` — на Android персистентности пока не существует вовсе
- * (ждёт Tauri SQL-плагина, см. комментарий в самом `main.tsx` и
- * `packages/app/src/state/storage-backend.ts`). Тест, который «проверяет»
- * переживание перезапуска там, где хранилище заведомо в памяти, был бы
- * фикцией: он либо всегда красный, либо проверяет не то, что называет.
- * Как только появится настоящий адаптер — сюда добавляется шаг
- * `am force-stop` + повторный `am start` + поиск той же задачи.
+ * 4. Задача переживает ЗАКРЫТИЕ приложения: процесс гасится `am force-stop`
+ *    (не «свернуть» — именно убить), приложение открывается заново, задача
+ *    ищется на экране снова. Это единственная проверка, которая отличает
+ *    настоящее хранилище от красивого состояния в памяти, и до ADR-0006 её
+ *    здесь не было, потому что и персистентности не было (`storageBackend:
+ *    {kind:'memory'}`). Теперь она есть — и падает, если IndexedDB в
+ *    webview Android поведёт себя не так, как обещает Chromium.
  */
 
 import { execFileSync } from 'node:child_process';
@@ -190,15 +186,11 @@ function typeIntoFirstInput(text) {
 
 // --- Сценарий ---------------------------------------------------------------
 
-async function main() {
-  const taskTitle = 'Проверка сборки';
-
-  console.log('── Установка APK ──');
-  const apkPath = process.argv[2];
-  if (apkPath === undefined) fail('не передан путь к APK: node android-smoke.mjs <путь.apk>');
-  adb(['install', '-r', apkPath], { stdio: 'inherit' });
-
-  console.log('── Запуск приложения ──');
+/** Запускает приложение и подключается к его WebView. Вынесено отдельно,
+ * потому что вызывается ДВАЖДЫ: второй раз — после `am force-stop`, чтобы
+ * проверить, что задача пережила закрытие. */
+async function launchAndAttach(label) {
+  console.log(`── Запуск приложения (${label}) ──`);
   // `monkey` с категорией LAUNCHER, а не `am start -n <id>/.MainActivity`:
   // имя класса активности задаёт шаблон Tauri, и привязываться к нему —
   // значит красить тест при обновлении шаблона. Здесь запускается ровно то,
@@ -211,13 +203,13 @@ async function main() {
     const found = adb(['shell', 'pidof', APPLICATION_ID]).trim();
     return found === '' ? null : found.split(/\s+/u)[0];
   });
-  if (pid === null) fail('приложение не запустилось: процесс не появился');
+  if (pid === null) fail(`приложение не запустилось (${label}): процесс не появился`);
   console.log(`Процесс жив, pid=${pid}`);
 
   const socket = await waitFor('сокет DevTools', 30, 1000, findDevtoolsSocket);
   if (socket === null) {
     fail(
-      'WebView не открыл сокет отладки. В debug-сборке его включает сам wry — ' +
+      `WebView не открыл сокет отладки (${label}). В debug-сборке его включает сам wry — ` +
         'если сокета нет, значит WebView не создан вовсе (приложение упало на старте).',
     );
   }
@@ -227,46 +219,63 @@ async function main() {
   if (target === null) {
     fail(`сокет ${socket} открыт, но страницы в нём нет: WebView создан, а документ не загрузился`);
   }
+  // Адрес важен сам по себе: IndexedDB (ADR-0006) работает на HTTP-origin и
+  // НЕ работает на `file://`. Если однажды Tauri начнёт отдавать страницу
+  // файлом, это будет видно в логе прогона прямо здесь.
   console.log(`WebView найден: ${target.url}`);
 
   const cdp = createCdp(target.webSocketDebuggerUrl);
   await cdp.ready;
 
-  console.log('── Экран не пустой ──');
-  const firstScreen = await waitFor('первый отрисованный экран', 30, 1000, async () => {
+  const screen = await waitFor('первый отрисованный экран', 30, 1000, async () => {
     const text = await cdp.evaluate(READ_APP_TEXT);
     return typeof text === 'string' && text.length > 0 ? text : null;
   });
-  if (firstScreen === null) {
-    fail('WebView отрисовал ПУСТОЙ экран: в [data-shagi-app-root] нет ни одного видимого символа');
+  if (screen === null) {
+    fail(
+      `WebView отрисовал ПУСТОЙ экран (${label}): в [data-shagi-app-root] нет ни одного видимого символа`,
+    );
   }
-  console.log(`Видимый текст: ${JSON.stringify(firstScreen.slice(0, 120))}`);
+  console.log(`Видимый текст: ${JSON.stringify(screen.slice(0, 120))}`);
+
+  return { cdp, screen };
+}
+
+async function main() {
+  const taskTitle = 'Проверка сборки';
+
+  console.log('── Установка APK ──');
+  const apkPath = process.argv[2];
+  if (apkPath === undefined) fail('не передан путь к APK: node android-smoke.mjs <путь.apk>');
+  adb(['install', '-r', apkPath], { stdio: 'inherit' });
+
+  const first = await launchAndAttach('первый запуск');
 
   console.log('── Онбординг: «Начать» ──');
-  if ((await cdp.evaluate(clickByText('Начать'))) !== true) {
+  if ((await first.cdp.evaluate(clickByText('Начать'))) !== true) {
     fail(
-      `кнопка «Начать» не найдена. Экран показывает: ${JSON.stringify(firstScreen.slice(0, 200))}`,
+      `кнопка «Начать» не найдена. Экран показывает: ${JSON.stringify(first.screen.slice(0, 200))}`,
     );
   }
   await sleep(1200);
 
   console.log('── Создание настоящей задачи ──');
-  if ((await cdp.evaluate(typeIntoFirstInput(taskTitle))) !== true) {
+  if ((await first.cdp.evaluate(typeIntoFirstInput(taskTitle))) !== true) {
     fail('поле ввода первой задачи не найдено');
   }
   await sleep(400);
-  if ((await cdp.evaluate(clickByText('Добавить задачу'))) !== true) {
+  if ((await first.cdp.evaluate(clickByText('Добавить задачу'))) !== true) {
     fail('кнопка «Добавить задачу» не найдена');
   }
   await sleep(1500);
 
   console.log('── Проход до Today ──');
-  if ((await cdp.evaluate(clickByText('Понятно'))) !== true) {
+  if ((await first.cdp.evaluate(clickByText('Понятно'))) !== true) {
     fail('кнопка «Понятно» (экран разбора русского текста) не найдена');
   }
   await sleep(1500);
 
-  const todayText = await cdp.evaluate(READ_APP_TEXT);
+  const todayText = await first.cdp.evaluate(READ_APP_TEXT);
   if (typeof todayText !== 'string' || !todayText.includes(taskTitle)) {
     fail(
       `созданной задачи «${taskTitle}» нет на экране Today. Экран показывает: ` +
@@ -276,11 +285,42 @@ async function main() {
   console.log(`Задача «${taskTitle}» видна на Today.`);
 
   // Приложение не должно было умереть по дороге.
-  const alive = adb(['shell', 'pidof', APPLICATION_ID]).trim();
-  if (alive === '') fail('приложение упало в процессе сценария');
+  if (adb(['shell', 'pidof', APPLICATION_ID]).trim() === '') {
+    fail('приложение упало в процессе сценария');
+  }
+  first.cdp.close();
 
-  cdp.close();
-  console.log('Дымовой тест пройден: приложение запускается, рисует продукт и создаёт задачу.');
+  console.log('── Закрытие приложения (force-stop) ──');
+  // Пауза перед убийством процесса — не суеверие: запись в IndexedDB
+  // асинхронна, и убийство ровно в момент коммита транзакции проверяло бы
+  // устойчивость к сбою питания, а не персистентность как таковую.
+  await sleep(2000);
+  adb(['shell', 'am', 'force-stop', APPLICATION_ID], { stdio: 'inherit' });
+  const stopped = await waitFor('остановку процесса', 15, 1000, () =>
+    adb(['shell', 'pidof', APPLICATION_ID]).trim() === '' ? true : null,
+  );
+  if (stopped === null) fail('процесс не умер после `am force-stop` — перезапуск не проверить');
+
+  const second = await launchAndAttach('после перезапуска');
+
+  console.log('── Задача пережила перезапуск? ──');
+  const afterRestart = await waitFor('восстановленный экран с задачей', 20, 1000, async () => {
+    const text = await second.cdp.evaluate(READ_APP_TEXT);
+    return typeof text === 'string' && text.includes(taskTitle) ? text : null;
+  });
+  if (afterRestart === null) {
+    const last = await second.cdp.evaluate(READ_APP_TEXT);
+    fail(
+      `после перезапуска задачи «${taskTitle}» нет: хранилище не пережило закрытие приложения. ` +
+        `Экран показывает: ${JSON.stringify(String(last).slice(0, 300))}`,
+    );
+  }
+  second.cdp.close();
+
+  console.log(
+    'Дымовой тест пройден: приложение запускается, рисует продукт, создаёт задачу — ' +
+      'и задача остаётся на месте после закрытия приложения.',
+  );
 }
 
 await main();
