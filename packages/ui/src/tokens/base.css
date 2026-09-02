@@ -8,6 +8,18 @@
  * `::selection`.
  */
 
+/* `border-box` — иначе `padding` на элементе с `height`/`min-height`
+ * (полноэкранные композиции экранов, `Welcome.css`/`Today.css`/
+ * `FirstTask.css`) незаметно раздувает итоговую высоту сверх заданной:
+ * браузерный `content-box` по умолчанию добавляет padding ПОВЕРХ height,
+ * а не внутрь него. Найдено вручную — `FirstTask` (M04) переполнял
+ * `min-height: 100dvh` ровно на сумму своих вертикальных `padding`. */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
 body {
   font-family: var(--font-sans);
   background: var(--background);

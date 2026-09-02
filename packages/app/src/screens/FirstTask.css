@@ -1,0 +1,42 @@
+/**
+ * `FirstTask` (M04) — вёрстка по хендоффу дизайна (`docs/spec/DESIGN/
+ * source_unpacked/ШАГИ - R1 Design.dc.html`, `#sec-onboarding`, `[R1][M][04]
+ * First task`): заголовок сверху, поле ввода в середине, кнопка «Сохранить»
+ * прижата к низу экрана (`margin-top: auto`) с подписью под ней — тот же
+ * принцип «hero/панель», что уже применён в `Welcome.css` (см. её заголовок).
+ */
+
+.shagi-first-task {
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+  padding: var(--space-8) var(--space-6);
+}
+
+.shagi-first-task__heading {
+  font-size: var(--text-mobile-heading);
+  font-weight: var(--fw-bold);
+  color: var(--foreground);
+  margin: 0 0 var(--space-1);
+}
+
+.shagi-first-task__description {
+  font-size: var(--text-body-secondary);
+  color: var(--muted-foreground);
+  margin: 0 0 var(--space-6);
+}
+
+.shagi-first-task__footer {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding-top: var(--space-6);
+}
+
+.shagi-first-task__footnote {
+  text-align: center;
+  font-size: var(--text-caption);
+  color: var(--muted-foreground);
+  margin: 0;
+}

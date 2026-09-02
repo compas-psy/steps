@@ -32,15 +32,29 @@
  * устройства (естественная территория будущего пакета работ, скорее всего
  * `@shagi/platform`), эта функция — единственное место, которое придётся
  * заменить.
+ *
+ * --- Композиция: `Input`+`Button`, не компактный `QuickAdd` -----------------
+ *
+ * Макет (`docs/spec/DESIGN/source_unpacked/ШАГИ - R1 Design.dc.html`,
+ * `[R1][M][04] First task`) показывает поле ввода и отдельную полноширинную
+ * кнопку «Сохранить», прижатую к низу экрана, с подписью под ней — не
+ * компактную строку «поле + иконка-кнопка», которую даёт `@shagi/ui`'s
+ * `QuickAdd` (её собственный заголовок прямо называет её назначение: «V01
+ * Global Quick Add — D12», компактный паттерн для оверлея, а не онбординга).
+ * Экран собран из `Input`+`Button` напрямую — тот же уровень примитивов,
+ * что `QuickAdd` использует внутри себя, просто в другой раскладке; Enter
+ * по-прежнему отправляет форму нативно (`<form onSubmit>`), тот же приём,
+ * что и в `QuickAdd.tsx` (`@shagi/ui`, комментарий у её `<form>`).
  */
-import { useState, type ReactElement } from 'react';
+import { useState, type FormEvent, type ReactElement } from 'react';
 import { Temporal } from '@js-temporal/polyfill';
 
 import { t } from '@shagi/i18n';
 import { createTaskCommand, generateDeviceId, generateUuidV7, type Uuid } from '@shagi/core';
-import { QuickAdd } from '@shagi/ui';
+import { Button, Input } from '@shagi/ui';
 
 import { useAppController, useStorage } from '../state/context.js';
+import './FirstTask.css';
 
 interface LocalIdentity {
   readonly ownerScope: Uuid;
@@ -107,26 +121,43 @@ export function FirstTask(): ReactElement {
     controller.goTo('nlpOnboarding');
   }
 
-  return (
-    <div>
-      <h1>{t('onboarding', 'firstTask.title')}</h1>
-      <p>{t('onboarding', 'firstTask.description')}</p>
+  function handleFormSubmit(event: FormEvent<HTMLFormElement>): void {
+    event.preventDefault();
+    void handleSubmit();
+  }
 
-      <QuickAdd
+  return (
+    <form className="shagi-first-task" onSubmit={handleFormSubmit}>
+      <h1 className="shagi-first-task__heading">{t('onboarding', 'firstTask.title')}</h1>
+      <p className="shagi-first-task__description">{t('onboarding', 'firstTask.description')}</p>
+
+      <Input
         value={title}
-        onChange={(value) => {
-          setTitle(value);
+        onChange={(event) => {
+          setTitle(event.target.value);
           setError(false);
         }}
-        onSubmit={() => void handleSubmit()}
-        label={t('onboarding', 'firstTask.inputLabel')}
-        submitLabel={t('onboarding', 'firstTask.submitLabel')}
+        aria-label={t('onboarding', 'firstTask.inputLabel')}
         placeholder={t('onboarding', 'firstTask.placeholder')}
-        loading={submitting}
+        disabled={submitting}
         error={error}
         {...(error ? { errorMessage: t('onboarding', 'firstTask.error') } : {})}
         autoFocus
       />
-    </div>
+
+      <div className="shagi-first-task__footer">
+        <Button
+          type="submit"
+          variant="primary"
+          size="lg"
+          block
+          loading={submitting}
+          disabled={title.trim().length === 0}
+        >
+          {t('onboarding', 'firstTask.submitLabel')}
+        </Button>
+        <p className="shagi-first-task__footnote">{t('onboarding', 'firstTask.footnote')}</p>
+      </div>
+    </form>
   );
 }
