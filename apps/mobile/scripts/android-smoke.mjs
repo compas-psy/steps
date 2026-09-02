@@ -452,7 +452,31 @@ async function main() {
   if ((await first.cdp.evaluate(clickByLabel('Добавить задачу'))) !== true) {
     fail('кнопка «Добавить задачу» в Quick Add не найдена');
   }
-  await sleep(1500);
+  // НЕ фиксированный `sleep`: `handleSubmit` (`QuickAdd.tsx`) для этого
+  // ввода выполняет ТРИ последовательные транзакции (find-or-create метки,
+  // создание повторяющейся задачи + серии, привязка метки), и на нативной
+  // SQLite (ADR-0005) каждая идёт через Tauri IPC, а не через IndexedDB —
+  // на медленном эмуляторе CI это может не уложиться в фиксированный
+  // таймаут, хотя приложение делает всё правильно (весь путь `await`-ится
+  // до `closeQuickAdd()`). Опрашиваем экран Today до появления задачи —
+  // ровно то, что нужно, а не гадание с числом. Найдено этим же прогоном:
+  // первая версия с `sleep(1500)` реально потеряла запись под force-stop.
+  const created = await waitFor(
+    'запись повторяющейся задачи через Quick Add',
+    20,
+    500,
+    async () => {
+      const text = await first.cdp.evaluate(READ_APP_TEXT);
+      return typeof text === 'string' && text.includes(RECURRING_TITLE) ? text : null;
+    },
+  );
+  if (created === null) {
+    const last = await first.cdp.evaluate(READ_APP_TEXT);
+    fail(
+      `после «Добавить задачу» в Quick Add задача «${RECURRING_TITLE}» не появилась на экране. ` +
+        `Экран показывает: ${JSON.stringify(String(last).slice(0, 300))}`,
+    );
+  }
 
   // Приложение не должно было умереть по дороге.
   if (adbSoft(['shell', 'pidof', APPLICATION_ID]).trim() === '') {
