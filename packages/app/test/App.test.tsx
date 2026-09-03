@@ -1,6 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it } from 'vitest';
+import { Temporal } from '@js-temporal/polyfill';
 import {
   createUnavailablePlatform,
   type LocalPreferencesPort,
@@ -9,7 +10,7 @@ import {
 } from '@shagi/platform';
 import { t } from '@shagi/i18n';
 
-import { App, type AppHost } from '../src/index.js';
+import { App, LAST_KNOWN_TIMEZONE_KEY, type AppHost } from '../src/index.js';
 
 function testHost(): AppHost {
   return { platform: createUnavailablePlatform(), storageBackend: { kind: 'memory' } };
@@ -175,5 +176,78 @@ describe('App — boot-реконсиляция напоминаний (00§7 ш
     // — boot-эффект обязан пройти `isAvailable` и молча пропустить вызов, а
     // не бросить (тот же принцип, что `localDb`/`localPreferences` выше).
     expect(() => render(<App host={testHost()} />)).not.toThrow();
+  });
+});
+
+describe('App — обнаружение смены таймзоны на старте (01§19, Task A5)', () => {
+  it('сохранённая таймзона отличается от текущей — полная реконсиляция проходит и запись в localPreferences обновляется на текущую', async () => {
+    // Реальная таймзона окружения теста (та же, что прочитает boot-эффект)
+    // — берём её тем же вызовом, что и продуктовый код, а не хардкодим
+    // строку: тест обязан пройти в любом TZ CI-раннера, а не только там,
+    // где `TZ=UTC`.
+    const currentTimezone = Temporal.Now.timeZoneId();
+    // Любая заведомо ДРУГАЯ IANA-зона: если раннер сам в 'UTC', берём
+    // 'Europe/Moscow', иначе — 'UTC'. Так «сохранённое ≠ текущее»
+    // гарантировано независимо от TZ раннера — это ровно тот сценарий
+    // «сменили пояс с прошлого запуска», который проверяет этот тест, а не
+    // просто «функция была вызвана».
+    const staleTimezone = currentTimezone === 'UTC' ? 'Europe/Moscow' : 'UTC';
+    const preferences = fakeLocalPreferences({ [LAST_KNOWN_TIMEZONE_KEY]: staleTimezone });
+    const scheduler = fakeScheduler();
+    const host: AppHost = {
+      platform: {
+        ...createUnavailablePlatform(),
+        notificationScheduler: scheduler,
+        localPreferences: preferences,
+      },
+      storageBackend: { kind: 'memory' },
+    };
+
+    render(<App host={host} />);
+
+    // Полный скан реконсиляции (Task A4) отрабатывает безусловно на каждом
+    // старте — `listScheduled` доказывает, что он реально прошёл, та же
+    // проверка, что в блоке Task A4 выше.
+    await waitFor(() => expect(scheduler.calls.listScheduled).toBe(1));
+    // Смена пояса зафиксирована: значение под ключом переписано с
+    // `staleTimezone` (искусственно состаренного «прошлого запуска») на
+    // РЕАЛЬНУЮ текущую таймзону — именно то, с чем будет сравнивать
+    // будущий foreground-триггер.
+    await waitFor(() => expect(preferences.get(LAST_KNOWN_TIMEZONE_KEY)).toBe(currentTimezone));
+  });
+
+  it('сохранённая таймзона совпадает с текущей — запись в localPreferences не перезаписывается вхолостую', async () => {
+    const currentTimezone = Temporal.Now.timeZoneId();
+    let writes = 0;
+    const store = new Map<string, string>([[LAST_KNOWN_TIMEZONE_KEY, currentTimezone]]);
+    const preferences: LocalPreferencesPort = {
+      get: (key) => store.get(key) ?? null,
+      set: (key, value) => {
+        writes += 1;
+        store.set(key, value);
+      },
+      remove: (key) => {
+        store.delete(key);
+      },
+    };
+    const scheduler = fakeScheduler();
+    const host: AppHost = {
+      platform: {
+        ...createUnavailablePlatform(),
+        notificationScheduler: scheduler,
+        localPreferences: preferences,
+      },
+      storageBackend: { kind: 'memory' },
+    };
+
+    render(<App host={host} />);
+
+    // Реконсиляция всё равно проходит (она безусловна, Task A4) — тут
+    // проверяется ТОЛЬКО что write в `localPreferences` не происходит
+    // вхолостую, когда пояс не менялся, см. заголовок `App.tsx`, блок
+    // «Смена таймзоны», про шторм `storage`-событий.
+    await waitFor(() => expect(scheduler.calls.listScheduled).toBe(1));
+    expect(writes).toBe(0);
+    expect(store.get(LAST_KNOWN_TIMEZONE_KEY)).toBe(currentTimezone);
   });
 });

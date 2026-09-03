@@ -10,7 +10,7 @@
 export const PACKAGE_NAME = '@shagi/app' as const;
 
 export type { AppHost } from './App.js';
-export { App } from './App.js';
+export { App, LAST_KNOWN_TIMEZONE_KEY } from './App.js';
 
 export type { AppState, AppController, AppStateListener, ScreenId } from './state/store.js';
 export { createAppController } from './state/store.js';

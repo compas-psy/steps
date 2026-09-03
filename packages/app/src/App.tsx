@@ -54,6 +54,41 @@
  * когда синхронный путь не отработал (краш до реконсиляции, sync с другого
  * устройства, потерянный alarm) — тот же принцип "источник истины — база,
  * не память платформы", что документирует сам `reconcileReminderSchedule`.
+ *
+ * --- Смена таймзоны (01§19, Task A5) ----------------------------------------
+ *
+ * "При смене таймзоны устройства продукт пересчитывает локальные напоминания,
+ * сохраняя 09:00 локальным 09:00" — 09:00 остаётся тем же `PlainTime`,
+ * пересчитывается только момент срабатывания в UTC. Полный скан выше и так
+ * вызывается БЕЗУСЛОВНО на каждом запуске и уже передаёт ТЕКУЩУЮ таймзону
+ * (`Temporal.Now.timeZoneId()`) в `reconcileReminderSchedule` — если человек
+ * улетел в другой пояс и перезапустил приложение, реконсиляция сама
+ * пересчитает момент срабатывания по новой таймзоне и переставит
+ * платформенный alarm (фингерпринт внутри `reconcileReminderSchedule`,
+ * Task A2, зависит от `timezone` — это её работа, не переделывается здесь,
+ * см. Task A6).
+ *
+ * Значит не покрыто только ОБНАРУЖЕНИЕ факта смены — то, ради чего этот
+ * блок. Ни один из трёх апп-шеллов (`apps/{web,desktop,mobile}/src`) сегодня
+ * не публикует нативное событие "часовой пояс сменился" через
+ * `PlatformCapabilitiesRegistry` (проверено `grep -rn "visibilitychange|
+ * onResume|AppState|document.hidden"` по `packages/app/src` и всем
+ * `apps/<оболочка>/src` — ничего не нашлось) — добавлять кросс-платформенный порт "приложение
+ * вернулось на передний план" не входит в объём этой задачи, это отдельный,
+ * более крупный порт. Рабочий вариант — сравнение "на старте":
+ * `useBootstrapTimezoneWatch` читает сохранённую с прошлого запуска
+ * таймзону (`shagi.preferences.lastKnownTimezone`, тот же `localPreferences`,
+ * что `THEME_PREFERENCE_KEY`/`onboarding.ts` — SPEC §4) и сравнивает с
+ * текущей. Полный скан НАД этим сравнением не завязан (он и так шёл бы
+ * безусловно) — сравнение даёт запись текущей таймзоны обратно в
+ * `localPreferences`, чтобы будущий foreground-триггер (когда появится порт)
+ * уже сравнивал с актуальным прошлым значением, а не отсутствующим.
+ *
+ * ИЗВЕСТНОЕ ОГРАНИЧЕНИЕ: обнаружение происходит только на холодном
+ * старте/перемонтировании `<App>`, не мгновенно при смене пояса на живом
+ * экране (нет источника такого события — см. выше). Спецификация требует
+ * корректности "при смене таймзоны", не реакции короче секунды — это
+ * осознанный, документированный компромисс, не забытый случай.
  */
 import { useEffect, type ReactElement } from 'react';
 import { Temporal } from '@js-temporal/polyfill';
@@ -71,6 +106,12 @@ import { OfflineBanner } from './shell/OfflineBanner.js';
 import { reconcileReminderSchedule } from './state/reminder-reconciliation.js';
 import type { AppController } from './state/store.js';
 import { THEME_PREFERENCE_KEY, applyTheme, isThemePreference } from './theme/preference.js';
+
+/** Ключ последней известной таймзоны в `localPreferences` — см. заголовок
+ * файла, блок «Смена таймзоны». Тот же префикс `shagi.preferences.`, что у
+ * `THEME_PREFERENCE_KEY`/`ONBOARDING_DONE_KEY` (не сталкивается с чужими
+ * ключами в общем `localStorage` оболочки). */
+export const LAST_KNOWN_TIMEZONE_KEY = 'shagi.preferences.lastKnownTimezone';
 
 /**
  * Контракт между оболочкой (`apps/*`) и продуктом (`@shagi/app`).
@@ -179,11 +220,40 @@ function useBootstrapReminderReconciliation(
   }, []);
 }
 
+/** См. заголовок файла, блок «Смена таймзоны» (01§19, Task A5). Полный скан
+ * реконсиляции выше и так безусловно вызывается на каждом запуске с
+ * ТЕКУЩЕЙ таймзоной — этот хук её не дублирует и не делает условной, он
+ * только фиксирует последнюю известную таймзону в `localPreferences`, чтобы
+ * будущему foreground-триггеру (когда появится соответствующий порт, см.
+ * заголовок файла) было с чем сравнивать. Читаем прошлое значение ДО
+ * записи нового и пишем, только когда оно РЕАЛЬНО отличается (включая
+ * самый первый запуск, где сохранённого значения ещё нет вовсе) — не ради
+ * экономии байта, а чтобы не дёргать `localPreferences.set` вхолостую на
+ * каждом старте: на вебе `localStorage.setItem` рассылает событие `storage`
+ * в другие вкладки того же источника, и записывать туда одно и то же
+ * значение при каждом монтировании значило бы создавать пустой шторм этих
+ * событий без единой смены пояса. `Unavailable` — молча пропускается, тот
+ * же принцип честности, что у `useBootstrapLocalDb`/`useBootstrapTheme`
+ * рядом. */
+function useBootstrapTimezoneWatch(platform: PlatformCapabilitiesRegistry): void {
+  useEffect(() => {
+    const localPreferences = platform.localPreferences;
+    if (!isAvailable(localPreferences)) return;
+    const previousTimezone = localPreferences.get(LAST_KNOWN_TIMEZONE_KEY);
+    const currentTimezone = Temporal.Now.timeZoneId();
+    if (previousTimezone !== currentTimezone) {
+      localPreferences.set(LAST_KNOWN_TIMEZONE_KEY, currentTimezone);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- один раз на монтирование хоста, та же причина, что у `useBootstrapLocalDb` рядом
+  }, []);
+}
+
 function Bootstrap({ host }: { host: AppHost }): ReactElement {
   const storage = useStorage();
   useBootstrapLocalDb(host.platform);
   useBootstrapTheme(host.platform);
   useBootstrapReminderReconciliation(host.platform, storage);
+  useBootstrapTimezoneWatch(host.platform);
   useGlobalQuickAddShortcut(useAppController());
   return (
     <>
