@@ -1,0 +1,266 @@
+# ADR-0008. Android-напоминания: `tauri-plugin-notification` 2.4.0 (через `batch`) + локальный `alarm-capability`, reconciliation как единственный источник истины
+
+- Статус: принято
+- Дата: 2026-09-03
+- Автор: владелец требований (через агента, пакет работ «native Android reminders»)
+- Отклонение от: не отклонение, а конкретизация `docs/spec/SPEC/00_MASTER_IMPLEMENTATION_TZ.md`
+  §11.1 и `05_SECURITY_PRIVACY_LEGAL.md` §3.1 («exact alarm — с явным согласием,
+  никогда не молчаливая деградация») — SPEC фиксирует требования к поведению
+  напоминаний, но не называет конкретный механизм доставки на Android.
+
+## Контекст
+
+`01_PRODUCT_BEHAVIOR_R1` требует напоминания, которые реально срабатывают на
+Android вне зависимости от того, открыто ли приложение, переживают
+force-stop и перезагрузку устройства, и — там, где ОС это разрешает —
+срабатывают точно ко времени, а не «примерно». Это требует нативного
+`AlarmManager` (единственный на Android механизм с такими свойствами) и
+`BroadcastReceiver` для восстановления после `BOOT_COMPLETED`. ТЗ фиксирует
+Tauri 2 как shell (`00§1`), но не называет конкретный путь от
+`packages/app`/`apps/mobile` до `AlarmManager`.
+
+Рассмотренные варианты:
+
+1. **Написать нативный мост с нуля** (тот же подход, каким ADR-0005 закрыл
+   SQLite после того, как официальный `tauri-plugin-sql` не подошёл структурно
+   — плагин не умел транзакции). Дало бы полный контроль, но `AlarmManager`/
+   `PendingIntent`/exact-alarm capability check/boot-restore receiver — код с
+   большой поверхностью для тонких ошибок (несовпадение `PendingIntent` flags,
+   утечка receiver, race между schedule и boot), которые официальный,
+   поддерживаемый плагин уже решил и покрыл собственными пользователями.
+2. **`tauri-plugin-notification` 2.4.0** (официальный пакет `tauri-apps`) —
+   рассмотрен и **принят**, но, в отличие от исходного черновика этого ADR,
+   не «на веру»: исходники прочитаны напрямую (`git clone` тега
+   `notification-v2.4.0`, коммит `6aa2854f`, `Cargo.toml` подтверждает
+   `version = "2.4.0"`), и черновое понимание, сложившееся при первом чтении,
+   **дважды скорректировано** по ходу этого пакета работ реальными находками
+   (см. «Что скорректировано» ниже) — то же требование строгости, что
+   ADR-0005 применил к `tauri-plugin-sql`.
+
+## Решение
+
+Принят вариант 2, с одним обязательным дополнением (свой малый плагин,
+Task B3) и одним обязательным ограничением на способ вызова (`batch`, не
+`show`/`sendNotification()`).
+
+### Что плагин реально делает (проверено по исходнику, не по документации)
+
+- **Exact/inexact scheduling.** `TauriNotificationManager.kt` реализует
+  `AlarmManager.setExactAndAllowWhileIdle`/`setExact` с проверкой
+  `canScheduleExactAlarms()` (API 31+) и деградацией без исключения
+  (`setExactIfPossible`) — но НЕ раскрывает результат этой проверки наружу в
+  JS/Rust ДО планирования (только использует её внутри себя в момент
+  `schedule()`). Это и есть проверенный, единственный пробел плагина —
+  причина Task B3 (ниже).
+- **Доставка.** `PendingIntent`, обрабатываемый `TimedNotificationPublisher:
+BroadcastReceiver`.
+- **Boot-restore.** `LocalNotificationRestoreReceiver` слушает
+  `BOOT_COMPLETED`/`LOCKED_BOOT_COMPLETED`/`QUICKBOOT_POWERON` (манифест-
+  фрагмент подмешивается автоматически Android Gradle manifest merging — без
+  ручной правки манифеста для этих receiver).
+- **32-битные числовые id**, не UUID — `Reminder.id` (UUID-строка) требует
+  детерминированного отображения в `i32` на границе адаптера (Task B4:
+  FNV-1a, младшие 31 бит, гарантированно положительный).
+
+### Что скорректировано по ходу этого пакета работ (обязательное содержание ADR — не молчать о собственных ранних ошибках)
+
+**1. `sendNotification()`/Kotlin `show()` НЕ пригоден для наших напоминаний —
+обязателен `batch()`.**
+
+Черновой план изначально предполагал `sendNotification()` (guest-js). Прямое
+чтение `NotificationPlugin.kt` показало:
+
+```kotlin
+// show(): manager.schedule(notification) — и ВСЁ
+@Command fun show(invoke: Invoke) { ...; val id = manager.schedule(notification); ... }
+
+// batch(): manager.schedule(...) ПЛЮС запись в постоянное хранилище
+@Command fun batch(invoke: Invoke) {
+  val ids = manager.schedule(args.notifications)
+  notificationStorage.appendNotifications(args.notifications)   // ← этого нет в show()
+  ...
+}
+
+// getPending() читает ИСКЛЮЧИТЕЛЬНО это хранилище
+@Command fun getPending(invoke: Invoke) {
+  val notifications = notificationStorage.getSavedNotifications()
+  ...
+}
+```
+
+Следствие, доказанное чтением, не предположенное: `sendNotification()`/`show()`
+планирует alarm, но делает его **невидимым** для (а) `pending()`/`get_pending`
+(на котором целиком стоит `NotificationSchedulerPort.listScheduled()`, а
+значит и весь reconciliation, Task A3/A6) и (б)
+`LocalNotificationRestoreReceiver`, который тоже читает исключительно
+`NotificationStorage` — то есть напоминание, запланированное через `show()`,
+**не пережило бы перезагрузку устройства средствами самого плагина**. Оба
+следствия закрыты одним и тем же решением: **Task B4 планирует ТОЛЬКО через
+`invoke('plugin:notification|batch', {notifications:[...]})`** (реальная,
+зарегистрированная mobile-only команда — `"batch"` есть в списке `COMMANDS`
+плагинового `build.rs`, вызывается тем же способом, каким уже вызываются
+`get_pending`/`cancel`, просто не обёрнута в guest-js-пакет) — даже для
+ОДНОГО напоминания (массив из одного элемента). Это **обязательный,
+неослабляемый инвариант Task B4**, не рекомендация.
+
+**2. Title/body замораживаются на `schedule()`/`batch()` — плагин НИКОГДА не
+перечитывает их из приложения/SQLite.**
+
+Владелец потребовал независимой проверки claim'а из более раннего
+черновика («Kotlin-приёмник читает актуальный заголовок из SQLite перед
+показом»). Проверка (не по памяти — по коду) опровергла его:
+
+```kotlin
+// TauriNotificationManager.kt — buildNotification (~157-158): title/body
+// уже здесь запечены в android.app.Notification (Parcelable)
+.setContentTitle(notification.title)
+.setContentText(notification.body)
+// ~214-216: тот же уже построенный Notification передаётся планировщику
+val buildNotification = mBuilder.build()
+if (notification.schedule != null) { triggerScheduledNotification(buildNotification, notification) }
+// ~317-328: Parcelable кладётся В EXTRAS PendingIntent — не пересобирается позже
+notificationIntent.putExtra(TimedNotificationPublisher.NOTIFICATION_KEY, notification)
+...
+// TimedNotificationPublisher.onReceive (~473-500) — воспроизводит его буквально
+val notification = intent.getParcelableExtra(NOTIFICATION_KEY, android.app.Notification::class.java)
+notification?.`when` = System.currentTimeMillis()   // единственное, что меняется — таймстамп
+notificationManager.notify(id, notification)         // остальное — байт-в-байт то, что было на schedule()
+```
+
+Никакого чтения из приложения или SQLite нет ни в момент срабатывания, ни
+при `LocalNotificationRestoreReceiver`'s boot-restore (он тоже просто
+пересобирает `Notification` из сохранённого JSON тем же путём, `title`/`body`
+проходят неизменными). Следствие — Task A6 целиком: `Reminder.
+scheduledFingerprint` не может быть источником «применённого» состояния (оно
+device-local по природе), а reconciliation обязана сравнивать ЖИВОЕ желаемое
+с ЖИВЫМ `pending()`-снимком на каждом проходе, не полагаясь на то, что было
+верно в момент `schedule()`. Подробный разбор дизайна — Task A6, коммиты
+`e870299`/`2955359`/`6472714`, не повторяется здесь.
+
+## Проверенные и зафиксированные инварианты (обязательны для Task B2–B8)
+
+1. **Планирование НАШИХ напоминаний — только `batch()`**, никогда
+   `sendNotification()`/`show()` (см. выше). Task B4.
+2. **`batch()` — единственный путь одновременно к трём вещам**: реальному
+   `pending()`-снимку, записи в `NotificationStorage` плагина, и boot-restore
+   через `LocalNotificationRestoreReceiver`. Их нельзя получить по отдельности
+   другим вызовом — все три зависят от одного и того же `appendNotifications`.
+3. **Title/payload замораживается на `schedule()`, плагин не перечитывает
+   SQLite при срабатывании** — доказано по коду (`TauriNotificationManager.kt`
+   выше), не предположено. Единственный механизм, которым «устаревший title»
+   не долетает до пользователя — синхронная реконсиляция ДО того, как
+   устаревшее успело бы сработать (Task A4/A6, уже реализовано и покрыто
+   тестами на JS-стороне; Task B5 обязана доказать это же на реальных
+   Kotlin-путях, где применимо).
+4. **Actual state для reconciliation читается ИСКЛЮЧИТЕЛЬНО через
+   `pending()`** (Task A6, `NotificationSchedulerPort.listScheduled()`) —
+   никакого своего persisted "applied"-состояния нет и не будет (Task A6,
+   дважды отклонённые альтернативы разобраны в `task-A6-brief.md`, не
+   повторяются здесь).
+5. **Android-адаптер (Task B4) переводит DTO плагина
+   (`PendingNotification{id,title,body,schedule}`) в наш платформенно-
+   нейтральный `ScheduledNotificationSnapshot`** (`packages/platform`,
+   `{reminderId, title, scheduledAt: Temporal.Instant, precision?}`) —
+   `packages/app` никогда не видит сырую форму плагина, ровно тот же принцип,
+   что уже применён к веб-адаптеру.
+6. **`schedule()` обязана безопасно заменять stale alarm.** `batch()`'s
+   гарантия «замена по тому же native id, а не второй живой alarm» прочитана
+   в Kotlin-источнике, но НЕ подтверждена на реальном устройстве из песочницы
+   этого пакета работ (нет Android-эмулятора здесь) — до тех пор, пока
+   Task B8 Step 3 не докажет это эмпирически, `schedule()` обязана
+   безусловно вызывать `cancel([nativeId])` ПЕРЕД `batch()`, каждый раз, даже
+   на первое планирование (дешёвый no-op на стороне ОС в этом случае). Уже
+   зафиксировано в плановом тексте Task B4 как жёсткий инвариант, не
+   рекомендация.
+7. **Стабильная native identity, детерминированная от `Reminder.id`** —
+   FNV-1a, младшие 31 бит (Task B4, `notification-bridge.ts`), не случайный
+   счётчик — иначе одно и то же напоминание получало бы разный native id
+   между запусками процесса, и `cancel-before-batch` (п.6) отменял бы не тот
+   alarm.
+8. **`SCHEDULE_EXACT_ALARM`, никогда `USE_EXACT_ALARM`** — взаимоисключающий
+   выбор, `SCHEDULE_EXACT_ALARM` уже зарезервирован в
+   `apps/mobile/android-permissions.txt` (более ранний пакет работ). `Task
+B2`/`B6` не добавляют `USE_EXACT_ALARM` ни при каких обстоятельствах.
+9. **Android 12+ (API 31+) capability проверяется через
+   `canScheduleExactAlarms()`** — плагин использует её ВНУТРИ себя (см.
+   выше), но не отдаёт результат наружу. Это ровно тот пробел, который
+   закрывает `alarm-capability` (Task B3, `apps/mobile/src-tauri/plugins/
+alarm-capability`) — маленький свой Tauri Kotlin-плагин с двумя командами
+   (`can_schedule_exact`, `open_exact_alarm_settings`), не более.
+10. **Отсутствие exact-alarm capability не смеет молча превращаться в «точное
+    напоминание успешно установлено».** SPEC §11.1/§3.1 требуют явного
+    раскрытия ДО планирования — `getSchedulingCapability()`
+    (`NotificationSchedulerPort`, уже существует) вызывает
+    `alarm-capability`'s `can_schedule_exact` и возвращает честный
+    `'exact'|'inexact'`; UI (Task B6) обязан показать уведомление о
+    деградации, не спрятать её.
+11. **`POST_NOTIFICATIONS` — runtime permission**, запрашивается just-in-time
+    (при создании первого напоминания, не при первом запуске приложения —
+    уже зафиксированный Global Constraint этого плана, ST10).
+12. **`BOOT_COMPLETED`/plugin restore обязаны быть подтверждены end-to-end на
+    эмуляторе, не только по чтению исходника.** Прочитанный код
+    (`LocalNotificationRestoreReceiver`) объясняет МЕХАНИЗМ, но не
+    гарантирует, что манифест-мёрдж/разрешения/реальное поведение этого
+    конкретного собранного APK работают так же — Task B8 Step 6/6b обязаны
+    доказать это на живом эмуляторе (симуляция `BOOT_COMPLETED` broadcast,
+    не полный `adb reboot` — уже решено в плане по соображениям времени CI).
+13. **M52 обязан удалить и SQLite `reminders`, и native pending alarms** —
+    `eraseAllLocalData()` (ADR-0005, не трогается) чистит только SQLite; M52
+    UI-обработчик (Task B8) обязан ДОПОЛНИТЕЛЬНО вызвать `scheduler.cancel()`
+    для каждого напоминания ДО/ПОСЛЕ стирания БД — иначе native alarms
+    переживут стирание и сработают на пустые данные.
+14. **Никаких новых обходных IPC-каналов, ослабляющих закрытый security
+    hardening ADR-0005** (P0 `sqlite_restore`-токен, P1 `classify_statement`
+    гейт). `alarm-capability` (Task B3) — ДВЕ команды с нулевыми
+    параметрами (`can_schedule_exact`) либо параметрами, не достижимыми до
+    произвольной файловой операции (`open_exact_alarm_settings` открывает
+    системные настройки, не принимает путь/SQL от WebView) — не расширяет
+    поверхность атаки, установленную тем ADR.
+
+## Известные ограничения (честно, не молчать)
+
+- **Timezone change, пока приложение живо в фоне/foreground, сейчас не имеет
+  platform lifecycle hook.** Task A5 гарантирует обнаружение и корректный
+  пересчёт на холодном старте (SPEC §19 соблюдён при следующем открытии
+  приложения), но НЕ мгновенно, если пояс сменился, пока приложение открыто и
+  свёрнуто в фон без перезапуска. Ни один из трёх app-шеллов сегодня не
+  публикует нативное событие «таймзона сменилась» через
+  `PlatformCapabilitiesRegistry` (проверено `grep` по всем `apps/*/src`,
+  Task A5 отчёт). Добавление такого порта — отдельная, более крупная работа,
+  вне периметра этого пакета работ. **Занесено в итоговый R1 gap audit (см.
+  финальный отчёт этой ветки), не реализуется сейчас.**
+- **`batch()`'s replace-by-id гарантия не подтверждена эмпирически** — см.
+  инвариант 6 выше (`cancel-before-batch` как защита, Task B8 Step 3 —
+  подтверждение).
+- **Реальная точность округления `AlarmManager`/Doze на устройстве** не
+  измерена (Task A6 использует секундную гранулярность сравнения как
+  консервативную оценку) — Task B8 обязана дать эмпирику, единица округления
+  в `instantsMatch` (`packages/app/src/state/reminder-reconciliation.ts`) —
+  один параметр в одной функции, если потребуется пересмотр.
+- **Отсутствие UI для архивации проекта** (найдено при ревью Task A4:
+  `archiveProjectCommand`/`unarchiveProjectCommand` не вызываются ни из
+  одного экрана `packages/app`) — не связано с native reminders напрямую,
+  занесено в итоговый R1 gap audit, не расширяем этим блоком работ.
+
+## Что предстоит доказать Task B2–B8 (не переоткрывать, только исполнять)
+
+| Задача | Должна доказать                                                                                                                                                                                                                                                                                                                       |
+| ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| B2     | Зависимость подключена, plugin зарегистрирован, capability предоставлена — компилируется, не более.                                                                                                                                                                                                                                   |
+| B3     | `canScheduleExactAlarms()`/`ACTION_REQUEST_SCHEDULE_EXACT_ALARM` реально работают на API 31+, безопасно деградируют на API <31 (`true` безусловно).                                                                                                                                                                                   |
+| B4     | Планирование ТОЛЬКО через `batch()`; `cancel`-перед-`batch()`; DTO→`ScheduledNotificationSnapshot` перевод честный; native id детерминирован и стабилен.                                                                                                                                                                              |
+| B5     | Все 7 путей изменения состояния (complete/delete/date-time/edit/archive/M52/recurrence) доказанно закрывают stale native alarm ДО его срабатывания — уже амендированная задача, без изменений от этого ADR.                                                                                                                           |
+| B6     | UI честно раскрывает деградацию точности ДО планирования (не после).                                                                                                                                                                                                                                                                  |
+| B7     | Rust-юнит-тесты новых крейтов (`alarm-capability`) — хост-тестируемая часть.                                                                                                                                                                                                                                                          |
+| B8     | Полный эмулятор-смоук: реальный `dumpsys alarm` на каждом сценарии, exact-путь подтверждён (не только прочитан), permission-denied деградация подтверждена, `batch()` replace подтверждён (или инвариант 6 остаётся навсегда), boot-restore подтверждён живьём, M52 чистит native alarms, второй/третий цикл restart не дублирует id. |
+
+---
+
+## Дополнение: Фаза A закрыта, заморожена
+
+Task A1–A6 (платформенно-нейтральный слой: порт, fingerprint, reconciliation,
+call sites, timezone detection, content-aware сравнение) реализованы,
+проревьюены, слиты, каждая задача подтверждена отдельным зелёным полным
+Android CI-прогоном (`33742579888` и далее до `33759174643` на `6472714`).
+Реконсиляция не переделывается дальше без нового фактического дефекта —
+Фаза B строится НА этом слое, не расширяет его.
