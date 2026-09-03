@@ -46,6 +46,7 @@ import type {
   LocalPreferencesPort,
   NotificationSchedulerPort,
   PlatformCapabilitiesRegistry,
+  ScheduledNotificationSnapshot,
   SharePort,
   Unavailable,
   UpdaterPort,
@@ -76,14 +77,25 @@ function createNetworkStatus(): PlatformCapabilitiesRegistry['networkStatus'] {
  * `Notification` не переживают закрытие браузера. Это ровно то, что
  * `getSchedulingCapability` обязана честно объявить `'no-guarantee'`
  * (SPEC §11.1), а не изображать точность, которой нет.
+ *
+ * Каждая запись хранит не только сам таймер, но и `ScheduledNotification-
+ * Snapshot` (Task A6, `@shagi/platform`) — `listScheduled()` раньше отдавал
+ * только `id`, а `02§14` reconciliation теперь сравнивает СОДЕРЖИМОЕ
+ * (заголовок, разрешённый момент), не только присутствие. Ничего не
+ * пересчитывается заново при чтении: `title`/`scheduledAt` фиксируются
+ * ровно в момент `schedule()`, тем же образом, каким уже вычислялся
+ * `delayMs` — тот же `target`, а не отдельная копия расчёта.
  */
 function createNotificationScheduler(): NotificationSchedulerPort {
-  const timers = new Map<string, ReturnType<typeof setTimeout>>();
+  const timers = new Map<
+    string,
+    { handle: ReturnType<typeof setTimeout>; snapshot: ScheduledNotificationSnapshot }
+  >();
 
   return {
-    async schedule(id, title, date, time, timezone) {
+    async schedule(id, title, date, time, timezone, precision) {
       const existing = timers.get(id);
-      if (existing !== undefined) clearTimeout(existing);
+      if (existing !== undefined) clearTimeout(existing.handle);
       // Плавающее локальное время (SPEC §5): материализуем момент через
       // переданную IANA-зону — при смене таймзоны вызывающий код
       // пересобирает расписание заново с той же локальной датой/временем.
@@ -92,26 +104,40 @@ function createNotificationScheduler(): NotificationSchedulerPort {
           ? date.toZonedDateTime(timezone)
           : date.toZonedDateTime({ timeZone: timezone, plainTime: time });
       const delayMs = target.epochMilliseconds - Date.now();
-      if (delayMs <= 0) return;
+      if (delayMs <= 0) {
+        // Просроченный момент — не планируем таймер (нет replay storm),
+        // и не оставляем в карте старую запись под этим `id`: до этой
+        // правки ранний `return` пропускал `timers.delete`, и повторный
+        // `schedule()` тем же `id` в прошлое оставлял видимость "всё ещё
+        // запланировано" в `listScheduled()` — честная карта важнее для
+        // reconciliation, чем было раньше, когда наблюдался только `id`.
+        timers.delete(id);
+        return;
+      }
       const handle = setTimeout(() => {
         timers.delete(id);
         // eslint-disable-next-line no-new -- системное уведомление и есть побочный эффект; хранить объект незачем
         if (Notification.permission === 'granted') new Notification(title);
       }, delayMs);
-      timers.set(id, handle);
+      const snapshot: ScheduledNotificationSnapshot =
+        precision === undefined
+          ? { reminderId: id, title, scheduledAt: target.toInstant() }
+          : { reminderId: id, title, scheduledAt: target.toInstant(), precision };
+      timers.set(id, { handle, snapshot });
     },
     async cancel(id) {
-      const handle = timers.get(id);
-      if (handle !== undefined) {
-        clearTimeout(handle);
+      const existing = timers.get(id);
+      if (existing !== undefined) {
+        clearTimeout(existing.handle);
         timers.delete(id);
       }
     },
-    // Живой набор ключей `timers` и есть источник истины «что реально
-    // запланировано» — таймер живёт только пока жив он сам (см. заголовок
-    // функции), так что снимок ключей всегда честен, без отдельного стейта.
+    // Живая карта `timers` и есть источник истины «что реально
+    // запланировано» — запись живёт только пока жив её таймер (см.
+    // заголовок функции), так что снимок значений всегда честен, без
+    // отдельного стейта.
     async listScheduled() {
-      return Array.from(timers.keys());
+      return Array.from(timers.values(), (entry) => entry.snapshot);
     },
     // Веб не может гарантировать доставку при закрытом браузере (SPEC
     // §11.1) — ответ всегда `'no-guarantee'`, никогда `'exact'`/`'inexact'`.

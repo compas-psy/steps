@@ -110,6 +110,55 @@ describe('createWebPlatform', () => {
       'UTC',
     );
     await platform.notificationScheduler.cancel('r1');
-    expect(await platform.notificationScheduler.listScheduled()).toEqual(['r2']);
+    const scheduled = await platform.notificationScheduler.listScheduled();
+    expect(scheduled.map((snapshot) => snapshot.reminderId)).toEqual(['r2']);
+  });
+
+  // Task A6: `listScheduled()` теперь несёт `ScheduledNotificationSnapshot`
+  // (`title`/`scheduledAt`), не голый `id` — `02§14` reconciliation сравнивает
+  // СОДЕРЖИМОЕ, не только присутствие. Проверяем, что веб-адаптер честно
+  // прокидывает то, что уже знает на момент `schedule()`, а не отбрасывает.
+  it('listScheduled несёт title и разрешённый scheduledAt того же уведомления', async () => {
+    const platform = createWebPlatform();
+    if (!isAvailable(platform.notificationScheduler)) throw new Error('unreachable');
+    const now = Temporal.Now.plainDateISO('UTC');
+    const date = now.add({ days: 5 });
+    const time = Temporal.PlainTime.from('09:00');
+    await platform.notificationScheduler.schedule('r1', 'Позвонить врачу', date, time, 'UTC');
+
+    const scheduled = await platform.notificationScheduler.listScheduled();
+
+    expect(scheduled).toHaveLength(1);
+    const snapshot = scheduled[0];
+    expect(snapshot?.reminderId).toBe('r1');
+    expect(snapshot?.title).toBe('Позвонить врачу');
+    // Тот же расчёт, что делает сам адаптер для `delayMs` внутри
+    // `schedule()` — `PlainDate.toZonedDateTime(...).toInstant()`.
+    const expectedInstant = date.toZonedDateTime({ timeZone: 'UTC', plainTime: time }).toInstant();
+    expect(snapshot?.scheduledAt.equals(expectedInstant)).toBe(true);
+  });
+
+  it('schedule() дважды тем же id в прошлое очищает запись — listScheduled честно пуст, а не хранит устаревший id (Task A6, исправленный шов)', async () => {
+    const platform = createWebPlatform();
+    if (!isAvailable(platform.notificationScheduler)) throw new Error('unreachable');
+    const now = Temporal.Now.plainDateISO('UTC');
+    // Сперва — в будущее (запись появляется в карте).
+    await platform.notificationScheduler.schedule(
+      'r1',
+      'Заголовок',
+      now.add({ days: 5 }),
+      null,
+      'UTC',
+    );
+    // Затем — тем же id, но в прошлое (просрочено, `delayMs <= 0`).
+    await platform.notificationScheduler.schedule(
+      'r1',
+      'Заголовок',
+      Temporal.PlainDate.from('2020-01-01'),
+      null,
+      'UTC',
+    );
+
+    expect(await platform.notificationScheduler.listScheduled()).toEqual([]);
   });
 });

@@ -177,6 +177,38 @@ export interface LocalPreferencesPort {
 export type NotificationPrecision = 'exact' | 'inexact' | 'no-guarantee';
 
 /**
+ * Снимок ОДНОГО реально запланированного на платформе уведомления —
+ * `02§14` reconciliation (`@shagi/app`, `reminder-reconciliation.ts`)
+ * сравнивает это (LIVE actual) с LIVE desired на каждый прогон, а не
+ * держит собственное состояние "что было применено" (Task A6, третья и
+ * финальная редакция дизайна — два отклонённых черновика разобраны в
+ * бриф-файле `task-A6-brief.md`, здесь их выводы не повторяются).
+ *
+ * Платформенно-нейтральный тип (CLAUDE.md: `packages/platform` не знает
+ * Tauri/web специфики) — каждый адаптер переводит СВОЙ DTO в эту форму:
+ * Android — `PendingNotification` плагина `tauri-plugin-notification`
+ * (Task B4, не эта задача), Web — собственная `Map` таймеров
+ * (`apps/web/src/platform.ts`, эта задача).
+ *
+ * Нет `body`: у `NotificationSchedulerPort.schedule` нет параметра `body`,
+ * нести в снимке нечего — не забыли, а осознанно не добавили.
+ */
+export interface ScheduledNotificationSnapshot {
+  /** Тот же `id`, что передавался в `schedule()` — `Reminder.id`. */
+  readonly reminderId: string;
+  /** Заголовок, реально осевший в системном уведомлении на платформе —
+   * сравнивается с ЖИВЫМ заголовком задачи (не с синхронизируемым
+   * снимком, см. `computeReminderFingerprint`), чтобы обнаружить
+   * переименование задачи ПОСЛЕ того, как напоминание уже запланировано. */
+  readonly title: string;
+  /** Момент срабатывания, materialized в ABSOLUTE `Instant` — сравнивается
+   * с моментом, заново разрешённым из `firesAt` в ТЕКУЩЕЙ таймзоне
+   * устройства, чтобы обнаружить дрейф после смены пояса (`01§19`). */
+  readonly scheduledAt: Temporal.Instant;
+  readonly precision?: NotificationPrecision;
+}
+
+/**
  * `NotificationSchedulerPort` — интерфейс планирования уведомлений/напоминаний.
  *
  * Это именно планирование (запрос к ОС сработать в определённое время),
@@ -226,12 +258,19 @@ export interface NotificationSchedulerPort {
   cancel(id: string): Promise<void>;
 
   /**
-   * Список `id`, реально запланированных на этой платформе прямо сейчас —
-   * основа reconciliation (`02§14`): вызывающий код сравнивает это с тем,
-   * что должно быть запланировано по состоянию домена, и решает, что
-   * досоздать, а что отменить. Порядок не гарантирован.
+   * Снимки ВСЕХ реально запланированных на этой платформе уведомлений прямо
+   * сейчас — основа reconciliation (`02§14`). До Task A6 это были голые
+   * `id` (сравнение только по присутствию), но id-presence слеп к дрейфу
+   * СОДЕРЖИМОГО: переименование задачи (заголовок живёт на `Task`, не на
+   * `Reminder`) и смена таймзоны устройства (тот же `firesAt` разрешается в
+   * другой абсолютный момент) меняют то, что ДОЛЖНО быть запланировано, не
+   * трогая ни `id`, ни `enabled` — вызывающий код (`applyReconciliation`,
+   * `@shagi/app`) теперь сравнивает `title`/`scheduledAt` каждого снимка с
+   * заново вычисленным желаемым состоянием на каждый прогон и решает, что
+   * досоздать (в том числе заменить устаревшее содержимое), а что отменить.
+   * Порядок не гарантирован.
    */
-  listScheduled(): Promise<readonly string[]>;
+  listScheduled(): Promise<readonly ScheduledNotificationSnapshot[]>;
 
   /**
    * Проверить возможности точного планирования на этой платформе.
