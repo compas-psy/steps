@@ -15,7 +15,8 @@ import * as plugin from '@tauri-apps/plugin-notification';
 import { createNotificationBridge } from '../src/notification-bridge.js';
 
 describe('createNotificationBridge', () => {
-  it('schedule запрашивает разрешение just-in-time и планирует через plugin:notification|batch (НЕ sendNotification — 05§ADR-0008: только batch пишет в NotificationStorage)', async () => {
+  it('schedule запрашивает разрешение just-in-time, когда его ещё нет, и планирует через plugin:notification|batch (НЕ sendNotification — 05§ADR-0008: только batch пишет в NotificationStorage)', async () => {
+    vi.mocked(plugin.isPermissionGranted).mockResolvedValueOnce(false);
     vi.mocked(invoke).mockResolvedValueOnce([1]); // ответ batch — массив id
     const bridge = createNotificationBridge();
     await bridge.schedule(
@@ -26,6 +27,34 @@ describe('createNotificationBridge', () => {
       'Europe/Moscow',
     );
     expect(plugin.requestPermission).toHaveBeenCalled();
+    expect(invoke).toHaveBeenCalledWith(
+      'plugin:notification|batch',
+      expect.objectContaining({
+        notifications: [expect.objectContaining({ title: 'Напомнить' })],
+      }),
+    );
+  });
+
+  it('schedule НЕ зовёт requestPermission, если разрешение уже выдано (Task B8 — реальный баг на устройстве: requestPermissions() Kotlin не резолвит invoke, если permission уже GRANTED — gate по isPermissionGranted() обходит именно этот путь)', async () => {
+    // Этот файл не сбрасывает моки между тестами (нет глобального
+    // clearMocks/beforeEach) — предыдущий тест уже вызывал requestPermission
+    // один раз, поэтому явно очищаем именно счётчик вызовов ПЕРЕД действием,
+    // иначе `.not.toHaveBeenCalled()` ловил бы чужой, более ранний вызов, а
+    // не реальное поведение ЭТОГО прогона schedule().
+    vi.mocked(plugin.requestPermission).mockClear();
+    // Дефолтный мок модуля — isPermissionGranted всегда true: если бы gate
+    // не работал и код всё равно звал requestPermission(), тест поймал бы
+    // это явно (см. mockClear() выше — счётчик реально «свежий»).
+    vi.mocked(invoke).mockResolvedValueOnce([1]);
+    const bridge = createNotificationBridge();
+    await bridge.schedule(
+      'reminder-1',
+      'Напомнить',
+      Temporal.PlainDate.from('2099-01-01'),
+      Temporal.PlainTime.from('09:00:00'),
+      'Europe/Moscow',
+    );
+    expect(plugin.requestPermission).not.toHaveBeenCalled();
     expect(invoke).toHaveBeenCalledWith(
       'plugin:notification|batch',
       expect.objectContaining({

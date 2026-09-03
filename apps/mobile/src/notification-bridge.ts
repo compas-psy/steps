@@ -12,6 +12,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import {
   cancel as pluginCancel,
+  isPermissionGranted,
   pending as pluginPending,
   requestPermission,
 } from '@tauri-apps/plugin-notification';
@@ -61,16 +62,38 @@ export function createNotificationBridge(): NotificationSchedulerPort {
       time: Temporal.PlainTime | null,
       _timezone: string,
     ): Promise<void> {
-      // Именно `requestPermission()`, безусловно, а не `isPermissionGranted()`
-      // как gate — сам `requestPermission()` (браузерный `Notification.
-      // requestPermission()` под капотом guest-js) идемпотентен: если
-      // разрешение уже выдано или отклонено насовсем, он резолвится текущим
-      // статусом без повторного UI-запроса у пользователя. Второй вызов
-      // здесь и есть «just-in-time» (SPEC §11.1: запрос происходит в момент
-      // планирования, не заранее при старте приложения), а не отдельная
-      // предварительная проверка.
-      const state = await requestPermission();
-      if (state !== 'granted') return; // ST10 — молча не планировать без разрешения, экран сам сообщает об отказе
+      // ИСПРАВЛЕНО (Task B8, первый живой прогон на эмуляторе — контроллер
+      // лично отменил собственное более раннее решение Task B4 по реальным
+      // данным устройства, не по теории). Task B4 убрал `isPermissionGranted()`
+      // gate, посчитав `requestPermission()` идемпотентным без разбора —
+      // предположение не подтвердилось на устройстве. Реальная trace:
+      // установленный guest-js `requestPermission()` зовёт
+      // `window.Notification.requestPermission()`, который в Tauri —
+      // НЕ голый браузерный API, а инжектированный полифилл
+      // (`tauri-plugin-notification`'s `init-iife.js`), реально уходящий в
+      // нативный `invoke('plugin:notification|request_permission')` →
+      // Kotlin `NotificationPlugin.requestPermissions()`. У ЭТОЙ команды на
+      // API 33+ (`android/.../NotificationPlugin.kt:250-259`) есть реальный
+      // пробел: если разрешение уже выдано (`getPermissionState(...) ===
+      // PermissionState.GRANTED`), `invoke.resolve(...)` НЕ вызывается ни в
+      // одной ветке — промис остаётся вечно неразрешённым. Живой прогон
+      // Task B8 (grant POST_NOTIFICATIONS до первого запуска, эмулируя уже
+      // выданное разрешение) поймал это напрямую: `window.Notification.
+      // permission` навсегда оставался `'default'`, `schedule()` зависал на
+      // `await requestPermission()` и ни один alarm не создавался —
+      // `dumpsys alarm` был пуст после каждой попытки. `isPermissionGranted()`
+      // не имеет этой проблемы: она использует другой, более простой нативный
+      // путь (`checkPermissions`/`getPermissionState()` без параметра →
+      // `manager.areNotificationsEnabled()`), который реально резолвится.
+      // Gate восстановлен как в исходном брифе: `requestPermission()`
+      // вызывается ТОЛЬКО когда разрешения ещё нет — именно это и есть
+      // «just-in-time» (SPEC §11.1), а не сам факт вызова на каждый
+      // schedule().
+      const granted = await isPermissionGranted();
+      if (!granted) {
+        const state = await requestPermission();
+        if (state !== 'granted') return; // ST10 — молча не планировать без разрешения, экран сам сообщает об отказе
+      }
       const plainDateTime =
         time === null ? date.toPlainDateTime({ hour: 9, minute: 0 }) : date.toPlainDateTime(time);
       const jsDate = new Date(
