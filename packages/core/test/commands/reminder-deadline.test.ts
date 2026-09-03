@@ -29,6 +29,12 @@ class InMemoryReminderStoragePort implements CommandReminderStoragePort {
     countExplicitByTask: (_taskId: Uuid): Promise<number> => Promise.resolve(0),
   };
 
+  // Task A6: `CommandReminderStoragePort.tasks` — см. тот же комментарий в
+  // `reminder-explicit.test.ts`.
+  readonly tasks = {
+    findById: (_id: Uuid): Promise<null> => Promise.resolve(null),
+  };
+
   async runTransaction<T>(run: (tx: CommandReminderWriteTransaction) => Promise<T>): Promise<T> {
     const tx: CommandReminderWriteTransaction = {
       applyMutation: (mutation: CommandReminderDomainMutation): Promise<void> => {

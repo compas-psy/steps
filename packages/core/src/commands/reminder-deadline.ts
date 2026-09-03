@@ -123,17 +123,20 @@ export async function createDeadlineApproachingReminderCommand(
     firesAt,
     offsetHours,
   );
+  // См. комментарий у той же строки в `reminder-explicit.ts` — заголовок
+  // читается живьём только ради `scheduledFingerprint` (Task A6).
+  const task = await deps.storage.tasks.findById(input.taskId);
+  const title = task?.title ?? '';
   const reminder: Reminder = {
     id: generateId(),
     taskId: input.taskId,
     kind: 'deadline_approaching',
     localRuleJson,
     enabled: true,
-    scheduledFingerprint: computeReminderFingerprint({
-      kind: 'deadline_approaching',
-      localRuleJson,
-      enabled: true,
-    }),
+    scheduledFingerprint: computeReminderFingerprint(
+      { kind: 'deadline_approaching', localRuleJson, enabled: true },
+      title,
+    ),
   };
 
   await writeReminder(reminder, deps);
@@ -173,17 +176,20 @@ export async function createDeadlineMissedReminderCommand(
     firesAt,
     null,
   );
+  // См. комментарий у той же строки в `reminder-explicit.ts` — заголовок
+  // читается живьём только ради `scheduledFingerprint` (Task A6).
+  const task = await deps.storage.tasks.findById(input.taskId);
+  const title = task?.title ?? '';
   const reminder: Reminder = {
     id: generateId(),
     taskId: input.taskId,
     kind: 'deadline_missed',
     localRuleJson,
     enabled: true,
-    scheduledFingerprint: computeReminderFingerprint({
-      kind: 'deadline_missed',
-      localRuleJson,
-      enabled: true,
-    }),
+    scheduledFingerprint: computeReminderFingerprint(
+      { kind: 'deadline_missed', localRuleJson, enabled: true },
+      title,
+    ),
   };
 
   await writeReminder(reminder, deps);

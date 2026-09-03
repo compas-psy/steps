@@ -116,6 +116,12 @@ class ArchiveTestWorld {
     reminders: {
       countExplicitByTask: (_taskId: Uuid): Promise<number> => Promise.resolve(0),
     },
+    // Task A6: `CommandReminderStoragePort` теперь несёт `tasks` (заголовок
+    // для `computeReminderFingerprint` при создании) — тот же `tasksById`,
+    // что уже видит `taskReader` выше, единый источник правды этого мира.
+    tasks: {
+      findById: (id: Uuid): Promise<Task | null> => Promise.resolve(this.tasksById.get(id) ?? null),
+    },
     runTransaction: async <T>(
       run: (tx: CommandReminderWriteTransaction) => Promise<T>,
     ): Promise<T> => {

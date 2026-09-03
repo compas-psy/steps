@@ -2,6 +2,7 @@ import type { Temporal } from '@js-temporal/polyfill';
 
 import type { Reminder } from '../entities/reminder.js';
 import type { SyncOutboxEntry } from '../entities/sync-outbox.js';
+import type { Task } from '../entities/task.js';
 import type { Uuid } from '../values.js';
 import type { NonEmptyArray } from './storage-port.js';
 
@@ -36,6 +37,18 @@ export interface CommandReminderReader {
   countExplicitByTask(taskId: Uuid): Promise<number>;
 }
 
+/**
+ * Структурный срез `TaskRepository` (`packages/storage`) — только
+ * `findById`. Появился в Task A6: `computeReminderFingerprint` честно несёт
+ * `title` (раньше не нёс вовсе, задокументированный открытый пробел
+ * прежней версии `reminder-fingerprint.ts`), а заголовок живёт на `Task`,
+ * не на `Reminder` — командам этого файла нужен способ прочитать его на
+ * момент создания.
+ */
+export interface CommandReminderTaskReader {
+  findById(id: Uuid): Promise<Task | null>;
+}
+
 /** Единственная форма записи, которую умеют команды этого файла — узкое
  * (только `entity:'reminder'`) подмножество `EntityWrite` из
  * `packages/storage/src/ports/transaction.ts`. Подмножество и делает
@@ -65,10 +78,12 @@ export interface CommandReminderWriteTransaction {
 }
 
 /** Точка входа, которую этот файл команд требует от хранилища. Структурный
- * эквивалент `StoragePort` (через `StorageQueryPort.reminders`), суженный
- * до `reminders`+`runTransaction`. */
+ * эквивалент `StoragePort` (через `StorageQueryPort.reminders`/`.tasks`),
+ * суженный до `reminders`+`tasks`+`runTransaction` (`tasks` — Task A6, см.
+ * `CommandReminderTaskReader`). */
 export interface CommandReminderStoragePort {
   readonly reminders: CommandReminderReader;
+  readonly tasks: CommandReminderTaskReader;
   runTransaction<T>(run: (tx: CommandReminderWriteTransaction) => Promise<T>): Promise<T>;
 }
 

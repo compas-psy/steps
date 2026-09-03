@@ -7,8 +7,9 @@ export type ReminderKind = 'explicit' | 'deadline_approaching' | 'deadline_misse
  * §2 п.19, кросс-строчная проверка, забота валидатора.
  *
  * Нет `clocks`/`deleted_at` — в отличие от большинства сущностей, `02§2` их
- * для `reminders` не перечисляет: расписание пересчитывается локально из
- * `scheduledFingerprint` (`02§14` reconciliation), а не мержится по полям.
+ * для `reminders` не перечисляет: расписание пересчитывается локально на
+ * каждый прогон reconciliation (`02§14`, `reconcileReminderSchedule`,
+ * `@shagi/app`), а не мержится по полям синка.
  */
 export interface Reminder {
   readonly id: Uuid;
@@ -26,7 +27,15 @@ export interface Reminder {
    */
   readonly localRuleJson: Readonly<Record<string, unknown>>;
   readonly enabled: boolean;
-  /** Используется `02§14` reconciliation — сравнение с OS-запланированными
-   * уведомлениями при каждом запуске/wake. */
+  /** Синхронизируемый снимок ЖЕЛАЕМОГО расписания на момент последней
+   * записи (`kind|firesAt|enabled|title`, `computeReminderFingerprint`,
+   * `commands/reminder-fingerprint.ts`) — информационное поле, полезное
+   * само по себе ("что, по мнению любого устройства, должно быть у этого
+   * напоминания"). Reconciliation (`02§14`, `applyReconciliation`,
+   * `@shagi/app`) это поле НИКОГДА не читает и не пишет — оно НЕ
+   * доказательство того, что нативный планировщик какого-либо устройства
+   * ему соответствует, не использовать его для такого вывода (Task A6;
+   * подробности и разбор отклонённых альтернатив — `commands/
+   * reminder-fingerprint.ts`). */
   readonly scheduledFingerprint: string;
 }

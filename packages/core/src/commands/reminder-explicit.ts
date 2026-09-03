@@ -98,17 +98,25 @@ export async function createExplicitReminderCommand(
 
   const generateId = deps.generateId ?? generateUuidV7;
   const localRuleJson = buildExplicitLocalRuleJson(input.date, input.time);
+  // Заголовок задачи для отпечатка (Task A6) — читается ЖИВЬЁМ на момент
+  // создания, не передаётся вызывающим кодом: в отличие от
+  // `deadlineDate`/`deadlineTime` (снимок нужен ТОЛЬКО правилу 34 здесь и
+  // больше нигде), `title` идёт исключительно в `scheduledFingerprint`,
+  // который сам по себе информационный и не читается reconciliation
+  // (`computeReminderFingerprint`) — отсутствующая задача (`null`) не
+  // повод бросать, честный пустой заголовок лучше выдумки.
+  const task = await deps.storage.tasks.findById(input.taskId);
+  const title = task?.title ?? '';
   const reminder: Reminder = {
     id: generateId(),
     taskId: input.taskId,
     kind: 'explicit',
     localRuleJson,
     enabled: true,
-    scheduledFingerprint: computeReminderFingerprint({
-      kind: 'explicit',
-      localRuleJson,
-      enabled: true,
-    }),
+    scheduledFingerprint: computeReminderFingerprint(
+      { kind: 'explicit', localRuleJson, enabled: true },
+      title,
+    ),
   };
 
   await writeReminder(reminder, deps);

@@ -91,9 +91,12 @@ export {
   type CancelReminderInput,
   type CancelReminderResult,
 } from './reminder-cancel.js';
-// Отпечаток желаемого расписания (`02§14` reconciliation, task A3) — экспорт
-// нужен `packages/app`, чтобы пересчитывать отпечаток существующих
-// напоминаний и сравнивать его с сохранённым `scheduledFingerprint`.
+// Отпечаток ЖЕЛАЕМОГО расписания одного напоминания на момент записи
+// (`02§14`, Task A3 → пересмотрено Task A6) — экспорт нужен командам
+// `reminder-explicit.ts`/`reminder-deadline.ts` этого же пакета; сравнение
+// reconciliation с реальным состоянием ОС читает это поле НИКОГДА (см.
+// подробный разбор в `reminder-fingerprint.ts`), поэтому `packages/app` эту
+// функцию для reconciliation не вызывает.
 export { computeReminderFingerprint } from './reminder-fingerprint.js';
 
 // --- Позиция (`rank`) для Project/Section (E09) -------------------------------

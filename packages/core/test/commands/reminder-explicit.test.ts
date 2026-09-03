@@ -34,6 +34,13 @@ class InMemoryReminderStoragePort implements CommandReminderStoragePort {
     },
   };
 
+  // Task A6: `CommandReminderStoragePort.tasks` — этому файлу заголовок
+  // задачи не важен (проверяется отдельно `reminder-fingerprint.test.ts`),
+  // честное "нет такой задачи" вместо выдумки.
+  readonly tasks = {
+    findById: (_id: Uuid): Promise<null> => Promise.resolve(null),
+  };
+
   async runTransaction<T>(run: (tx: CommandReminderWriteTransaction) => Promise<T>): Promise<T> {
     const tx: CommandReminderWriteTransaction = {
       applyMutation: (mutation: CommandReminderDomainMutation): Promise<void> => {
