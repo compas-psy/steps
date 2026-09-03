@@ -1554,7 +1554,7 @@ git commit -m "feat(mobile): NotificationSchedulerPort через tauri-plugin-n
     6. M52 (`eraseAllLocalData` UI flow)
     7. recurrence generation (does the new occurrence's reminder get scheduled; does completing/superseding the old occurrence cancel ITS reminder via path #1, with no cross-occurrence leak?)
   - **Working hypothesis, to be proven not assumed:** paths #1/#2/#5/#6 are covered by Task A4's synchronous reconciliation calls; #3/#4 are covered structurally (cancel-then-recreate drops the old id from `desired` on the very next pass); #7 was not written with recurrence in mind and needs explicit checking.
-- Modify: `docs/adr/000X-android-napominaniya-tauri-plugin-notification.md` (record the OUTCOME of this task's investigation — either "verified closed, no residual gap" with evidence per path, or the real remaining gap and its fix)
+- Modify: `docs/adr/0008-android-napominaniya-tauri-plugin-notification.md` (record the OUTCOME of this task's investigation — either "verified closed, no residual gap" with evidence per path, or the real remaining gap and its fix)
 
 - [ ] **Step 1: For each of the 7 paths, trace the real committed Task A4 code and answer: does a synchronous `await reconcileReminderScheduleForTask(...)`/`reconcileReminderSchedule(...)` happen on this path before the command's result is considered final?**
 
@@ -1571,7 +1571,7 @@ Document what Step 1 found (the 7-row table) and what Step 2 fixed, if anything.
 - [ ] **Step 4: Commit**
 
 ```bash
-git add docs/adr/000X-android-napominaniya-tauri-plugin-notification.md
+git add docs/adr/0008-android-napominaniya-tauri-plugin-notification.md
 # + любые файлы из Step 2, если там был реальный фикс (тест + код) —
 # добавить их в тот же коммит, не отдельным
 git commit -m "docs(adr): аддендум — firing-time active-check, доказано/закрыто по всем 7 путям (не принятое ограничение)"
