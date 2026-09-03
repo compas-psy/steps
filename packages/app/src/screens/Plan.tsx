@@ -157,8 +157,10 @@ import {
   type CalendarDate,
   type CalendarMonth,
 } from '@shagi/ui';
+import { isAvailable } from '@shagi/platform';
 
-import { useAppController, useStorage } from '../state/context.js';
+import { useAppController, useHost, useStorage } from '../state/context.js';
+import { reconcileReminderScheduleForTask } from '../state/reminder-reconciliation.js';
 import './Plan.css';
 
 /** См. заголовок файла, блок «Compact date strip». */
@@ -319,6 +321,7 @@ function getPlanDeviceId(): Uuid {
 
 export function Plan(): ReactElement {
   const storage = useStorage();
+  const host = useHost();
   const controller = useAppController();
   const today = Temporal.Now.plainDateISO();
 
@@ -347,6 +350,20 @@ export function Plan(): ReactElement {
     setGroups(selectPlanAgenda(tasks, today));
   }
 
+  /** См. `Search.tsx` — тот же постфикс реконсиляции после успешной команды
+   * (00§7 шаг 5). */
+  async function reconcileTaskReminders(taskId: Uuid): Promise<void> {
+    const scheduler = host.platform.notificationScheduler;
+    if (!isAvailable(scheduler)) return;
+    await reconcileReminderScheduleForTask(
+      storage,
+      scheduler,
+      taskId,
+      Temporal.Now.plainDateTimeISO(),
+      Temporal.Now.timeZoneId(),
+    );
+  }
+
   function handleComplete(task: Task): void {
     void (async () => {
       const result = await completeTaskCommand(
@@ -356,7 +373,10 @@ export function Plan(): ReactElement {
       // Провал не проглатывается: список не перезапрашивается под ошибкой,
       // задача остаётся на экране — человек видит, что ничего не
       // изменилось, а не пустоту на месте якобы завершённой задачи.
-      if (result.status === 'ok') await refreshAgenda();
+      if (result.status === 'ok') {
+        await refreshAgenda();
+        await reconcileTaskReminders(task.id);
+      }
     })();
   }
 

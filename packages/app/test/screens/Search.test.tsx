@@ -3,9 +3,14 @@ import { useEffect, useState, type ReactElement } from 'react';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Temporal } from '@js-temporal/polyfill';
-import { createUnavailablePlatform } from '@shagi/platform';
+import {
+  createUnavailablePlatform,
+  type NotificationPrecision,
+  type NotificationSchedulerPort,
+} from '@shagi/platform';
 import { t } from '@shagi/i18n';
 import {
+  makeExplicitReminder,
   makeLabel,
   makeOutboxEntry,
   makeProject,
@@ -25,11 +30,40 @@ function testHost(): AppHost {
   return { platform: createUnavailablePlatform(), storageBackend: { kind: 'memory' } };
 }
 
+/** Тот же фейк, что `test/state/reminder-reconciliation.test.ts` (Task A3).
+ * `initialScheduled` — см. `TaskDetail.test.tsx` за тем же обоснованием:
+ * тестам реконсиляции ниже нужно НАЧАТЬ с уже-запланированным id, чтобы
+ * проверить именно `cancel`. */
+function fakeScheduler(initialScheduled: readonly string[] = []): NotificationSchedulerPort & {
+  calls: { scheduled: string[]; cancelled: string[] };
+} {
+  const scheduled = new Set<string>(initialScheduled);
+  const calls = { scheduled: [] as string[], cancelled: [] as string[] };
+  return {
+    calls,
+    async schedule(id) {
+      scheduled.add(id);
+      calls.scheduled.push(id);
+    },
+    async cancel(id) {
+      scheduled.delete(id);
+      calls.cancelled.push(id);
+    },
+    async listScheduled() {
+      return Array.from(scheduled);
+    },
+    async getSchedulingCapability(): Promise<NotificationPrecision> {
+      return 'exact';
+    },
+  };
+}
+
 interface Seed {
   readonly projects?: readonly Project[];
   readonly tasks?: readonly Task[];
   readonly labels?: readonly Label[];
   readonly taskLabels?: readonly ReturnType<typeof makeTaskLabel>[];
+  readonly reminders?: readonly ReturnType<typeof makeExplicitReminder>[];
 }
 
 /** Тот же приём посева, что `TaskDetail.test.tsx`/`ProjectDetail.test.tsx`
@@ -69,6 +103,14 @@ async function seed(storage: StoragePort, entities: Seed): Promise<void> {
       });
     });
   }
+  for (const reminder of entities.reminders ?? []) {
+    await storage.runTransaction(async (tx) => {
+      await tx.applyMutation({
+        writes: [{ entity: 'reminder', value: reminder }],
+        outbox: [makeOutboxEntry('reminder', reminder.id)],
+      });
+    });
+  }
 }
 
 /** Тот же приём захвата `storage`, что `ProjectDetail.test.tsx`/
@@ -103,14 +145,17 @@ function SeedThenSearchCapturing({
   return seeded ? <Search /> : null;
 }
 
-function renderSearch(entities: Seed = {}): {
+function renderSearch(
+  entities: Seed = {},
+  host: AppHost = testHost(),
+): {
   getStorage: () => StoragePort;
   controller: ReturnType<typeof createAppController>;
 } {
   const controller = createAppController({ screen: 'search' });
   let capturedStorage: StoragePort | undefined;
   render(
-    <AppProvider host={testHost()} controller={controller}>
+    <AppProvider host={host} controller={controller}>
       <SeedThenSearchCapturing
         entities={entities}
         onStorage={(storage) => (capturedStorage = storage)}
@@ -226,6 +271,28 @@ describe('Search — чекбокс в выдаче работает, а не у
     await user.type(await searchInput(), 'сделана');
 
     expect(await screen.findByRole('checkbox', { name: 'Уже сделана' })).toBeDisabled();
+  });
+});
+
+describe('Search — реконсиляция расписания напоминаний после завершения (00§7 шаг 5, Task A4)', () => {
+  it('завершение задачи с активным напоминанием отменяет его в scheduler', async () => {
+    const user = userEvent.setup();
+    const task = makeTask({ title: 'Оплатить интернет с напоминанием' });
+    const reminder = makeExplicitReminder(task.id);
+    // Уже «запланировано» до монтирования (см. `fakeScheduler`) — тест
+    // проверяет именно `cancel`, не побочный `schedule`.
+    const scheduler = fakeScheduler([reminder.id]);
+    const host: AppHost = {
+      platform: { ...createUnavailablePlatform(), notificationScheduler: scheduler },
+      storageBackend: { kind: 'memory' },
+    };
+    renderSearch({ tasks: [task], reminders: [reminder] }, host);
+    await user.type(await searchInput(), 'интернет с напоминанием');
+
+    const box = await screen.findByRole('checkbox', { name: 'Оплатить интернет с напоминанием' });
+    await user.click(box);
+
+    await waitFor(() => expect(scheduler.calls.cancelled).toEqual([reminder.id]));
   });
 });
 

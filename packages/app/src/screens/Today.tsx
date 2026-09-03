@@ -324,8 +324,10 @@ import {
   type TaskMenuItemData,
   type TaskRowState,
 } from '@shagi/ui';
+import { isAvailable } from '@shagi/platform';
 
-import { useAppController, useAppState, useStorage } from '../state/context.js';
+import { useAppController, useAppState, useHost, useStorage } from '../state/context.js';
+import { reconcileReminderScheduleForTask } from '../state/reminder-reconciliation.js';
 import './Today.css';
 
 /** Precedence `01§6` — порядок, в котором группы проверяются и рендерятся. */
@@ -836,6 +838,7 @@ function focusAssignmentPatch(group: TodayGroup): UpdateTaskPatch {
 
 export function Today(): ReactElement {
   const storage = useStorage();
+  const host = useHost();
   const controller = useAppController();
   const [groups, setGroups] = useState<TodayGroups | null>(null);
   /** Счётчик активных Входящих для бейджа заголовка — см. заголовок файла,
@@ -960,6 +963,20 @@ export function Today(): ReactElement {
 
   function commandDeps(): { storage: typeof storage; now: Temporal.Instant; deviceId: Uuid } {
     return { storage, now: Temporal.Now.instant(), deviceId: getDeviceId() };
+  }
+
+  /** См. `Search.tsx` — тот же постфикс реконсиляции после успешной команды
+   * (00§7 шаг 5). */
+  async function reconcileTaskReminders(taskId: Uuid): Promise<void> {
+    const scheduler = host.platform.notificationScheduler;
+    if (!isAvailable(scheduler)) return;
+    await reconcileReminderScheduleForTask(
+      storage,
+      scheduler,
+      taskId,
+      Temporal.Now.plainDateTimeISO(),
+      Temporal.Now.timeZoneId(),
+    );
   }
 
   /** «Выбрать» / «Готово» — вход и выход из режима выбора экрана
@@ -1091,7 +1108,18 @@ export function Today(): ReactElement {
     let anyFailed = false;
     for (const id of ids) {
       const result = await deleteTaskCommand({ id }, commandDeps());
-      if (result.status !== 'ok') anyFailed = true;
+      if (result.status !== 'ok') {
+        anyFailed = true;
+        continue;
+      }
+      // Реконсиляция ПОСЛЕ каждого удаления (00§7 шаг 5) — саму удалённую
+      // задачу и её каскадированные subtasks (`affectedSubtaskIds`,
+      // `DeleteTaskResult`), у каждой из которых мог быть собственный
+      // reminder.
+      await reconcileTaskReminders(id);
+      for (const subtaskId of result.affectedSubtaskIds) {
+        await reconcileTaskReminders(subtaskId);
+      }
     }
     await refreshGroups();
     setSelection({ active: false, selectedIds: new Set() });

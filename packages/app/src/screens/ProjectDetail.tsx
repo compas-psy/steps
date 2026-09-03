@@ -155,8 +155,10 @@ import {
   Toast,
   type TaskMenuItemData,
 } from '@shagi/ui';
+import { isAvailable } from '@shagi/platform';
 
-import { useAppController, useStorage } from '../state/context.js';
+import { useAppController, useHost, useStorage } from '../state/context.js';
+import { reconcileReminderScheduleForTask } from '../state/reminder-reconciliation.js';
 import './ProjectDetail.css';
 
 // --- Локальная идентичность устройства/владельца (см. заголовок файла) ------
@@ -660,6 +662,7 @@ function TaskBoardCard({
 
 export function ProjectDetail(): ReactElement | null {
   const storage = useStorage();
+  const host = useHost();
   const controller = useAppController();
   const projectId = controller.getState().selectedProjectId;
 
@@ -725,6 +728,10 @@ export function ProjectDetail(): ReactElement | null {
     return { storage, now: Temporal.Now.instant(), deviceId: getLocalIdentity().deviceId };
   }
 
+  // `handleDelete` ниже НЕ идёт через этот хелпер — та же причина, что
+  // `Inbox.tsx` `runCommand`: `deleteTaskCommand` каскадирует subtasks
+  // (`affectedSubtaskIds`, `DeleteTaskResult` в `@shagi/core`), и
+  // реконсиляции нужен доступ к этому полю сверх базового `TaskCommandResult`.
   async function runCommand(promise: Promise<TaskCommandResult>): Promise<void> {
     const result = await promise;
     if (result.status === 'ok') {
@@ -733,6 +740,20 @@ export function ProjectDetail(): ReactElement | null {
       return;
     }
     setErrorMessage(t('projectDetail', 'errors.actionFailed'));
+  }
+
+  /** См. `Search.tsx` — тот же постфикс реконсиляции после успешной команды
+   * (00§7 шаг 5). */
+  async function reconcileTaskReminders(taskId: Uuid): Promise<void> {
+    const scheduler = host.platform.notificationScheduler;
+    if (!isAvailable(scheduler)) return;
+    await reconcileReminderScheduleForTask(
+      storage,
+      scheduler,
+      taskId,
+      Temporal.Now.plainDateTimeISO(),
+      Temporal.Now.timeZoneId(),
+    );
   }
 
   // --- CRUD секций (E09.4): зависимости команд ------------------------------
@@ -931,9 +952,24 @@ export function ProjectDetail(): ReactElement | null {
     );
   }
 
+  /** Не через общий `runCommand` (см. её комментарий выше) — реконсиляции
+   * нужен `affectedSubtaskIds` каскада удаления, чтобы отменить и
+   * напоминания subtasks синхронно (00§7 шаг 5). */
   function handleDelete(task: Task): void {
     setOpenMenuTaskId(null);
-    void runCommand(deleteTaskCommand({ id: task.id }, commandDeps()));
+    void (async () => {
+      const result = await deleteTaskCommand({ id: task.id }, commandDeps());
+      if (result.status === 'ok') {
+        setErrorMessage(null);
+        await loadAll();
+        await reconcileTaskReminders(task.id);
+        for (const subtaskId of result.affectedSubtaskIds) {
+          await reconcileTaskReminders(subtaskId);
+        }
+        return;
+      }
+      setErrorMessage(t('projectDetail', 'errors.actionFailed'));
+    })();
   }
 
   function listOfSection(sectionId: Uuid | null): readonly Task[] {

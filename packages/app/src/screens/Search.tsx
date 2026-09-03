@@ -261,9 +261,11 @@ import {
   type SearchCandidate,
 } from '@shagi/storage/search';
 import type { StoragePort } from '@shagi/storage';
+import { isAvailable } from '@shagi/platform';
 import { Button, EmptyState, Filter, Icon, Input, Label, ProjectRow, TaskRow } from '@shagi/ui';
 
-import { useAppController, useStorage } from '../state/context.js';
+import { useAppController, useHost, useStorage } from '../state/context.js';
+import { reconcileReminderScheduleForTask } from '../state/reminder-reconciliation.js';
 import './Search.css';
 
 /** См. заголовок файла, блок «Разметка результатов по видам» — та же
@@ -436,6 +438,7 @@ function FilterResultRow({ task, onOpen }: FilterResultRowProps): ReactElement {
 
 export function Search(): ReactElement {
   const storage = useStorage();
+  const host = useHost();
   const controller = useAppController();
   const [query, setQuery] = useState('');
   const [candidates, setCandidates] = useState<readonly SearchCandidate[] | null>(null);
@@ -475,13 +478,35 @@ export function Search(): ReactElement {
     setSystemFilterGroups(selectSystemFilters(activeTasks, Temporal.Now.plainDateTimeISO()));
   }
 
+  /** Реконсиляция расписания напоминаний ПОСЛЕ успешного завершения задачи
+   * (00§7 шаг 5 «notification reconciliation», `01§18`: complete отменяет
+   * все её ожидающие уведомления). Дешёвый путь по ОДНОЙ задаче
+   * (`reconcileReminderScheduleForTask`, Task A3) — полный скан
+   * (`reconcileReminderSchedule`) не нужен, менялась ровно эта задача.
+   * `Unavailable` (тестовый режим/платформа без нативных уведомлений) молча
+   * пропускается — тот же приём, что boot-эффекты `App.tsx`. */
+  async function reconcileTaskReminders(taskId: Uuid): Promise<void> {
+    const scheduler = host.platform.notificationScheduler;
+    if (!isAvailable(scheduler)) return;
+    await reconcileReminderScheduleForTask(
+      storage,
+      scheduler,
+      taskId,
+      Temporal.Now.plainDateTimeISO(),
+      Temporal.Now.timeZoneId(),
+    );
+  }
+
   function handleCompleteResult(task: SearchableTask): void {
     void (async () => {
       const result = await completeTaskCommand(
         { id: task.id },
         { storage, now: Temporal.Now.instant(), deviceId: getSearchDeviceId() },
       );
-      if (result.status === 'ok') await refreshCandidates();
+      if (result.status === 'ok') {
+        await refreshCandidates();
+        await reconcileTaskReminders(task.id);
+      }
     })();
   }
 

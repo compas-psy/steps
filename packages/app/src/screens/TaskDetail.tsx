@@ -202,8 +202,10 @@ import {
   type TemporalConflictType,
   type TimeValue,
 } from '@shagi/ui';
+import { isAvailable } from '@shagi/platform';
 
-import { useAppController, useStorage } from '../state/context.js';
+import { useAppController, useHost, useStorage } from '../state/context.js';
+import { reconcileReminderScheduleForTask } from '../state/reminder-reconciliation.js';
 import './TaskDetail.css';
 
 // --- Локальная идентичность устройства/владельца (см. заголовок файла) ------
@@ -833,6 +835,7 @@ function PlanningRow({ title, description, actions }: PlanningRowProps): ReactEl
 
 export function TaskDetail(): ReactElement | null {
   const storage = useStorage();
+  const host = useHost();
   const controller = useAppController();
   const taskId = controller.getState().selectedTaskId;
 
@@ -1021,6 +1024,24 @@ export function TaskDetail(): ReactElement | null {
       nowLocal: Temporal.Now.plainDateTimeISO(),
       deviceId: getLocalIdentity().deviceId,
     };
+  }
+
+  /** Реконсиляция расписания напоминаний ПОСЛЕ команд, меняющих желаемое
+   * (create/cancel reminder, complete/delete subtask, 00§7 шаг 5) —
+   * дешёвый путь по ОДНОЙ задаче (`reconcileReminderScheduleForTask`,
+   * Task A3), не полный скан workspace. `Unavailable` (тестовый режим/
+   * платформа без нативных уведомлений) молча пропускается — тот же
+   * приём, что boot-эффекты `App.tsx`. */
+  async function reconcileTaskReminders(targetTaskId: Uuid): Promise<void> {
+    const scheduler = host.platform.notificationScheduler;
+    if (!isAvailable(scheduler)) return;
+    await reconcileReminderScheduleForTask(
+      storage,
+      scheduler,
+      targetTaskId,
+      Temporal.Now.plainDateTimeISO(),
+      Temporal.Now.timeZoneId(),
+    );
   }
 
   function attachLabelDeps(): {
@@ -1398,6 +1419,11 @@ export function TaskDetail(): ReactElement | null {
       setReminderError(null);
       setReminderPicker(null);
       await refreshOk();
+      // Один вызов реконсиляции покрывает и отмену старого (если был выше),
+      // и планирование нового — обе мутации уже применены к хранилищу,
+      // `reconcileReminderScheduleForTask` читает желаемое состояние заново
+      // (00§7 шаг 5).
+      await reconcileTaskReminders(task.id);
       return;
     }
     setReminderError(t('taskDetail', 'planning.reminder.limitError'));
@@ -1411,6 +1437,7 @@ export function TaskDetail(): ReactElement | null {
       if (result.status === 'ok' || result.status === 'already_cancelled') {
         setReminderError(null);
         await refreshOk();
+        await reconcileTaskReminders(reminder.taskId);
       }
     })();
   }
@@ -1564,15 +1591,30 @@ export function TaskDetail(): ReactElement | null {
   // --- Subtasks ------------------------------------------------------------
 
   function handleCompleteSubtask(subtask: Task): void {
-    void runAndRefresh(
-      completeTaskCommand({ id: subtask.id }, commandDeps()),
-      refreshOk,
-      showError,
-    );
+    void (async () => {
+      const result = await runAndRefresh(
+        completeTaskCommand({ id: subtask.id }, commandDeps()),
+        refreshOk,
+        showError,
+      );
+      if (result.status === 'ok') await reconcileTaskReminders(subtask.id);
+    })();
   }
 
+  // Подзадача не каскадирует дальше (глубина иерархии ≤1, правило 7,
+  // `@shagi/core`) — `affectedSubtaskIds` этого `deleteTaskCommand` всегда
+  // пуст, поэтому здесь достаточно реконсиляции по одной этой задаче (в
+  // отличие от удаления ВЕРХНЕУРОВНЕВОЙ задачи, см. `handleDelete` на
+  // Today/Inbox/ProjectDetail).
   function handleDeleteSubtask(subtask: Task): void {
-    void runAndRefresh(deleteTaskCommand({ id: subtask.id }, commandDeps()), refreshOk, showError);
+    void (async () => {
+      const result = await runAndRefresh(
+        deleteTaskCommand({ id: subtask.id }, commandDeps()),
+        refreshOk,
+        showError,
+      );
+      if (result.status === 'ok') await reconcileTaskReminders(subtask.id);
+    })();
   }
 
   function handleAddSubtask(event: FormEvent<HTMLFormElement>): void {

@@ -3,9 +3,13 @@ import { useEffect, useState, type ReactElement } from 'react';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Temporal } from '@js-temporal/polyfill';
-import { createUnavailablePlatform } from '@shagi/platform';
+import {
+  createUnavailablePlatform,
+  type NotificationPrecision,
+  type NotificationSchedulerPort,
+} from '@shagi/platform';
 import { formatDate, t } from '@shagi/i18n';
-import { makeOutboxEntry, makeTask } from '@shagi/storage/contract';
+import { makeExplicitReminder, makeOutboxEntry, makeTask } from '@shagi/storage/contract';
 import type { StoragePort } from '@shagi/storage';
 import { generateUuidV7, makeOccurrenceSeq, type RecurrenceSeries, type Task } from '@shagi/core';
 import { describe, expect, it } from 'vitest';
@@ -17,6 +21,46 @@ import { Today } from '../../src/screens/Today.js';
 
 function testHost(): AppHost {
   return { platform: createUnavailablePlatform(), storageBackend: { kind: 'memory' } };
+}
+
+/** Тот же фейк, что `test/state/reminder-reconciliation.test.ts` (Task A3).
+ * `initialScheduled` — см. `TaskDetail.test.tsx` за тем же обоснованием. */
+function fakeScheduler(initialScheduled: readonly string[] = []): NotificationSchedulerPort & {
+  calls: { scheduled: string[]; cancelled: string[] };
+} {
+  const scheduled = new Set<string>(initialScheduled);
+  const calls = { scheduled: [] as string[], cancelled: [] as string[] };
+  return {
+    calls,
+    async schedule(id) {
+      scheduled.add(id);
+      calls.scheduled.push(id);
+    },
+    async cancel(id) {
+      scheduled.delete(id);
+      calls.cancelled.push(id);
+    },
+    async listScheduled() {
+      return Array.from(scheduled);
+    },
+    async getSchedulingCapability(): Promise<NotificationPrecision> {
+      return 'exact';
+    },
+  };
+}
+
+/** Пишет напоминание напрямую в хранилище — та же техника, что
+ * `TaskDetail.test.tsx` `seedReminder` (см. её комментарий). */
+async function seedReminder(
+  storage: StoragePort,
+  reminder: ReturnType<typeof makeExplicitReminder>,
+): Promise<void> {
+  await storage.runTransaction(async (tx) => {
+    await tx.applyMutation({
+      writes: [{ entity: 'reminder', value: reminder }],
+      outbox: [makeOutboxEntry('reminder', reminder.id)],
+    });
+  });
 }
 
 async function seedTasks(storage: StoragePort, tasks: readonly Task[]): Promise<void> {
@@ -151,11 +195,14 @@ function SeedThenTodayCapturing({
   return seeded ? <Today /> : null;
 }
 
-function renderTodayCapturingStorage(tasks: readonly Task[]): () => StoragePort {
+function renderTodayCapturingStorage(
+  tasks: readonly Task[],
+  host: AppHost = testHost(),
+): () => StoragePort {
   const controller = createAppController({ screen: 'todayEmpty' });
   let capturedStorage: StoragePort | undefined;
   render(
-    <AppProvider host={testHost()} controller={controller}>
+    <AppProvider host={host} controller={controller}>
       <SeedThenTodayCapturing tasks={tasks} onStorage={(storage) => (capturedStorage = storage)} />
     </AppProvider>,
   );
@@ -1179,6 +1226,29 @@ describe('Today — M37 «Множественный выбор»: агреги�
       expect((await getStorage().tasks.findById(first.id))?.deletedAt).not.toBeNull(),
     );
     expect((await getStorage().tasks.findById(second.id))?.deletedAt).not.toBeNull();
+  });
+
+  it('массовое удаление с активным напоминанием отменяет его в scheduler (00§7 шаг 5, Task A4)', async () => {
+    const user = userEvent.setup();
+    const task = makeTask({ title: 'Удаляемая с напоминанием', plannedDate: TODAY });
+    const reminder = makeExplicitReminder(task.id);
+    // Уже «запланировано» до монтирования (см. `fakeScheduler`) — тест
+    // проверяет именно `cancel`, не побочный `schedule`.
+    const scheduler = fakeScheduler([reminder.id]);
+    const host: AppHost = {
+      platform: { ...createUnavailablePlatform(), notificationScheduler: scheduler },
+      storageBackend: { kind: 'memory' },
+    };
+    const getStorage = renderTodayCapturingStorage([task], host);
+
+    await waitFor(() => expect(screen.getByText('Удаляемая с напоминанием')).toBeInTheDocument());
+    await seedReminder(getStorage(), reminder);
+    await user.click(screen.getByRole('button', { name: t('today', 'selection.enter') }));
+    await user.click(screen.getByRole('checkbox', { name: 'Удаляемая с напоминанием' }));
+    await user.click(screen.getByRole('button', { name: t('today', 'bulk.delete') }));
+    await user.click(screen.getByRole('button', { name: t('today', 'bulk.deleteConfirmAccept') }));
+
+    await waitFor(() => expect(scheduler.calls.cancelled).toEqual([reminder.id]));
   });
 
   it('массовый приоритет применяется ко всем выбранным и только к ним', async () => {
