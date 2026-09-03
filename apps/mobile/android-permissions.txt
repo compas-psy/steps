@@ -65,6 +65,21 @@ android.permission.VIBRATE
   # `false` и ничего не происходит — SecurityException не бросается, но и
   # обратной связи у человека тоже нет.
 
+android.permission.WAKE_LOCK
+  # Обнаружено CI-шлюзом («Разрешения собранного APK против списка»), не
+  # решением продукта — как и `INTERNET` выше. Объявлено безусловно самим
+  # `tauri-plugin-notification` 2.4.0 (ADR-0008) в его собственном
+  # `android/src/main/AndroidManifest.xml` (`<uses-permission
+  # android:name="android.permission.WAKE_LOCK" />`) — подтверждено прямым
+  # чтением исходника пакета, не догадкой. В Kotlin-коде самого плагина нет
+  # ни одного вызова `PowerManager`/`WakeLock` API (проверено — grep по
+  # всему `android/` пакета пуст): это защитное объявление библиотеки для
+  # класса задач «получатель, разбуженный AlarmManager, должен успеть
+  # показать уведомление раньше, чем устройство снова уснёт», а не решение,
+  # которое принял или мог отключить наш код. Без строки штатная сборка
+  # `tauri android build` не даст собрать APK этим CI-шлюзом вовсе — тот же
+  # случай, что и с `INTERNET`.
+
 ru.cmpas.shagi.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION
   # НЕ пользовательское разрешение и не сторонняя зависимость — саморазрешение
   # с `protectionLevel="signature"`, которое AndroidX Core объявляет и сам же

@@ -93,6 +93,9 @@ describe('android-permissions.txt', () => {
     // приложения, не пару «оба сразу» (см. объяснение самой строки
     // `SCHEDULE_EXACT_ALARM` в файле). `INTERNET` — требование сгенерированного
     // базового манифеста Tauri (WebView-мост), не решение продукта.
+    // `WAKE_LOCK` — безусловное объявление `tauri-plugin-notification`
+    // 2.4.0 (ADR-0008) в его собственном манифесте, найдено CI-шлюзом при
+    // Task B2, не решением продукта (см. объяснение самой строки в файле).
     // `DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION` — саморазрешение AndroidX
     // Core (`signature`-уровень, не пользовательское) на СОБРАННЫЙ APK, тоже
     // не решение продукта — тот же список, что фактически проверяет
@@ -104,6 +107,7 @@ describe('android-permissions.txt', () => {
         'android.permission.SCHEDULE_EXACT_ALARM',
         'android.permission.RECEIVE_BOOT_COMPLETED',
         'android.permission.VIBRATE',
+        'android.permission.WAKE_LOCK',
         'ru.cmpas.shagi.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION',
       ].toSorted(),
     );
@@ -122,5 +126,11 @@ describe('android-permissions.txt', () => {
     expect(text).toMatch(/INTERNET/);
     expect(text.toLowerCase()).toMatch(/пересмотрен/);
     expect(text).toMatch(/manifest-merger/);
+  });
+
+  it('строка WAKE_LOCK ссылается на исходник tauri-plugin-notification как доказательство', () => {
+    expect(text).toMatch(/WAKE_LOCK/);
+    expect(text).toMatch(/tauri-plugin-notification/);
+    expect(text).toMatch(/AndroidManifest\.xml/);
   });
 });
