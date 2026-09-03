@@ -35,6 +35,22 @@ export interface CommandReminderReader {
   /** Правило 19 (`02§2` "max 1 explicit reminder на задачу") — прямой вход
    * для проверки лимита перед созданием explicit reminder. */
   countExplicitByTask(taskId: Uuid): Promise<number>;
+
+  /**
+   * Task B8 (ST10-расследование, Задача 3 — атомарная замена explicit
+   * reminder, `reminder-replace.ts`). Минимальное расширение структурного
+   * среза — зеркалит уже существующий метод настоящего `ReminderRepository`
+   * (`packages/storage/src/ports/reminder-repository.ts`), НЕ новая
+   * storage-возможность. Нужен ИМЕННО здесь: `countExplicitByTask`
+   * (даже после фикса `enabled`-фильтра) не различает «единственная
+   * enabled-запись — это ТА САМАЯ, что заменяется» от «единственная
+   * enabled-запись — ДРУГАЯ, а заменяемая уже как-то не активна» — грубое
+   * `count - 1` было бы хрупким предположением. `listByTask` даёт точный
+   * ответ: посчитать активные explicit-записи, ИСКЛЮЧИВ id заменяемой,
+   * тем же способом, что уже проверенно делает `TaskDetail.tsx`'s
+   * `loadAll()` (`nextReminders.find(kind==='explicit' && enabled)`).
+   */
+  listByTask(taskId: Uuid): Promise<readonly Reminder[]>;
 }
 
 /**

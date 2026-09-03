@@ -60,7 +60,7 @@ export type CreateExplicitReminderResult =
  * применяет `isReminderAfterDeadline` (`temporal/predicates.ts`) при
  * сравнении с дедлайном.
  */
-function buildExplicitLocalRuleJson(
+export function buildExplicitLocalRuleJson(
   date: Temporal.PlainDate,
   time: Temporal.PlainTime | null,
 ): Readonly<Record<string, unknown>> {

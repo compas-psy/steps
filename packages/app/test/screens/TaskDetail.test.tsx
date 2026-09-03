@@ -885,16 +885,19 @@ describe('TaskDetail — Explicit Reminder (M31, `01§18`)', () => {
     expect(reminders.filter((r) => r.kind === 'explicit' && r.enabled)).toHaveLength(1);
   });
 
-  it('если create отклоняется ПОСЛЕ cancel старого (реальная гонка — конкурентная запись между cancel и create), экран не продолжает показывать отменённый reminder и честно показывает ошибку (Task B8, Задача 4)', async () => {
-    // countExplicitByTask больше не считает отменённые (см. фикс выше) —
-    // единственный реалистичный способ снова получить `rejected` ПОСЛЕ
-    // того, как cancel уже применился, это конкурентная запись ДРУГОГО
-    // active explicit reminder на ту же задачу между cancel и create
-    // (владелец, Задача 3: ровно тот gap, которого атомарность должна
-    // была бы избежать; Задача 4 — независимо от атомарности, экран не
-    // имеет права молча показывать устаревшее состояние в ЛЮБОМ таком
-    // случае). Эмулируется прямой записью в storage «за спиной» экрана
-    // непосредственно перед кликом «Сохранить».
+  it('конкурентная запись ДРУГОГО active explicit reminder ПЕРЕД «Сохранить» отклоняет замену БЕЗ единой мутации — старый reminder остаётся нетронутым, ошибка видна (Task B8, Задача 4, обновлено под атомарную Задачу 3)', async () => {
+    // До Задачи 3 (атомарная замена) сценарий назывался "гонка между
+    // cancel и create" — раздельные команды успевали отменить старое ДО
+    // проверки лимита для нового. `replaceExplicitReminderCommand`
+    // проверяет правило 19 (исключая себя) ДО единственной атомарной
+    // мутации (`reminder-replace.ts`) — при конкурентной записи отказ
+    // происходит РАНЬШЕ любой записи: старый reminder вообще не
+    // трогается, а не «уже отменён, новое не создано». Задача 4 (`loadAll()`
+    // в отклонённой ветке) остаётся защитным механизмом на случай ЛЮБОГО
+    // будущего отказа, но эта конкретная гонка теперь не оставляет
+    // storage ни в каком промежуточном состоянии вовсе — сильнее, чем
+    // просто «экран не врёт». Эмулируется прямой записью в storage «за
+    // спиной» экрана непосредственно перед кликом «Сохранить».
     const user = userEvent.setup();
     const task = makeTask({ title: 'Гонка при замене' });
     const { getStorage } = renderTaskDetail(task.id, { tasks: [task] });
@@ -907,9 +910,11 @@ describe('TaskDetail — Explicit Reminder (M31, `01§18`)', () => {
     await user.click(
       screen.getByRole('button', { name: t('taskDetail', 'planning.reminder.save') }),
     );
-    await waitFor(async () => {
+    const original = await waitFor(async () => {
       const reminders = await getStorage().reminders.listByTask(task.id);
-      expect(reminders.some((r) => r.kind === 'explicit' && r.enabled)).toBe(true);
+      const found = reminders.find((r) => r.kind === 'explicit' && r.enabled);
+      if (found === undefined) throw new Error('исходный reminder ещё не создан');
+      return found;
     });
 
     await user.click(
@@ -936,21 +941,17 @@ describe('TaskDetail — Explicit Reminder (M31, `01§18`)', () => {
     await waitFor(() =>
       expect(screen.getByText(t('taskDetail', 'planning.reminder.limitError'))).toBeInTheDocument(),
     );
-    // Экран перечитал canonical state — старый (уже отменённый) reminder
-    // отменён В ХРАНИЛИЩЕ, и экран это отражает: ровно одна enabled
-    // explicit-запись на задачу — та самая конкурентная, не новая
-    // (create отклонён) и не старая (уже cancel).
+    // Атомарность (Задача 3): НИ ОДНОЙ мутации не произошло — исходный
+    // reminder остался ENABLED (не тронут вовсе, не «уже отменён»),
+    // конкурентный тоже цел, новый НЕ создан. Ровно 2 enabled
+    // explicit-записи на задачу — обе исходные, ни одной новой.
     const reminders = await getStorage().reminders.listByTask(task.id);
     const enabledExplicit = reminders.filter((r) => r.kind === 'explicit' && r.enabled);
-    expect(enabledExplicit.map((r) => r.id)).toEqual([concurrent.id]);
-
-    // Наблюдаемо на экране, не только в хранилище: `concurrent` создан с
-    // ПУСТЫМ `localRuleJson` (`makeExplicitReminder` фикстура) — если бы
-    // `explicitReminder` в React-состоянии остался старым (не перечитан
-    // после отказа), строка показывала бы РЕАЛЬНЫЙ чип с датой (у старого
-    // reminder A дата была — «сегодня»), а не «нет напоминания». Без
-    // `loadAll()` в отклонённой ветке этот текст не появился бы.
-    expect(screen.getByText(t('taskDetail', 'planning.reminder.empty'))).toBeInTheDocument();
+    expect(enabledExplicit.map((r) => r.id).toSorted()).toEqual(
+      [original.id, concurrent.id].toSorted(),
+    );
+    const storedOriginal = reminders.find((r) => r.id === original.id);
+    expect(storedOriginal?.enabled).toBe(true);
   });
 });
 

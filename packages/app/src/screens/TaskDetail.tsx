@@ -148,6 +148,7 @@ import {
   makeDurationMinutes,
   makePriority,
   parseRecurrenceRuleTemplate,
+  replaceExplicitReminderCommand,
   resolveNextWeekMonday,
   resolveWeekend,
   skipOccurrenceCommand,
@@ -1414,57 +1415,68 @@ export function TaskDetail(): ReactElement | null {
     setReminderPicker((current) => (current === null ? null : { ...current, time: null }));
   }
 
-  /** «Изменить» (заголовок кнопки зависит от `explicitReminder !== null`,
-   * см. JSX) отменяет старое напоминание ПЕРЕД созданием нового —
-   * `createExplicitReminderCommand` сама не заменяет, только создаёт
-   * (правило 19: максимум один explicit reminder). Известный, задокументированный
-   * в `@shagi/core` `reminder-cancel.ts` шов вне территории этого пакета
-   * работ (`packages/storage`): реальный `ReminderRepository.countExplicitByTask`
-   * считает по `kind='explicit'` БЕЗ фильтра `enabled`, поэтому создание
-   * нового СРАЗУ после отмены старого сегодня тоже отклоняется правилом 19
-   * — это не ошибка этого экрана, а актуальное состояние хранилища; починка
-   * (фильтр по `enabled` в счётчике) — задача будущего пакета работ
-   * `packages/storage`, эта форма (cancel-затем-create) уже написана
-   * ПРАВИЛЬНО и заработает без единой правки здесь, как только тот шов
-   * закроют. */
+  /**
+   * «Изменить» (заголовок кнопки зависит от `explicitReminder !== null`,
+   * см. JSX) — создаёт (`explicitReminder === null`) или атомарно заменяет
+   * (`explicitReminder !== null`) существующий explicit reminder.
+   *
+   * Task B8 (ST10-расследование, владелец, Задача 3): раньше замена
+   * делалась ДВУМЯ раздельными командами (`cancelReminderCommand`, затем
+   * `createExplicitReminderCommand`) — каждая своя транзакция, коммит по
+   * отдельности. Реальный gap: сбой (в т.ч. на Android — убийство
+   * процесса ОС в фоне) ровно между двумя `await` оставлял пользователя
+   * вовсе без напоминания — старое уже отменено, новое не создано.
+   * `replaceExplicitReminderCommand` (`@shagi/core`, `reminder-replace.ts`)
+   * заменяет обе команды ОДНОЙ атомарной мутацией: либо обе записи
+   * применены, либо ни одна. Никакого UI-level `cancel → create` здесь
+   * больше нет.
+   */
   async function handleSubmitReminder(): Promise<void> {
     if (task === null || reminderPicker === null || reminderPicker.date === null) return;
     const date = fromCalendarDate(reminderPicker.date);
     const time = reminderPicker.time === null ? null : fromTimeValue(reminderPicker.time);
-    if (explicitReminder !== null) {
-      await cancelReminderCommand({ reminder: explicitReminder }, reminderDeps());
-    }
-    const result = await createExplicitReminderCommand(
-      {
-        taskId: task.id,
-        date,
-        time,
-        deadlineDate: task.deadlineDate,
-        deadlineTime: task.deadlineTime,
-      },
-      reminderDeps(),
-    );
+    const result =
+      explicitReminder === null
+        ? await createExplicitReminderCommand(
+            {
+              taskId: task.id,
+              date,
+              time,
+              deadlineDate: task.deadlineDate,
+              deadlineTime: task.deadlineTime,
+            },
+            reminderDeps(),
+          )
+        : await replaceExplicitReminderCommand(
+            {
+              old: explicitReminder,
+              taskId: task.id,
+              date,
+              time,
+              deadlineDate: task.deadlineDate,
+              deadlineTime: task.deadlineTime,
+            },
+            reminderDeps(),
+          );
     if (result.status === 'ok') {
       setReminderError(null);
       setReminderPicker(null);
       await refreshOk();
-      // Один вызов реконсиляции покрывает и отмену старого (если был выше),
-      // и планирование нового — обе мутации уже применены к хранилищу,
+      // Реконсиляция ПОСЛЕ успешной domain-операции (создание ИЛИ атомарная
+      // замена) — обе мутации уже применены к хранилищу,
       // `reconcileReminderScheduleForTask` читает желаемое состояние заново
       // (00§7 шаг 5).
       await reconcileTaskReminders(task.id);
       return;
     }
     setReminderError(t('taskDetail', 'planning.reminder.limitError'));
-    // Task B8 (ST10-расследование, владелец, Задача 4): если это была замена
-    // (`explicitReminder !== null` выше — старый уже отменён ДО этого
-    // `create`), отказ `create` не имеет права оставить экран показывать
-    // отменённый `explicitReminder`, как будто он всё ещё активен —
+    // Task B8 (ST10-расследование, владелец, Задача 4 — фикс сохранён и
+    // после перехода на атомарную замену, Задача 3): отказ не имеет права
+    // оставить экран показывать устаревший `explicitReminder` —
     // `loadAll()` честно перечитывает canonical-состояние из хранилища
-    // (в т.ч. `setExplicitReminder`, см. её комментарий про правило 19),
-    // экран покажет ПУСТОЕ состояние напоминания, а не застрявший старый
-    // чип. Ошибка (`reminderError` выше) при этом остаётся видимой — это
-    // не «молчаливый отказ», картинка на экране просто перестаёт врать.
+    // (в т.ч. `setExplicitReminder`, см. её комментарий про правило 19).
+    // Ошибка (`reminderError` выше) при этом остаётся видимой — это не
+    // «молчаливый отказ», картинка на экране просто перестаёт врать.
     await loadAll();
   }
 

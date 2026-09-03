@@ -19,6 +19,11 @@ class InMemoryReminderStoragePort implements CommandReminderStoragePort {
 
   readonly reminders = {
     countExplicitByTask: (_taskId: Uuid): Promise<number> => Promise.resolve(0),
+    // Task B8, Задача 3 — `CommandReminderReader.listByTask`: этому файлу
+    // (`cancelReminderCommand` его не читает) реальная фильтрация не
+    // нужна, честный вывод из уже существующего `byId` не хуже заглушки.
+    listByTask: (taskId: Uuid): Promise<readonly Reminder[]> =>
+      Promise.resolve([...this.byId.values()].filter((r) => r.taskId === taskId)),
   };
 
   // Task A6: `CommandReminderStoragePort.tasks` — этому файлу заголовок

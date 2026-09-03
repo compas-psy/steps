@@ -91,6 +91,11 @@ export {
   type CancelReminderInput,
   type CancelReminderResult,
 } from './reminder-cancel.js';
+export {
+  replaceExplicitReminderCommand,
+  type ReplaceExplicitReminderInput,
+  type ReplaceExplicitReminderResult,
+} from './reminder-replace.js';
 // Отпечаток ЖЕЛАЕМОГО расписания одного напоминания на момент записи
 // (`02§14`, Task A3 → пересмотрено Task A6) — экспорт нужен командам
 // `reminder-explicit.ts`/`reminder-deadline.ts` этого же пакета; сравнение

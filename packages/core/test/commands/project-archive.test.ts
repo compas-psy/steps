@@ -115,6 +115,14 @@ class ArchiveTestWorld {
   readonly reminderStorage: CommandReminderStoragePort = {
     reminders: {
       countExplicitByTask: (_taskId: Uuid): Promise<number> => Promise.resolve(0),
+      // Task B8, Задача 3 — `CommandReminderReader.listByTask`: этот файл
+      // не вызывает `replaceExplicitReminderCommand`, честный вывод из
+      // уже существующего `remindersById` (тот же источник, что
+      // `reminderReader` выше).
+      listByTask: (taskId: Uuid): Promise<readonly Reminder[]> =>
+        Promise.resolve(
+          [...this.remindersById.values()].filter((reminder) => reminder.taskId === taskId),
+        ),
     },
     // Task A6: `CommandReminderStoragePort` теперь несёт `tasks` (заголовок
     // для `computeReminderFingerprint` при создании) — тот же `tasksById`,
