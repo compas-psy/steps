@@ -186,6 +186,36 @@ describe('reconcileReminderSchedule', () => {
     );
   });
 
+  it('не планирует просроченное напоминание — без replay storm для прошлого firesAt (01§18 line 489, TA#34)', async () => {
+    // Регресс на находку ревью Task A3: строка 218 `applyReconciliation`
+    // (`Temporal.PlainDateTime.compare(target, nowLocal) <= 0`) не имела
+    // покрытия — ни один существующий тест этого файла или
+    // `packages/storage/test/sqlite/reminder-reconciliation-native.test.ts`
+    // не сеял `firesAt` раньше `NOW_LOCAL` (`2026-09-03T09:00`). Без этой
+    // ветки при перезапуске приложения/после потери OS alarm реконсиляция
+    // передала бы в `scheduler.schedule()` уже прошедший момент — реальный
+    // replay storm просроченных напоминаний, который правило 34 запрещает.
+    const storage = createInMemoryStorage();
+    const scheduler = fakeScheduler();
+    const task = await seedTask(storage);
+    // Тот же посевной путь, что и у положительных тестов выше (активная
+    // задача, не удалена, без проекта, `enabled:true` по умолчанию
+    // `createExplicitReminderCommand`) — единственное отличие: дата раньше
+    // `NOW_LOCAL`, а не `2026-09-04`.
+    const overdueReminder = await seedExplicitReminder(
+      storage,
+      task.id,
+      Temporal.PlainDate.from('2026-09-02'),
+    );
+
+    const summary = await reconcileReminderSchedule(storage, scheduler, NOW_LOCAL, TIMEZONE);
+
+    expect(summary.scheduled).toEqual([]);
+    expect(summary.cancelled).toEqual([]);
+    expect(scheduler.calls.scheduled).not.toContain(overdueReminder.id);
+    expect(await scheduler.listScheduled()).toEqual([]);
+  });
+
   it('не трогает то, что уже согласовано (уже запланировано под этим id) — без replay storm', async () => {
     const storage = createInMemoryStorage();
     const scheduler = fakeScheduler();
