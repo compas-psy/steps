@@ -60,6 +60,13 @@ import {
 const APPLICATION_ID = process.env['SHAGI_APPLICATION_ID'] ?? 'ru.cmpas.shagi';
 const DEVTOOLS_PORT = 9222;
 
+/** Отступ строки в пробелах — граница вложенного блока в `dumpsys alarm`
+ * (`listSystemAlarmBlocks()`): дочерние строки записи отступлены БОЛЬШЕ, чем
+ * её заголовок. */
+function indentOf(line) {
+  return line.length - line.trimStart().length;
+}
+
 function adb(args, options = {}) {
   // При `stdio: 'inherit'` вывод уходит прямо в лог, а `execFileSync`
   // возвращает `null` — без этой проверки вызов падал бы на `.trim()`
@@ -125,6 +132,40 @@ function listSystemAlarms() {
 }
 
 /**
+ * Как `listSystemAlarms()`, но вместо отдельных строк, буквально содержащих
+ * `APPLICATION_ID`, возвращает ПОЛНЫЙ вложенный блок каждой записи будильника
+ * (Task B8 — второй живой прогон, TODO(B8-controller) выявил: `window=`/
+ * триггерное время печатаются на дочерних строках БЕЗ буквального имени
+ * пакета — реальный дамп на этой сборке: заголовок `RTC_WAKEUP #N:
+ * Alarm{... ru.cmpas.shagi}` содержит пакет, но следующая строка с
+ * `type=`/`window=` — нет, поэтому построчный фильтр `listSystemAlarms()`
+ * молча ронял её). Формат `dumpsys alarm`: заголовок записи — строка с
+ * package-меткой на определённом отступе, детали записи — строки с БОЛЬШИМ
+ * отступом сразу под ней, до первой строки с отступом ≤ заголовочного
+ * (начало следующей записи/секции). Возвращает МАССИВ блоков (каждый блок —
+ * массив строк: заголовок + все дочерние), не плоский список строк, — по
+ * одному блоку на каждую top-level запись, где заголовок содержит пакет.
+ */
+function listSystemAlarmBlocks() {
+  const output = adb(['shell', 'dumpsys', 'alarm'], { encoding: 'utf8' });
+  const allLines = output.split('\n');
+  const blocks = [];
+  for (let i = 0; i < allLines.length; i += 1) {
+    const line = allLines[i];
+    if (line === undefined || !line.includes(APPLICATION_ID)) continue;
+    const headerIndent = indentOf(line);
+    const block = [line];
+    for (let j = i + 1; j < allLines.length; j += 1) {
+      const next = allLines[j];
+      if (next === undefined || next.trim() === '' || indentOf(next) <= headerIndent) break;
+      block.push(next);
+    }
+    blocks.push(block);
+  }
+  return blocks;
+}
+
+/**
  * Тот же алгоритм id, что и `apps/mobile/src/notification-bridge.ts`
  * (`fnv1a32`) — СКОПИРОВАН сюда, а не импортирован: этот файл — `.mjs` вне
  * TypeScript-графа сборки мобильного приложения, а копия детерминированной
@@ -156,18 +197,24 @@ function fnv1a32(value) {
  * значение для батчируемых. Формат ПОДТВЕРЖДЁН только описанием брифа, НЕ
  * живым прогоном — см. TODO ниже.
  *
- * // TODO(B8-controller): формат `dumpsys alarm` для установленной версии
- * // Android/AOSP этого образа эмулятора живьём не наблюдался (в этой
- * // песочнице нет `adb`/эмулятора вовсе, см. отчёт задачи). Название поля
- * // (`window=`) взято из официального описания механизма в самом брифе
- * // задачи и общего знания формата `AlarmManagerService`/`Alarm.java`
- * // (AOSP), но НЕ вычитано из реального дампа этой сборки. После первого
- * // живого прогона (Step 11, контроллер) — свериться с настоящей строкой и
- * // либо оставить этот regexp, либо заменить на реально увиденный маркер,
- * // одной правкой здесь.
+ * // TODO(B8-controller), уточнено живым прогоном (Task B8, второй прогон
+ * // после permission-фикса, run 33787274846): реальный дамп на этой сборке
+ * // даёт для каждой записи ТРИ строки, буквально содержащие пакет
+ * // (заголовок `RTC_WAKEUP #N: Alarm{...ru.cmpas.shagi}`, `tag=...`,
+ * // `operation=PendingIntent{...}`) — ни в одной из них нет `window=`.
+ * // НЕ ПОДТВЕРЖДЕНО (гипотеза, не факт): `window=`, вероятно, печатается на
+ * // ДОЧЕРНЕЙ строке БЕЗ буквального имени пакета, которую построчный
+ * // фильтр `listSystemAlarms()` молча ронял — стандартная структура
+ * // `dumpsys alarm` (заголовок + вложенные детали на большем отступе)
+ * // делает это вероятным, но реальная строка с `window=` ещё не увидена
+ * // напрямую. Функция теперь принимает не одну строку, а полный текст
+ * // блока записи (`listSystemAlarmBlocks()`, дочерние строки включены) —
+ * // если гипотеза верна, это исправление; если нет, следующий прогон
+ * // покажет реальную причину (в блоке будет видно ВСЁ, включая любые
+ * // дочерние строки) вместо повторной догадки вслепую.
  */
-function alarmWindowMs(line) {
-  const match = /\bwindow=(\d+)/.exec(line);
+function alarmWindowMs(blockText) {
+  const match = /\bwindow=(\d+)/.exec(blockText);
   return match === null ? null : Number(match[1]);
 }
 
@@ -886,12 +933,17 @@ async function main() {
 
   console.log('── Step 2b: exact/inexact маркер — claim #1 ──');
   for (const line of scheduledAfterAdd) console.log(`  dumpsys: ${line}`);
-  const windowsAfterAdd = scheduledAfterAdd.map(alarmWindowMs).filter((value) => value !== null);
+  const blocksAfterAdd = listSystemAlarmBlocks();
+  for (const block of blocksAfterAdd) console.log(`  блок: ${JSON.stringify(block)}`);
+  const windowsAfterAdd = blocksAfterAdd
+    .map((block) => alarmWindowMs(block.join('\n')))
+    .filter((value) => value !== null);
   if (windowsAfterAdd.length === 0) {
     fail(
-      'ни одна строка `dumpsys alarm` не содержит поле `window=` — маркер exact/inexact из Step 2b брифа не ' +
-        'удалось прочитать НИ ОДНИМ способом (TODO(B8-controller), см. `alarmWindowMs`). Реально увиденные ' +
-        `строки залогированы выше. Строки: ${JSON.stringify(scheduledAfterAdd)}`,
+      'ни один полный блок записи `dumpsys alarm` не содержит поле `window=` — маркер exact/inexact из Step 2b ' +
+        'брифа не удалось прочитать НИ ОДНИМ способом (TODO(B8-controller), см. `alarmWindowMs`; гипотеза о ' +
+        'дочерней строке без имени пакета не подтвердилась — полные блоки залогированы выше). ' +
+        `Блоки: ${JSON.stringify(blocksAfterAdd)}`,
     );
   }
   const hasStandaloneAfterAdd = windowsAfterAdd.some((value) => value === 0);
@@ -955,11 +1007,15 @@ async function main() {
   const linesAfterDeny = listSystemAlarms();
   console.log(`dumpsys после отзыва возможности (${linesAfterDeny.length} строк):`);
   for (const line of linesAfterDeny) console.log(`  dumpsys: ${line}`);
-  const windowsAfterDeny = linesAfterDeny.map(alarmWindowMs).filter((value) => value !== null);
+  const blocksAfterDeny = listSystemAlarmBlocks();
+  for (const block of blocksAfterDeny) console.log(`  блок: ${JSON.stringify(block)}`);
+  const windowsAfterDeny = blocksAfterDeny
+    .map((block) => alarmWindowMs(block.join('\n')))
+    .filter((value) => value !== null);
   if (windowsAfterDeny.length === 0) {
     fail(
-      'после отзыва возможности не удалось прочитать `window=` ни в одной строке dumpsys — ' +
-        `TODO(B8-controller), см. Step 2b. Строки: ${JSON.stringify(linesAfterDeny)}`,
+      'после отзыва возможности не удалось прочитать `window=` ни в одном полном блоке dumpsys — ' +
+        `TODO(B8-controller), см. Step 2b. Блоки: ${JSON.stringify(blocksAfterDeny)}`,
     );
   }
   if (windowsAfterDeny.every((value) => value === 0)) {
