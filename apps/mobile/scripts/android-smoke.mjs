@@ -1044,6 +1044,18 @@ async function main() {
     stdio: 'inherit',
   });
   first.cdp.close();
+  // `am force-stop` ПЕРЕД `launchAndAttach` — та же ловушка, что уже
+  // задокументирована у Step 5.3/Step 6 ниже (см. их комментарии): без него
+  // `monkey -c LAUNCHER` внутри `launchAndAttach` лишь выводит УЖЕ живой
+  // процесс на передний план (pid не меняется), WebView остаётся на карточке
+  // задачи, где его оставил предыдущий шаг — а не на Today, откуда
+  // `openTaskRow` ищет строку. Найдено живым прогоном (Task B8, седьмой
+  // прогон, run 33791919751): `pid` до и после «перезапуска» совпал
+  // (`2451`/`2451`), экран остался на уже открытой карточке. Полноценный
+  // перезапуск здесь не факультативен и для сути шага: свежий процесс —
+  // это и есть свежая JS-сессия, в которой `getSchedulingCapability()`
+  // не может быть кэширована предыдущим запуском.
+  adb(['shell', 'am', 'force-stop', APPLICATION_ID], { stdio: 'inherit' });
   first = await launchAndAttach('после отзыва SCHEDULE_EXACT_ALARM');
   if ((await first.cdp.evaluate(openTaskRow(taskTitle))) !== true) {
     fail(`строка задачи «${taskTitle}» не открылась после отзыва exact-возможности`);
