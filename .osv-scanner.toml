@@ -1,103 +1,142 @@
 # Настройка osv-scanner (скан уязвимостей зависимостей, `.github/workflows/
 # security.yml`, SPEC/06 §12/§19).
 #
-# По умолчанию пусто — исключение здесь появилось не «на всякий случай», а
-# как прямое следствие security review нового SQLite-моста (ADR-0005, P1):
-# скан впервые начал проверять Cargo.lock обеих Tauri-оболочек
-# (apps/mobile/src-tauri, apps/desktop/src-tauri), а не только
-# pnpm-lock.yaml, и первым же прогоном на реальной сети (не в этой
-# песочнице — здесь api.osv.dev недоступен) нашёл 17 разных advisory,
-# по разу на каждый Cargo.lock (34 строки в отчёте).
+# По умолчанию пусто — исключение здесь появилось как прямое следствие
+# security review нового SQLite-моста (ADR-0005, P1): скан впервые начал
+# проверять Cargo.lock обеих Tauri-оболочек (apps/mobile/src-tauri,
+# apps/desktop/src-tauri), а не только pnpm-lock.yaml, и первым же прогоном
+# на реальной сети нашёл 17 advisory, по разу на каждый Cargo.lock (34
+# строки в отчёте).
 #
-# Ни один из них НЕ починить точечным bump'ом версии: `cargo update -p glib
-# --precise 0.20.0` (единственная запись с CVSS и доступным фиксом) падает
-# с «required by … tauri v2.11.5» — `tauri` сам закрепляет `gtk = "^0.18"`,
-# а `gtk` 0.18.2 закрепляет `glib = "^0.18"`. Поднять версию можно только
-# сменой мажорной версии `tauri` целиком — это не security-фикс, а отдельное
-# по объёму архитектурное решение (и вне того, что просил именно этот
-# security review: «не меняй функциональное поведение сверх этих фиксов»).
+# КАЖДАЯ запись ниже проверена `cargo tree --target <triple> -e normal`
+# на ОБОИХ реально поставляемых таргетах R1 (aarch64-linux-android,
+# x86_64-pc-windows-msvc) для ОБОИХ Cargo.lock — не предположение "наверное
+# это GTK и не для мобилки". Список делится на две РАЗНЫЕ по природе группы,
+# смешивать их в одно объяснение было бы неточно:
 #
-# Все 17 — транзитивная GTK/glib-цепочка `tauri` для ЛИНУКСОВОЙ (desktop)
-# сборки WebView; часть из них (RUSTSEC-2025-00xx про `unic-*`,
-# RUSTSEC-2024-0370 про `proc-macro-error`) — это предупреждения «пакет не
-# поддерживается», не эксплуатируемые уязвимости — фикс для них появится,
-# только когда `tauri`/`gtk-rs` перейдут на замену выше по дереву.
-# Список пересмотреть, когда обновится `tauri` в Cargo.toml обеих оболочек
-# — тогда часть строк станет unused (osv-scanner предупреждает об этом в
-# логе, но не роняет job) и их нужно убрать, а не оставлять мёртвыми.
+# ГРУППА 1 — 12 advisory, крейт подтверждённо ОТСУТСТВУЕТ в дереве обоих
+# таргетов (`cargo tree --target aarch64-linux-android|x86_64-pc-windows-msvc
+# -e normal -p <crate>` — пусто на обоих, для обоих Cargo.lock). Это
+# GTK/glib-бэкенд `tauri` для Linux WebView (`gtk`, прямая зависимость
+# `tauri` 2.11.5; `atk`/`gdk`/`glib` и `*-sys`/`*-macros` — транзитивные
+# зависимости `gtk`), собирается только под `cfg(target_os = "linux")` и
+# физически не может попасть в APK или Windows-бинарник — это подтверждённый
+# факт устройства сборки Tauri, не предположение о том, что «наверное не
+# используется». В `apps/mobile/src-tauri/Cargo.lock`/`apps/desktop/
+# src-tauri/Cargo.lock` эти строки есть, потому что Cargo.lock хранит граф
+# резолвинга ДЛЯ ВСЕХ платформ, объявленных где-либо в дереве зависимостей
+# tauri, а не только для таргета, под который собирается конкретный job.
+#
+# ГРУППА 2 — 5 advisory (`unic-*`), крейт ПОДТВЕРЖДЁННО ПРИСУТСТВУЕТ в
+# дереве обоих таргетов (та же команда — непустой вывод на обоих). Путь:
+# `tauri` → `tauri-runtime`/`tauri-macros`/`tauri-codegen` → `tauri-utils`
+# → `urlpattern` → `unic-ucd-ident`/`unic-char-property`/`unic-char-range`/
+# `unic-common`/`unic-ucd-version` (парсинг URLPattern использует
+# Unicode-таблицы идентификаторов). Здесь allowlist НЕ «обновление сложное»
+# — обновления попросту НЕТ: все пять advisory `informational =
+# "unmaintained"` (RustSec, не CVE/CVSS, проверено по исходнику advisory-db
+# — `patched = []`, `unaffected = []` буквально означает «нет версии,
+# которая это чинит», а не «мы не проверяли»). Вся семья крейтов
+# `open-i18n/rust-unic` заброшена целиком; починка требует замены
+# `urlpattern` внутри `tauri-utils` на другую Unicode-библиотеку — решение
+# вне этого репозитория, upstream у tauri/urlpattern. SPEC/06 §12/§19
+# называет блокирующей находкой exploitable critical/high — ни у одной из
+# этих пяти нет ни CVE, ни CVSS, ни задокументированного вектора
+# эксплуатации (это статус "нет мейнтейнера", не уязвимость).
+#
+# Дата проверки обеих групп — 2026-09-02. Пересмотреть при следующем
+# апдейте `tauri` в Cargo.toml любой из оболочек: группа 1 не изменится,
+# пока `tauri`/`gtk-rs` не сменят major; группа 2 может исчезнуть раньше,
+# если `tauri-utils` заменит `urlpattern` или `urlpattern` уйдёт от
+# `unic-*` на `icu_properties`/`unicode-ident` (рекомендация самого RustSec).
+# Условие удаления — единое для всех 17: запись становится unused
+# (osv-scanner предупреждает об этом в логе, не роняет job) — тогда её
+# нужно убрать, а не оставлять мёртвой.
 #
 # Каждая запись — конкретный ID, не подстрока и не пакет целиком: новая
 # уязвимость в ЛЮБОМ другом пакете (включая новую версию этих же пакетов)
 # по-прежнему валит job. Это не `|| true`.
 
+# ─── Группа 1: GTK/glib, Linux-only WebView backend — не в Android/Windows ───
+
 [[IgnoredVulns]]
 id = "RUSTSEC-2024-0413"
-reason = "atk 0.18.2 — не поддерживается, транзитивная зависимость tauri через gtk 0.18.2 (Linux WebView). Фикса нет без смены мажорной версии tauri. 2026-09-02."
+reason = "atk 0.18.2 — не поддерживается; транзитивная зависимость gtk 0.18.2 (Linux WebView tauri). cargo tree --target aarch64-linux-android|x86_64-pc-windows-msvc: пусто на обоих. Фикса нет без смены мажорной версии tauri. Проверено 2026-09-02."
 
 [[IgnoredVulns]]
 id = "RUSTSEC-2024-0416"
-reason = "atk-sys 0.18.2 — та же цепочка, что RUSTSEC-2024-0413. 2026-09-02."
+reason = "atk-sys 0.18.2 — та же цепочка и та же проверка, что RUSTSEC-2024-0413. Проверено 2026-09-02."
 
 [[IgnoredVulns]]
 id = "RUSTSEC-2024-0412"
-reason = "gdk 0.18.2 — не поддерживается, транзитивная зависимость tauri через gtk 0.18.2. Фикса нет без смены мажорной версии tauri. 2026-09-02."
+reason = "gdk 0.18.2 — не поддерживается; транзитивная зависимость gtk 0.18.2. cargo tree --target aarch64-linux-android|x86_64-pc-windows-msvc: пусто на обоих. Фикса нет без смены мажорной версии tauri. Проверено 2026-09-02."
 
 [[IgnoredVulns]]
 id = "RUSTSEC-2024-0418"
-reason = "gdk-sys 0.18.2 — та же цепочка, что RUSTSEC-2024-0412. 2026-09-02."
+reason = "gdk-sys 0.18.2 — та же цепочка и та же проверка, что RUSTSEC-2024-0412. Проверено 2026-09-02."
 
 [[IgnoredVulns]]
 id = "RUSTSEC-2024-0411"
-reason = "gdkwayland-sys 0.18.2 — та же цепочка, что RUSTSEC-2024-0412. 2026-09-02."
+reason = "gdkwayland-sys 0.18.2 — та же цепочка и та же проверка, что RUSTSEC-2024-0412. Проверено 2026-09-02."
 
 [[IgnoredVulns]]
 id = "RUSTSEC-2024-0417"
-reason = "gdkx11 0.18.2 — та же цепочка, что RUSTSEC-2024-0412. 2026-09-02."
+reason = "gdkx11 0.18.2 — та же цепочка и та же проверка, что RUSTSEC-2024-0412. Проверено 2026-09-02."
 
 [[IgnoredVulns]]
 id = "RUSTSEC-2024-0414"
-reason = "gdkx11-sys 0.18.2 — та же цепочка, что RUSTSEC-2024-0412. 2026-09-02."
+reason = "gdkx11-sys 0.18.2 — та же цепочка и та же проверка, что RUSTSEC-2024-0412. Проверено 2026-09-02."
 
 [[IgnoredVulns]]
 id = "RUSTSEC-2024-0429"
-reason = "glib 0.18.5 (CVSS 6.9) — единственная запись с доступным фиксом (0.20.0), но `cargo update -p glib --precise 0.20.0` отклонён резолвером: gtk 0.18.2 (транзитивная зависимость tauri 2.11.5) требует glib \"^0.18\". Требует смены мажорной версии tauri, не точечного bump'а. 2026-09-02."
+reason = "glib 0.18.5 (CVSS 6.9) — единственная запись группы 1 с доступным фиксом (0.20.0), но cargo update -p glib --precise 0.20.0 отклонён резолвером: gtk 0.18.2 (транзитивная зависимость tauri 2.11.5) требует glib \"^0.18\". cargo tree --target aarch64-linux-android|x86_64-pc-windows-msvc: пусто на обоих — не в поставляемом бинарнике R1. Требует смены мажорной версии tauri, не точечного bump'а. Проверено 2026-09-02."
 
 [[IgnoredVulns]]
 id = "GHSA-wrw7-89jp-8q8g"
-reason = "Алиас RUSTSEC-2024-0429 (glib) — см. эту запись выше. 2026-09-02."
+reason = "Алиас RUSTSEC-2024-0429 (glib) — см. эту запись выше. Проверено 2026-09-02."
 
 [[IgnoredVulns]]
 id = "RUSTSEC-2024-0415"
-reason = "gtk 0.18.2 — не поддерживается, прямая зависимость tauri 2.11.5 для Linux WebView. Фикса нет без смены мажорной версии tauri. 2026-09-02."
+reason = "gtk 0.18.2 — не поддерживается; ПРЯМАЯ зависимость tauri 2.11.5 для Linux WebView. cargo tree --target aarch64-linux-android|x86_64-pc-windows-msvc: пусто на обоих. Фикса нет без смены мажорной версии tauri. Проверено 2026-09-02."
 
 [[IgnoredVulns]]
 id = "RUSTSEC-2024-0420"
-reason = "gtk-sys 0.18.2 — та же цепочка, что RUSTSEC-2024-0415. 2026-09-02."
+reason = "gtk-sys 0.18.2 — та же цепочка и та же проверка, что RUSTSEC-2024-0415. Проверено 2026-09-02."
 
 [[IgnoredVulns]]
 id = "RUSTSEC-2024-0419"
-reason = "gtk3-macros 0.18.2 — та же цепочка, что RUSTSEC-2024-0415. 2026-09-02."
+reason = "gtk3-macros 0.18.2 — та же цепочка и та же проверка, что RUSTSEC-2024-0415. Проверено 2026-09-02."
 
 [[IgnoredVulns]]
 id = "RUSTSEC-2024-0370"
-reason = "proc-macro-error 1.0.4 — не поддерживается, транзитивная зависимость сборочных макросов tauri/gtk-rs. Фикса нет без смены мажорной версии tauri. 2026-09-02."
+reason = "proc-macro-error 1.0.4 — не поддерживается; транзитивная зависимость сборочных макросов gtk3-macros. cargo tree --target aarch64-linux-android|x86_64-pc-windows-msvc: пусто на обоих. Фикса нет без смены мажорной версии tauri. Проверено 2026-09-02."
+
+# ─── Группа 2: unic-* — ДЕЙСТВИТЕЛЬНО в Android/Windows, но не уязвимость ───
+# tauri → tauri-utils → urlpattern → unic-*. Все пять — informational
+# "unmaintained" (RustSec advisory-db, дословно: patched = [], unaffected =
+# [] — фикса не существует ни в какой версии, вся семья open-i18n/rust-unic
+# заброшена), не CVE/CVSS, без задокументированного вектора эксплуатации.
+# Не allowlist "потому что сложно" — фикса физически нет без замены
+# urlpattern внутри tauri-utils апстримом, это вне контроля этого
+# репозитория. cargo tree --target aarch64-linux-android|x86_64-pc-windows-msvc:
+# крейт ПРИСУТСТВУЕТ на обоих (проверено, не предположение).
 
 [[IgnoredVulns]]
 id = "RUSTSEC-2025-0081"
-reason = "unic-char-property 0.9.0 — не поддерживается, транзитивная зависимость text-shaping стека tauri/gtk-rs. Фикса нет без смены мажорной версии tauri. 2026-09-02."
+reason = "unic-char-property 0.9.0 — informational unmaintained (RustSec: patched=[], unaffected=[], не CVE/CVSS). ЕСТЬ в графе aarch64-linux-android и x86_64-pc-windows-msvc (tauri → tauri-utils → urlpattern → unic-*, проверено cargo tree). Фикса нет: вся семья unic-* заброшена, чинится только заменой urlpattern апстримом tauri. Проверено 2026-09-02."
 
 [[IgnoredVulns]]
 id = "RUSTSEC-2025-0075"
-reason = "unic-char-range 0.9.0 — та же цепочка, что RUSTSEC-2025-0081. 2026-09-02."
+reason = "unic-char-range 0.9.0 — та же цепочка, та же проверка присутствия на Android/Windows, тот же статус unmaintained без фикса, что RUSTSEC-2025-0081. Проверено 2026-09-02."
 
 [[IgnoredVulns]]
 id = "RUSTSEC-2025-0080"
-reason = "unic-common 0.9.0 — та же цепочка, что RUSTSEC-2025-0081. 2026-09-02."
+reason = "unic-common 0.9.0 — та же цепочка, та же проверка присутствия на Android/Windows, тот же статус unmaintained без фикса, что RUSTSEC-2025-0081. Проверено 2026-09-02."
 
 [[IgnoredVulns]]
 id = "RUSTSEC-2025-0100"
-reason = "unic-ucd-ident 0.9.0 — та же цепочка, что RUSTSEC-2025-0081. 2026-09-02."
+reason = "unic-ucd-ident 0.9.0 — та же цепочка, та же проверка присутствия на Android/Windows, тот же статус unmaintained без фикса, что RUSTSEC-2025-0081. Проверено 2026-09-02."
 
 [[IgnoredVulns]]
 id = "RUSTSEC-2025-0098"
-reason = "unic-ucd-version 0.9.0 — та же цепочка, что RUSTSEC-2025-0081. 2026-09-02."
+reason = "unic-ucd-version 0.9.0 — та же цепочка, та же проверка присутствия на Android/Windows, тот же статус unmaintained без фикса, что RUSTSEC-2025-0081. Проверено 2026-09-02."
