@@ -165,13 +165,33 @@ export function sqlToFieldClocks(value: SqliteParam): FieldClocks {
   return result;
 }
 
-/** JSON "непрозрачных" полей (`patch_json`, `report_json`, `template_json`,
+/**
+ * JSON "непрозрачных" полей (`patch_json`, `report_json`, `template_json`,
  * `local_rule_json`, ...) — доменные типы объявляют их как `Record<string,
- * unknown>`/`unknown` без вложенных `Temporal`/`bigint` значений (см.
- * `@shagi/core` `entities/*.ts`), поэтому обычного `JSON.stringify`/`parse`
- * достаточно — не нужен тот же кастомный кодек, что у `FieldClocks`. */
+ * unknown>`/`unknown`, и это НЕ гарантирует отсутствие `bigint` внутри:
+ * `SyncOutboxEntry.patchJson` для `recurrence_series` кладёт
+ * `nextOccurrenceSeq`/`templateRevision` буквально (`@shagi/core`
+ * `commands/create-recurring-task.ts`, `complete-occurrence.ts` и другие —
+ * оба поля объявлены `bigint`-брендами, `values.ts`). Голый
+ * `JSON.stringify` на таком значении бросает `TypeError: Do not know how
+ * to serialize a BigInt` — синхронно, внутри уже открытой транзакции,
+ * ROLLBACK, и наверх уходит messageless-friendly ошибка (реальный дефект,
+ * найденный Android-смоуком: Quick Add с повтором падал на первой же
+ * попытке записать outbox серии).
+ *
+ * Замена `bigint` на его десятичную строку через replacer `JSON.stringify`
+ * — не тот же маркер `{i64: "..."}`, что у `native-bridge.ts`/`sqlite.rs`:
+ * там маркер обязан пережить обратное декодирование в `bigint` для
+ * IPC-параметров конкретных колонок. Здесь — непрозрачный payload будущей
+ * синхронизации (волна 2), который сейчас нигде не декодируется обратно в
+ * типизированные поля (`sqlToJson` возвращает `Record<string, unknown>`
+ * как есть) — терять бы было нечему, а плоская строка проще и не создаёт
+ * второй параллельный формат маркировки целых.
+ */
 export function jsonToSql(value: unknown): string {
-  return JSON.stringify(value);
+  return JSON.stringify(value, (_key, nested: unknown) =>
+    typeof nested === 'bigint' ? nested.toString() : nested,
+  );
 }
 
 export function sqlToJson<T>(value: SqliteParam): T {
