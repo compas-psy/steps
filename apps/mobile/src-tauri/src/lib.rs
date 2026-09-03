@@ -1,11 +1,12 @@
 //! Оболочка ШАГОВ для Android.
 //!
 //! SPEC/00 §3: в `apps/*` не должно быть ни одного экрана, ни одной строки
-//! продуктовой/бизнес-логики. Подключённый плагин один —
-//! `tauri-plugin-deep-link`, которым `src/platform.ts` реализует
-//! `DeepLinkPort`. `haptics`/`networkStatus` идут через Web API прямо из
-//! WebView (`navigator.vibrate`/`navigator.onLine`) — им нативный мост не
-//! нужен, поэтому его здесь и нет.
+//! продуктовой/бизнес-логики. Подключённые плагины: `tauri-plugin-deep-link`
+//! (`src/platform.ts` реализует им `DeepLinkPort`) и `tauri-plugin-notification`
+//! (ADR-0008 — Android-напоминания, планирование только через `batch`, см.
+//! `notification-bridge.ts`, Task B4). `haptics`/`networkStatus` идут через
+//! Web API прямо из WebView (`navigator.vibrate`/`navigator.onLine`) — им
+//! нативный мост не нужен, поэтому его здесь и нет.
 //!
 //! Команды `sqlite_*` (`./sqlite.rs`) — не исключение из этого правила, а
 //! ровно платформенная возможность: доступ к файлу нативной SQLite, которого

@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/mobile-schema.json",
   "identifier": "default",
-  "description": "Права главного окна Android-оболочки. Единственный подключённый плагин — deep-link (SPEC §4, DeepLinkPort); haptics/networkStatus идут через Web API прямо из WebView и прав плагина не требуют (см. src/platform.ts).",
+  "description": "Права главного окна Android-оболочки. Подключённые плагины — deep-link (SPEC §4, DeepLinkPort) и notification (ADR-0008, Android-напоминания); haptics/networkStatus идут через Web API прямо из WebView и прав плагина не требуют (см. src/platform.ts).",
   "platforms": ["android"],
   "windows": ["main"],
   "permissions": ["core:default", "core:event:default", "deep-link:default", "notification:default"]
