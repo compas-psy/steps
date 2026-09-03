@@ -17,7 +17,7 @@
   "dependencies": {
     "@js-temporal/polyfill": "^0.5.1",
     "@shagi/core": "workspace:*",
-    "fflate": "0.8.2",
+    "fflate": "0.8.3",
     "@shagi/storage": "workspace:*"
   },
   "devDependencies": {
