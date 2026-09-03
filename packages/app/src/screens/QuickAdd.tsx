@@ -566,7 +566,18 @@ export function QuickAdd(): ReactElement | null {
       setRemovedKeys(new Set());
       setSubmitting(false);
       controller.closeQuickAdd();
-    } catch {
+    } catch (error) {
+      // Найдено разбором провала Android-смоука: бесследно проглоченная
+      // ошибка здесь однажды спрятала настоящий дефект (`jsonToSql` падал
+      // на `bigint` в `patchJson` серии повтора — `@shagi/storage`) за
+      // одинаковым «Не удалось создать задачу» для любой причины. Здесь —
+      // не заголовок/описание задачи (SPEC/05 §6): каждый throw этой цепочки
+      // (`create-task.ts`/`create-recurring-task.ts`/`task-label-attach.ts`/
+      // `@shagi/storage` driver) — либо фиксированная строка, либо
+      // инфраструктурное сообщение драйвера/IPC, которое подставляет только
+      // ШАБЛОН SQL (`?`-плейсхолдеры), никогда не значения параметров.
+      // eslint-disable-next-line no-console -- диагностика инфраструктурного сбоя команды, не пользовательский контент (см. комментарий выше)
+      console.error('QuickAdd.handleSubmit', error instanceof Error ? error.message : error);
       setSubmitError(t('quickAdd', 'errors.submitFailed'));
       setSubmitting(false);
     }
