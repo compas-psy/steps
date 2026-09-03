@@ -732,6 +732,24 @@ async function main() {
   if (apkPath === undefined) fail('не передан путь к APK: node android-smoke.mjs <путь.apk>');
   adb(['install', '-r', apkPath], { stdio: 'inherit' });
 
+  // Найдено при первом реальном прогоне Task B8 (не в брифе — это
+  // инфраструктурный пробел смоук-теста, не продуктовый баг): свежий образ
+  // эмулятора запускает приложение с НЕ выданным на уровне ОС
+  // `POST_NOTIFICATIONS` (Android 13+, runtime-permission) — манифест лишь
+  // объявляет его (`android-permissions.txt`), реальную выдачу делает
+  // человек в системном диалоге, которого в headless CI нет. Без гранта
+  // `notification-bridge.ts`'s `schedule()` корректно (SPEC ST10 — «молча
+  // не планировать без разрешения») просто НИЧЕГО не планирует —
+  // `requestPermission()` резолвится не `'granted'`, `batch()` не
+  // вызывается вовсе, и Step 2 навсегда падает на «dumpsys alarm пуст»,
+  // даже когда весь остальной код полностью исправен. Грант — до первого
+  // запуска, тем же механизмом, что Step 2c уже использует для
+  // `SCHEDULE_EXACT_ALARM` через `appops`, только для `pm grant`
+  // (runtime-permission, не app-op).
+  adb(['shell', 'pm', 'grant', APPLICATION_ID, 'android.permission.POST_NOTIFICATIONS'], {
+    stdio: 'inherit',
+  });
+
   // `let`, не `const` (Task B8): блоки напоминаний ниже перезапускают
   // приложение несколько раз (revoke/restore capability, force-stop,
   // BOOT_COMPLETED×3) и каждый раз переприсваивают `first` свежей сессии
