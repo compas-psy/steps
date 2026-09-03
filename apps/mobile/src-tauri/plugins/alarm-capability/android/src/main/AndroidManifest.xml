@@ -1,0 +1,5 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- SCHEDULE_EXACT_ALARM объявлен в apps/mobile/android-permissions.txt
+         и патчится в манифест приложения отдельным CI-шагом (android-release-gate.mjs)
+         — здесь НЕ дублируется, чтобы не разойтись с единственным источником истины. -->
+</manifest>
