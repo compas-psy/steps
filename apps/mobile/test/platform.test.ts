@@ -22,7 +22,6 @@ describe('createMobilePlatform', () => {
       'localDb',
       'fileStore',
       'secureCredentials',
-      'notificationScheduler',
       'share',
       'globalShortcut',
       'widget',
@@ -61,6 +60,11 @@ describe('createMobilePlatform', () => {
     const unsubscribe = platform.deepLink.onLink(() => undefined);
     expect(onOpenUrl).toHaveBeenCalled();
     expect(typeof unsubscribe).toBe('function');
+  });
+
+  it('notificationScheduler подключён (Task B4: notification-bridge.ts, не Unavailable-заглушка)', () => {
+    const platform = createMobilePlatform();
+    expect(isAvailable(platform.notificationScheduler)).toBe(true);
   });
 
   it('networkStatus читает navigator.onLine', () => {

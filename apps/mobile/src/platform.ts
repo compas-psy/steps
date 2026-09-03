@@ -21,20 +21,18 @@
  *    при первой проверке;
  *  - `localPreferences` — `localStorage` (WebView Android поддерживает Web
  *    Storage как обычный браузер), синхронный, тот же приём, что
- *    `apps/web/src/platform.ts` — тема оформления (M42) и будущие настройки.
+ *    `apps/web/src/platform.ts` — тема оформления (M42) и будущие настройки;
+ *  - `notificationScheduler` — `notification-bridge.ts` (Task B4):
+ *    `tauri-plugin-notification` (Task B2, планирование/boot-restore,
+ *    ADR-0008) плюс локальный `tauri-plugin-alarm-capability` (Task B3,
+ *    проверка `canScheduleExactAlarms()`) — разрешения из
+ *    `android-permissions.txt` (`POST_NOTIFICATIONS`/`SCHEDULE_EXACT_ALARM`/
+ *    `USE_EXACT_ALARM`/`RECEIVE_BOOT_COMPLETED`) теперь используются, а не
+ *    просто зарезервированы.
  *
  * `Unavailable` с причиной — всё остальное:
  *  - `localDb`/`fileStore` — `@shagi/storage`, ещё не поставлен;
  *  - `secureCredentials` — аккаунта в R1a нет;
- *  - `notificationScheduler` — `android-permissions.txt` резервирует
- *    `POST_NOTIFICATIONS`/`SCHEDULE_EXACT_ALARM`/`USE_EXACT_ALARM`/
- *    `RECEIVE_BOOT_COMPLETED` под этот порт, но нативное подключение
- *    (AlarmManager, проверка точности, boot receiver) — отдельная задача:
- *    без него ответить `'exact'` значило бы соврать (SPEC §11.1), а
- *    заранее просить разрешения без реализации нельзя (SPEC §11.1:
- *    «Notification permission/access is requested just-in-time»). Разрешения
- *    в манифесте зарезервированы вперёд сознательно — реализация приедет
- *    вместе с самим планировщиком;
  *  - `share` — Android `ACTION_SEND` через нативный intent не реализован в
  *    этом пакете работ; полагаться на `navigator.share` в системном WebView
  *    без проверки на устройстве значило бы обещать то, что не проверено —
@@ -47,6 +45,7 @@
  */
 import type { PlatformCapabilitiesRegistry, Unavailable } from '@shagi/platform';
 import { onOpenUrl } from '@tauri-apps/plugin-deep-link';
+import { createNotificationBridge } from './notification-bridge.js';
 
 function unavailable(reason: string): Unavailable {
   return { kind: 'unavailable', reason };
@@ -146,9 +145,7 @@ export function createMobilePlatform(): PlatformCapabilitiesRegistry {
     ),
     fileStore: unavailable('Вложения — R1b (SPEC/00 §10)'),
     secureCredentials: unavailable('Аккаунта и синка в R1a нет — нечего защищённо хранить'),
-    notificationScheduler: unavailable(
-      'Нативный AlarmManager/проверка точности не подключены в этом пакете работ — разрешения зарезервированы (android-permissions.txt), реализация приедет вместе с планировщиком (SPEC §11.1)',
-    ),
+    notificationScheduler: createNotificationBridge(),
     deepLink: createDeepLink(),
     share: unavailable(
       'ACTION_SEND через нативный intent не реализован в этом пакете работ — Android SDK недоступен в контейнере, чтобы это проверить',

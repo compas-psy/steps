@@ -16,6 +16,7 @@
     "tauri": "tauri"
   },
   "dependencies": {
+    "@js-temporal/polyfill": "^0.5.1",
     "@shagi/app": "workspace:*",
     "@shagi/platform": "workspace:*",
     "@shagi/ui": "workspace:*",
