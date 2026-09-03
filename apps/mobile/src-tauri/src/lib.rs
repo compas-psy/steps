@@ -2,9 +2,12 @@
 //!
 //! SPEC/00 §3: в `apps/*` не должно быть ни одного экрана, ни одной строки
 //! продуктовой/бизнес-логики. Подключённые плагины: `tauri-plugin-deep-link`
-//! (`src/platform.ts` реализует им `DeepLinkPort`) и `tauri-plugin-notification`
+//! (`src/platform.ts` реализует им `DeepLinkPort`), `tauri-plugin-notification`
 //! (ADR-0008 — Android-напоминания, планирование только через `batch`, см.
-//! `notification-bridge.ts`, Task B4). `haptics`/`networkStatus` идут через
+//! `notification-bridge.ts`, Task B4) и локальный `tauri-plugin-alarm-capability`
+//! (`plugins/alarm-capability` — 05§3.1/ADR-0008: `canScheduleExactAlarms()` и
+//! редирект в системные настройки, единственное, чего нет в
+//! `tauri-plugin-notification`). `haptics`/`networkStatus` идут через
 //! Web API прямо из WebView (`navigator.vibrate`/`navigator.onLine`) — им
 //! нативный мост не нужен, поэтому его здесь и нет.
 //!
