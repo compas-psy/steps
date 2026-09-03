@@ -1585,17 +1585,22 @@ git commit -m "docs(adr): аддендум — firing-time active-check, док�
 
 **Files:**
 
+- Modify: `packages/platform/src/index.ts` — add a new `ExactAlarmSettingsPort` interface (`openSettings(): Promise<void>`) and a new `readonly exactAlarmSettings: ExactAlarmSettingsPort | Unavailable;` field on `PlatformCapabilitiesRegistry`, plus wire it into `createUnavailablePlatform()`'s returned object (mark it `unavailable`, same as every other capability there).
+- Modify: `apps/web/src/platform.ts` and `apps/desktop/src/platform.ts` — add `exactAlarmSettings: unavailable('...')` (same `unavailable(reason)` helper each file already has; neither platform has an equivalent settings screen — Android-only mechanism, `05§3.1`).
+- Modify: `apps/mobile/src/platform.ts` — add `exactAlarmSettings: { openSettings: () => invoke('plugin:alarm-capability|open_exact_alarm_settings') }` (real implementation; Task B3's command, confirmed callable this way by Task B4's own Step 1 verification).
 - Modify: `packages/app/src/screens/TaskDetail.tsx` (the reminder creation flow — after Task A4's `reconcileReminderScheduleForTask` call, if `getSchedulingCapability()` returns `'inexact'`, show the disclosure)
 - Modify: `packages/i18n` catalog (`ru-RU` — add the exact strings; check `check-i18n-catalog.mjs` gate requirements first, every key used must exist)
-- Test: extend `packages/app/test/screens/TaskDetail.test.tsx`
+- Test: extend `packages/app/test/screens/TaskDetail.test.tsx`; add/extend platform-registry contract tests for the new field wherever `createUnavailablePlatform()`/each platform's `createXPlatform()` is already tested, so a future platform can't silently forget it (TypeScript alone already forces every `createXPlatform()` call site to add the field — the interface change is a hard compile error otherwise — but a test still documents the expected shape, matching this repo's existing convention for every other capability).
+
+**IMPORTANT, found and fixed before dispatch (not a request to re-investigate):** the plan originally told the implementer to "check `grep -rn \"platform-specific\\|as unknown as\" packages/app/src` for [an existing] precedent before inventing a new one" for exposing a mobile-only extra method beyond the generic port. That precedent does NOT exist — the grep returns nothing relevant (only unrelated `as unknown as` numeric-literal-type assertions, no platform-capability escape hatch anywhere in `packages/app`). Inventing a screen-level type-cast hack would have violated this repo's own package-boundary architecture (`packages/platform` = "интерфейсы возможностей платформы", CLAUDE.md) — the correct, idiomatic fix is a new field on `PlatformCapabilitiesRegistry` itself, exactly like every other capability there (`SomePort | Unavailable`), which is what the Files list above now specifies directly. Do not go looking for the escape hatch described in earlier prose — follow the Files list instead.
 
 **Copy (Russian, adult/calm tone per CLAUDE.md — exact wording is a product decision; this plan gives placeholder-free but reviewable draft text, the implementer should treat the literal wording as a proposal, not gospel, and can request final copy sign-off if unsure — this is the one place where "no placeholders" means "real, usable text," not "text nobody may ever revise"):**
 
-- Capability notice (Android, `inexact`): `«Точное время сейчас недоступно — Android ограничивает его для этого приложения. Открыть настройки?»` with a button that calls `platform.notificationScheduler`-adjacent settings-open (need to also expose `openExactAlarmSettings` through the port or call it directly via the mobile-only bridge — since `NotificationSchedulerPort` is platform-neutral and other platforms have no equivalent settings screen, add this as an EXTRA method only mobile's concrete type has, invoked via a capability-specific escape hatch already established elsewhere in this codebase for platform-specific extras — check `grep -rn "platform-specific\|as unknown as" packages/app/src` for the precedent before inventing a new one).
+- Capability notice (Android, `inexact`): `«Точное время сейчас недоступно — Android ограничивает его для этого приложения. Открыть настройки?»` with a button that calls `platform.exactAlarmSettings.openSettings()` when `isAvailable(platform.exactAlarmSettings)` (the new port added above).
 
-- [ ] **Step 1: Find the established pattern for platform-specific extras beyond the generic port**
+- [ ] **Step 1: Find the established conditional-render idiom for an unavailable capability**
 
-Run: `grep -rn "isAvailable(platform\." packages/app/src/screens/*.tsx | head -20` to see how other screens already handle "this capability might not exist" — follow the exact same conditional-render idiom.
+Run: `grep -rn "isAvailable(" packages/app/src/screens/*.tsx | head -20` to see how other screens already handle "this capability might not exist" (e.g. `DataPrivacy.tsx`'s `isAvailable(scheduler)` guard from Task B5) — follow the exact same idiom for `isAvailable(platform.exactAlarmSettings)`.
 
 - [ ] **Step 2: Write the failing test**
 
