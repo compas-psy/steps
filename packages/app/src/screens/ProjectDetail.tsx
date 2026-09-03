@@ -732,11 +732,19 @@ export function ProjectDetail(): ReactElement | null {
   // `Inbox.tsx` `runCommand`: `deleteTaskCommand` каскадирует subtasks
   // (`affectedSubtaskIds`, `DeleteTaskResult` в `@shagi/core`), и
   // реконсиляции нужен доступ к этому полю сверх базового `TaskCommandResult`.
-  async function runCommand(promise: Promise<TaskCommandResult>): Promise<void> {
+  /** `afterOk` — необязательный постфикс ПОСЛЕ перезапроса списка, тот же
+   * приём, что `Today.tsx` `runCommand` (00§7 шаг 5) — только командам,
+   * которым реально нужна реконсиляция напоминаний (Task B5: `handleComplete`
+   * ниже), остальные вызовы этого экрана его не передают. */
+  async function runCommand(
+    promise: Promise<TaskCommandResult>,
+    afterOk?: () => Promise<void>,
+  ): Promise<void> {
     const result = await promise;
     if (result.status === 'ok') {
       setErrorMessage(null);
       await loadAll();
+      if (afterOk !== undefined) await afterOk();
       return;
     }
     setErrorMessage(t('projectDetail', 'errors.actionFailed'));
@@ -942,6 +950,12 @@ export function ProjectDetail(): ReactElement | null {
   // `Today.tsx`: для НЕ recurring задачи ведёт себя идентично
   // `completeTaskCommand`, обязательный вход `occurrenceLocalDate` — уже
   // материализованная локальная дата (CLAUDE.md «Время»).
+  //
+  // Реконсиляция ПОСЛЕ завершения (00§7 шаг 5, Task B5) — до этого фикса
+  // `runCommand` этого экрана не принимала `afterOk` вовсе, и «Завершить» из
+  // меню строки/карточки задачи оставляла native alarm живым со СТАРЫМ
+  // заголовком до следующего полного скана (тот же класс пробела, что уже
+  // закрыт у `handleDelete` ниже отдельным путём).
   function handleComplete(task: Task): void {
     setOpenMenuTaskId(null);
     void runCommand(
@@ -949,6 +963,7 @@ export function ProjectDetail(): ReactElement | null {
         { id: task.id, occurrenceLocalDate: Temporal.Now.plainDateISO() },
         commandDeps(),
       ),
+      () => reconcileTaskReminders(task.id),
     );
   }
 

@@ -3,7 +3,14 @@ import 'fake-indexeddb/auto';
 import { describe, expect, it } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { createUnavailablePlatform, type PlatformCapabilitiesRegistry } from '@shagi/platform';
+import { Temporal } from '@js-temporal/polyfill';
+import {
+  createUnavailablePlatform,
+  type NotificationPrecision,
+  type NotificationSchedulerPort,
+  type PlatformCapabilitiesRegistry,
+  type ScheduledNotificationSnapshot,
+} from '@shagi/platform';
 import { t } from '@shagi/i18n';
 
 import type { AppHost } from '../../src/App.js';
@@ -12,6 +19,48 @@ import { createAppController } from '../../src/state/store.js';
 import { DataPrivacy } from '../../src/screens/DataPrivacy.js';
 import { ONBOARDING_DONE_KEY } from '../../src/state/onboarding.js';
 import type { StorageBackend } from '../../src/state/storage-backend.js';
+
+/** Тот же фейк, что `test/screens/TaskDetail.test.tsx`/`ProjectDetail.test.tsx`
+ * (Task A3/A4) — `initialScheduled` имитирует alarm, реально осевший на
+ * платформе ДО стирания (Task B5: `eraseAllLocalData()` чистит только
+ * SQLite/IndexedDB, платформенный scheduler — отдельная память, о которой
+ * `storage` ничего не знает). */
+function fakeScheduler(initialScheduled: readonly string[] = []): NotificationSchedulerPort & {
+  calls: { scheduled: string[]; cancelled: string[] };
+} {
+  const scheduled = new Map<string, ScheduledNotificationSnapshot>(
+    initialScheduled.map((id) => [
+      id,
+      { reminderId: id, title: '', scheduledAt: Temporal.Instant.fromEpochMilliseconds(0) },
+    ]),
+  );
+  const calls = { scheduled: [] as string[], cancelled: [] as string[] };
+  return {
+    calls,
+    async schedule(id, title, date, time, timezone, precision) {
+      const target =
+        time === null
+          ? date.toZonedDateTime(timezone)
+          : date.toZonedDateTime({ timeZone: timezone, plainTime: time });
+      const snapshot: ScheduledNotificationSnapshot =
+        precision === undefined
+          ? { reminderId: id, title, scheduledAt: target.toInstant() }
+          : { reminderId: id, title, scheduledAt: target.toInstant(), precision };
+      scheduled.set(id, snapshot);
+      calls.scheduled.push(id);
+    },
+    async cancel(id) {
+      scheduled.delete(id);
+      calls.cancelled.push(id);
+    },
+    async listScheduled() {
+      return Array.from(scheduled.values());
+    },
+    async getSchedulingCapability(): Promise<NotificationPrecision> {
+      return 'exact';
+    },
+  };
+}
 
 function testHost(storageBackend: StorageBackend): AppHost {
   return { platform: createUnavailablePlatform(), storageBackend };
@@ -144,6 +193,40 @@ describe('DataPrivacy (M51)', () => {
     // Иначе человек после стирания попал бы в пустой продукт вместо
     // приветствия: данных нет, а признак «всё уже видел» остался.
     await waitFor(() => expect(store.has(ONBOARDING_DONE_KEY)).toBe(false));
+  });
+
+  it('стирание отменяет ВСЕ запланированные напоминания в scheduler (M52, Task B5 — путь #6)', async () => {
+    // `eraseAllLocalData()` чистит только SQLite/IndexedDB — платформенный
+    // native alarm запланирован в ДРУГОЙ памяти (`NotificationSchedulerPort`,
+    // Android `TimedNotificationPublisher`), о которой `storage` ничего не
+    // знает. Без явного полного скана после стирания эти alarm'ы остались бы
+    // висеть навсегда и сработали бы со СТАРЫМ (уже стёртым) содержимым —
+    // ровно риск, который B5 обязан закрыть, не задокументировать.
+    const user = userEvent.setup();
+    const scheduler = fakeScheduler(['orphan-reminder-1', 'orphan-reminder-2']);
+    const host: AppHost = {
+      platform: { ...createUnavailablePlatform(), notificationScheduler: scheduler },
+      storageBackend: { kind: 'memory' },
+    };
+    render(
+      <AppProvider host={host}>
+        <DataPrivacy />
+      </AppProvider>,
+    );
+
+    await user.click(
+      screen.getByRole('button', { name: t('settings', 'dataPrivacy.erase.action') }),
+    );
+    await user.click(
+      screen.getByRole('button', { name: t('settings', 'dataPrivacy.erase.confirm') }),
+    );
+
+    await waitFor(() =>
+      expect(scheduler.calls.cancelled.toSorted()).toEqual([
+        'orphan-reminder-1',
+        'orphan-reminder-2',
+      ]),
+    );
   });
 
   it('отмена в диалоге ничего не стирает', async () => {

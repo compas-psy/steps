@@ -1152,6 +1152,67 @@ describe('TaskDetail — Subtasks: реконсиляция расписания
   });
 });
 
+describe('TaskDetail — главная задача: реконсиляция после Завершить/Пропустить (Task B5)', () => {
+  it('главный чекбокс «Завершить» с активным напоминанием отменяет его в scheduler', async () => {
+    const user = userEvent.setup();
+    const task = makeTask({ title: 'Главная задача с напоминанием' });
+    // Напоминание уже «запланировано» ДО монтирования (см. комментарий
+    // `fakeScheduler`) — так тест проверяет именно `cancel`, а не побочный
+    // `schedule` от idempotency-пути (Task A6).
+    const reminder = makeExplicitReminder(task.id);
+    const scheduler = fakeScheduler([reminder.id]);
+    const host: AppHost = {
+      platform: { ...createUnavailablePlatform(), notificationScheduler: scheduler },
+      storageBackend: { kind: 'memory' },
+    };
+    const { getStorage } = renderTaskDetail(task.id, { tasks: [task] }, 'todayEmpty', host);
+    const checkbox = await screen.findByRole('checkbox', {
+      name: t('taskDetail', 'completeCheckbox.label', { title: 'Главная задача с напоминанием' }),
+    });
+    await seedReminder(getStorage(), reminder);
+
+    await user.click(checkbox);
+
+    // `handleComplete` идёт через `completeOccurrenceCommand`, не
+    // `completeTaskCommand` напрямую (E11.2) — до фикса Task B5 этот путь не
+    // вызывал `reconcileTaskReminders` вовсе (единственный экран с этим
+    // пробелом: `Today.tsx`/`Inbox.tsx`/`Plan.tsx`/`Search.tsx` уже покрыты).
+    await waitFor(() => expect(scheduler.calls.cancelled).toEqual([reminder.id]));
+  });
+
+  it('«Пропустить это повторение» с активным напоминанием отменяет его в scheduler', async () => {
+    const user = userEvent.setup();
+    const series = seedRecurrenceSeries();
+    const today = Temporal.Now.plainDateISO();
+    const task = makeTask({
+      title: 'Повтор с напоминанием',
+      plannedDate: today,
+      seriesId: series.id,
+      occurrenceSeq: 1n,
+    });
+    const reminder = makeExplicitReminder(task.id);
+    const scheduler = fakeScheduler([reminder.id]);
+    const host: AppHost = {
+      platform: { ...createUnavailablePlatform(), notificationScheduler: scheduler },
+      storageBackend: { kind: 'memory' },
+    };
+    const { getStorage } = renderTaskDetail(
+      task.id,
+      { tasks: [task], recurrenceSeries: [series] },
+      'todayEmpty',
+      host,
+    );
+    const skipButton = await screen.findByRole('button', {
+      name: t('taskDetail', 'organization.skipOccurrence'),
+    });
+    await seedReminder(getStorage(), reminder);
+
+    await user.click(skipButton);
+
+    await waitFor(() => expect(scheduler.calls.cancelled).toEqual([reminder.id]));
+  });
+});
+
 describe('TaskDetail — Checklist', () => {
   it('инлайн-добавление создаёт пункт (createChecklistItemCommand)', async () => {
     const user = userEvent.setup();

@@ -51,6 +51,22 @@
  * значило бы показывать состояние, которого больше нет. Человек попадает
  * туда же, куда попал бы на новом устройстве.
  *
+ * **Реконсиляция напоминаний ПОСЛЕ стирания (Task B5, путь #6).**
+ * `storage.eraseAllLocalData()` чистит ТОЛЬКО SQLite/IndexedDB — платформенный
+ * `NotificationSchedulerPort` (Android `TimedNotificationPublisher`) хранит
+ * запланированные alarm'ы в ОТДЕЛЬНОЙ памяти, о которой `storage` ничего не
+ * знает и которую сама команда стирания не трогает. До этого фикса alarm'ы,
+ * реально осевшие на платформе на момент стирания, оставались бы висеть
+ * НАВСЕГДА (следующего полного скана могло не быть — `App.tsx` вызывает его
+ * ровно один раз при монтировании `<App>`, а этот экран не размонтирует и не
+ * перемонтирует его) и сработали бы с содержимым уже стёртых задач — ровно
+ * тот класс "stale native alarm", который весь пакет работ Task B5 обязан
+ * закрыть, а не задокументировать как принятый риск. Полный скан
+ * (`reconcileReminderSchedule`, не точечный путь по одной задаче — стёрт
+ * ВЕСЬ workspace, не одна задача) после `eraseAllLocalData()` видит пустое
+ * хранилище (`desired` пуст) и поэтому безусловно отменяет каждый снимок,
+ * который `scheduler.listScheduled()` ещё помнит.
+ *
  * --- Строка «Хранение» отвечает по факту, а не по намерению ----------------
  *
  * Статус читается из `host.storageBackend` (`state/storage-backend.ts`), а
@@ -69,12 +85,15 @@
  * `state/store.ts`).
  */
 import { useState, type ReactElement } from 'react';
+import { Temporal } from '@js-temporal/polyfill';
 
+import { isAvailable } from '@shagi/platform';
 import { t } from '@shagi/i18n';
 import { Button, Card, CardBody, DataPrivacyRow, IconButton, Modal } from '@shagi/ui';
 
 import { useAppController, useHost, useStorage } from '../state/context.js';
 import { clearOnboardingDone } from '../state/onboarding.js';
+import { reconcileReminderSchedule } from '../state/reminder-reconciliation.js';
 import './DataPrivacy.css';
 
 /**
@@ -127,6 +146,21 @@ export function DataPrivacy(): ReactElement {
     // продукт вместо приветствия, то есть НЕ туда, куда попал бы на новом
     // устройстве (см. `../state/onboarding.ts`).
     clearOnboardingDone(host.platform);
+    // Полный скан реконсиляции ПОСЛЕ стирания (см. заголовок файла, блок
+    // «Реконсиляция напоминаний ПОСЛЕ стирания», Task B5 путь #6) —
+    // `eraseAllLocalData()` не трогает платформенный scheduler вовсе, без
+    // этого прохода его alarm'ы пережили бы стёртые задачи. `Unavailable`
+    // молча пропускается — тот же приём, что `App.tsx`
+    // `useBootstrapReminderReconciliation`.
+    const scheduler = host.platform.notificationScheduler;
+    if (isAvailable(scheduler)) {
+      await reconcileReminderSchedule(
+        storage,
+        scheduler,
+        Temporal.Now.plainDateTimeISO(),
+        Temporal.Now.timeZoneId(),
+      );
+    }
     setConfirmOpen(false);
     setErasing(false);
     controller.goTo('welcome');
