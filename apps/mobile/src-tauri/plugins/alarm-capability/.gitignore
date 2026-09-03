@@ -1,1 +1,4 @@
 Cargo.lock
+# Генерируется `tauri_plugin::Builder`'s `android_path` при любой сборке
+# под mobile-таргет (тот же принцип, что и корневой gen/android/ — не наш код).
+android/.tauri/
