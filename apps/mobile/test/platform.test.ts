@@ -8,12 +8,19 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const onOpenUrl = vi.fn(async () => () => undefined);
 vi.mock('@tauri-apps/plugin-deep-link', () => ({ onOpenUrl }));
+// Тот же приём мока, что `notification-bridge.test.ts` — `invoke` мокается
+// на уровне модуля, `exactAlarmSettings.openSettings` (Task B6) — второй
+// потребитель `@tauri-apps/api/core` в этом файле, наравне с
+// `notification-bridge.ts`, который `createMobilePlatform()` уже собирает.
+const invoke = vi.fn(async () => undefined);
+vi.mock('@tauri-apps/api/core', () => ({ invoke }));
 
 const { createMobilePlatform } = await import('../src/platform.js');
 
 describe('createMobilePlatform', () => {
   beforeEach(() => {
     onOpenUrl.mockClear();
+    invoke.mockClear();
   });
 
   it('капабилити, которых нет в этом пакете работ, помечены Unavailable с причиной', () => {
@@ -65,6 +72,15 @@ describe('createMobilePlatform', () => {
   it('notificationScheduler подключён (Task B4: notification-bridge.ts, не Unavailable-заглушка)', () => {
     const platform = createMobilePlatform();
     expect(isAvailable(platform.notificationScheduler)).toBe(true);
+  });
+
+  it('exactAlarmSettings.openSettings вызывает plugin:alarm-capability|open_exact_alarm_settings (Task B6, ST10)', async () => {
+    const platform = createMobilePlatform();
+    expect(isAvailable(platform.exactAlarmSettings)).toBe(true);
+    if (!isAvailable(platform.exactAlarmSettings)) throw new Error('unreachable');
+
+    await platform.exactAlarmSettings.openSettings();
+    expect(invoke).toHaveBeenCalledWith('plugin:alarm-capability|open_exact_alarm_settings');
   });
 
   it('networkStatus читает navigator.onLine', () => {

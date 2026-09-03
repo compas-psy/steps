@@ -26,7 +26,9 @@
  * `secureCredentials` — аккаунта в R1a нет; `notificationScheduler` —
  * честная нативная точность (Task Scheduler/AlarmManager-эквивалент)
  * требует отдельного native-плагина, которого в этом пакете работ ещё нет
- * (обещать `'exact'` без проверки means соврать — SPEC §11.1); `haptics` —
+ * (обещать `'exact'` без проверки means соврать — SPEC §11.1);
+ * `exactAlarmSettings` — Android-специфичный системный экран (05§3.1),
+ * у Windows нет эквивалента; `haptics` —
  * Windows без вибромотора; `widget` — Windows tiles помечены «future»;
  * `updater` — сервера обновлений/ключа подписи в этом пакете работ нет;
  * `billing`/`pushHint`/`calendarProvider`/`audioCapture` — соответственно
@@ -149,6 +151,9 @@ export function createDesktopPlatform(): PlatformCapabilitiesRegistry {
     secureCredentials: unavailable('Аккаунта и синка в R1a нет — нечего защищённо хранить'),
     notificationScheduler: unavailable(
       'Точная нативная проверка (Task Scheduler/фоновая доставка) не подключена в этом пакете работ — обещать "exact" без неё значило бы соврать (SPEC §11.1)',
+    ),
+    exactAlarmSettings: unavailable(
+      'Точные будильники Android — платформенно-специфичный системный экран (05§3.1), у Windows нет эквивалента',
     ),
     deepLink: createDeepLink(),
     share: createShare(),

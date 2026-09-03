@@ -35,10 +35,12 @@
  *    честные no-op, а не притворство, что здесь происходит реальная работа.
  *
  * Остальные порты помечены `Unavailable` с объяснением — у платформы этого
- * нет в принципе (haptics, globalShortcut, widget — см. заголовки портов),
- * либо инфраструктура ещё не построена в этом пакете работ (fileStore —
- * вложения это R1b; secureCredentials/billing/pushHint — аккаунта и
- * сервера в R1a нет вовсе; calendarProvider — R1.1; audioCapture — R3).
+ * нет в принципе (haptics, globalShortcut, widget, exactAlarmSettings —
+ * см. заголовки портов, у веба нет системного экрана точных будильников
+ * Android), либо инфраструктура ещё не построена в этом пакете работ
+ * (fileStore — вложения это R1b; secureCredentials/billing/pushHint —
+ * аккаунта и сервера в R1a нет вовсе; calendarProvider — R1.1;
+ * audioCapture — R3).
  */
 import type {
   DeepLinkPort,
@@ -270,6 +272,9 @@ export function createWebPlatform(): PlatformCapabilitiesRegistry {
     fileStore: unavailable('Вложения — R1b (SPEC/00 §10)'),
     secureCredentials: unavailable('Аккаунта и синка в R1a нет — нечего защищённо хранить'),
     notificationScheduler: createNotificationScheduler(),
+    exactAlarmSettings: unavailable(
+      'Точные будильники Android — платформенно-специфичный системный экран (05§3.1), у веба нет эквивалента',
+    ),
     deepLink: createDeepLink(),
     share: createShare(),
     globalShortcut: unavailable('У веба нет доступа к системным хоткеям'),

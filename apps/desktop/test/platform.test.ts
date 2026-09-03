@@ -35,6 +35,7 @@ describe('createDesktopPlatform', () => {
       'fileStore',
       'secureCredentials',
       'notificationScheduler',
+      'exactAlarmSettings',
       'haptics',
       'widget',
       'updater',

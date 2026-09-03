@@ -72,6 +72,8 @@
   "planning.reminder.minuteListLabel": "Минуты",
   "planning.reminder.clearTime": "Без времени",
   "planning.reminder.limitError": "Не удалось сохранить напоминание. Попробуйте ещё раз.",
+  "planning.reminder.inexactNotice": "Точное время сейчас недоступно — Android ограничивает его для этого приложения. Открыть настройки?",
+  "planning.reminder.openExactAlarmSettings": "Открыть настройки",
   "planning.recurringScope.title": "Применить изменение к…",
   "planning.recurringScope.caption": "«Это повторение» меняет только текущую задачу. «Вся серия» — эту и все будущие повторения.",
   "planning.recurringScope.occurrence": "Это повторение",
