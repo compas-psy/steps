@@ -41,13 +41,21 @@ export type CancelReminderResult =
  *
  * Поэтому: `enabled:false`, записанный через тот же upsert-канал, что и
  * создание (`writeReminder`) — единственный canal мутации, реально доступный
- * отсюда. Задокументированный незакрытый шов (см. отчёт пакета работ): в
- * реальной sqlite/indexeddb-реализации `ReminderRepository.countExplicitByTask`
- * считает по `kind='explicit'` БЕЗ фильтра по `enabled` — отменённый (но не
- * стёртый) explicit reminder продолжит блокировать создание нового по
- * правилу 19, пока будущий пакет работ либо не научит счётчик игнорировать
- * `enabled=false`, либо не добавит в `@shagi/storage` настоящее физическое
- * удаление. Не решается здесь — оба файла вне территории этого пакета работ.
+ * отсюда.
+ *
+ * Раньше здесь был задокументирован незакрытый шов: во всех трёх реализациях
+ * `ReminderRepository.countExplicitByTask` (`@shagi/storage`) считал по
+ * `kind='explicit'` БЕЗ фильтра по `enabled`, поэтому отменённый (но не
+ * стёртый) explicit reminder продолжал блокировать создание нового по
+ * правилу 19 — штатный edit-flow (`TaskDetail.handleSubmitReminder`: cancel
+ * старого → create нового) ломался вживую (живой прогон Task B8, Android
+ * emulator smoke, Step 2c: после cancel+create в SQLite не оставалось ни
+ * одной enabled explicit-записи). Закрыто на уровне `@shagi/storage`:
+ * `countExplicitByTask` теперь фильтрует по `enabled=true` во всех трёх
+ * реализациях (контрактный тест — `storage-contract.ts`,
+ * "countExplicitByTask считает только ACTIVE") — нормативный смысл правила
+ * 19 всегда был «не более одного ACTIVE reminder», а не «не более одной
+ * строки за всю историю».
  */
 export async function cancelReminderCommand(
   input: CancelReminderInput,

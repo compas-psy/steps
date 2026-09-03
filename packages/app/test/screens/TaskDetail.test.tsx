@@ -31,6 +31,7 @@ import type {
   Uuid,
 } from '@shagi/core';
 import {
+  createExplicitReminderCommand,
   generateUuidV7,
   isTaskLabelActive,
   makeDurationMinutes,
@@ -775,6 +776,182 @@ describe('TaskDetail — Explicit Reminder (M31, `01§18`)', () => {
       expect(screen.getByText(t('taskDetail', 'planning.reminder.empty'))).toBeInTheDocument(),
     );
   });
+
+  it('«Изменить напоминание» заменяет explicit reminder — cancel старого + create нового не блокируются правилом 19 (Task B8, ST10-расследование, реальный edit-flow)', async () => {
+    // Живой прогон Task B8 (Android emulator smoke, Step 2c) поймал это
+    // напрямую: после cancel(старый)+create(новый) в реальном SQLite не
+    // оставалось ни одной enabled explicit-записи — `countExplicitByTask`
+    // (правило 19, `02§2`) считал уже отменённую запись, `createExplicit
+    // ReminderCommand` внутри `handleSubmitReminder` отвергал новую. Этот
+    // тест воспроизводит РОВНО ТОТ ЖЕ production-flow (не изолированный
+    // вызов команды) через реальный `storageBackend: {kind:'memory'}` —
+    // тот же путь, что `renderTaskDetail` использует во всех соседних
+    // тестах этого файла.
+    const user = userEvent.setup();
+    const task = makeTask({ title: 'Заменяемое напоминание' });
+    const { getStorage } = renderTaskDetail(task.id, { tasks: [task] });
+
+    // Создаём reminder A — тот же приём, что и в предыдущем тесте.
+    await user.click(
+      await screen.findByRole('button', { name: t('taskDetail', 'planning.reminder.add') }),
+    );
+    const todayCell = await screen.findByRole('gridcell', { current: 'date' });
+    await user.click(todayCell);
+    await user.click(
+      screen.getByRole('button', { name: t('taskDetail', 'planning.reminder.save') }),
+    );
+
+    const reminderA = await waitFor(async () => {
+      const reminders = await getStorage().reminders.listByTask(task.id);
+      const found = reminders.find((r) => r.kind === 'explicit' && r.enabled);
+      if (found === undefined) throw new Error('reminder A ещё не создан');
+      return found;
+    });
+
+    // «Изменить напоминание» — та же кнопка, что и «Добавить», но
+    // `explicitReminder !== null` меняет её подпись (`TaskDetail.tsx`,
+    // `openReminderPicker` предзаполняет picker текущими значениями A).
+    await user.click(
+      await screen.findByRole('button', { name: t('taskDetail', 'planning.reminder.change') }),
+    );
+    // Следующий месяц — гарантированно другая дата, чем «сегодня» (A),
+    // тот же приём, что реконсиляционные тесты ниже используют для
+    // получения заведомо отличного `triggerAt`.
+    await user.click(
+      screen.getByRole('button', { name: t('taskDetail', 'planning.picker.nextMonth') }),
+    );
+    const [firstDayOfNextMonth] = await screen.findAllByRole('gridcell');
+    if (firstDayOfNextMonth === undefined) throw new Error('ожидалась хотя бы одна ячейка');
+    await user.click(firstDayOfNextMonth);
+    await user.click(
+      screen.getByRole('button', { name: t('taskDetail', 'planning.reminder.save') }),
+    );
+
+    // Acceptance (владелец, Задача 1): ровно 1 enabled explicit reminder,
+    // новый triggerAt, старый — не active.
+    await waitFor(async () => {
+      const reminders = await getStorage().reminders.listByTask(task.id);
+      const enabledExplicit = reminders.filter((r) => r.kind === 'explicit' && r.enabled);
+      expect(enabledExplicit).toHaveLength(1);
+      expect(enabledExplicit[0]?.id).not.toBe(reminderA.id);
+    });
+    const reminders = await getStorage().reminders.listByTask(task.id);
+    const oldReminder = reminders.find((r) => r.id === reminderA.id);
+    expect(oldReminder?.enabled).toBe(false);
+
+    // История/синхронизационные данные старого reminder не уничтожены
+    // произвольно (владелец, Задача 1) — запись физически осталась в
+    // хранилище (`enabled:false`, не удалена), тот же upsert-канал, что и
+    // отдельный тест «Отменить» выше проверяет напрямую.
+    expect(reminders).toHaveLength(2);
+
+    // Новый triggerAt — реально ПЕРВЫЙ день следующего месяца (та самая
+    // ячейка, которую кликнули), а не «сегодня + 1 месяц» (при переполнении
+    // конца месяца это разные даты) — читаем `localRuleJson` напрямую,
+    // не полагаясь на форматирование экрана.
+    const expectedFirstOfNextMonth = Temporal.Now.plainDateISO()
+      .with({ day: 1 })
+      .add({ months: 1 });
+    const newReminder = reminders.find((r) => r.kind === 'explicit' && r.enabled);
+    expect((newReminder?.localRuleJson as { date?: string } | undefined)?.date).toBe(
+      expectedFirstOfNextMonth.toString(),
+    );
+  });
+
+  it('второй explicit reminder на ту же задачу, минуя cancel, по-прежнему запрещён — правило 19 не ослаблено фиксом countExplicitByTask', async () => {
+    const task = makeTask({ title: 'Уже с напоминанием' });
+    const { getStorage } = renderTaskDetail(task.id, { tasks: [task] });
+    const reminder = makeExplicitReminder(task.id);
+    await seedReminder(getStorage(), reminder);
+
+    const result = await createExplicitReminderCommand(
+      {
+        taskId: task.id,
+        date: Temporal.Now.plainDateISO().add({ months: 1 }),
+        time: null,
+        deadlineDate: null,
+        deadlineTime: null,
+      },
+      {
+        storage: getStorage(),
+        now: Temporal.Now.instant(),
+        nowLocal: Temporal.Now.plainDateTimeISO(),
+        deviceId: generateUuidV7(),
+      },
+    );
+
+    expect(result.status).toBe('rejected');
+    const reminders = await getStorage().reminders.listByTask(task.id);
+    expect(reminders.filter((r) => r.kind === 'explicit' && r.enabled)).toHaveLength(1);
+  });
+
+  it('если create отклоняется ПОСЛЕ cancel старого (реальная гонка — конкурентная запись между cancel и create), экран не продолжает показывать отменённый reminder и честно показывает ошибку (Task B8, Задача 4)', async () => {
+    // countExplicitByTask больше не считает отменённые (см. фикс выше) —
+    // единственный реалистичный способ снова получить `rejected` ПОСЛЕ
+    // того, как cancel уже применился, это конкурентная запись ДРУГОГО
+    // active explicit reminder на ту же задачу между cancel и create
+    // (владелец, Задача 3: ровно тот gap, которого атомарность должна
+    // была бы избежать; Задача 4 — независимо от атомарности, экран не
+    // имеет права молча показывать устаревшее состояние в ЛЮБОМ таком
+    // случае). Эмулируется прямой записью в storage «за спиной» экрана
+    // непосредственно перед кликом «Сохранить».
+    const user = userEvent.setup();
+    const task = makeTask({ title: 'Гонка при замене' });
+    const { getStorage } = renderTaskDetail(task.id, { tasks: [task] });
+
+    await user.click(
+      await screen.findByRole('button', { name: t('taskDetail', 'planning.reminder.add') }),
+    );
+    const todayCell = await screen.findByRole('gridcell', { current: 'date' });
+    await user.click(todayCell);
+    await user.click(
+      screen.getByRole('button', { name: t('taskDetail', 'planning.reminder.save') }),
+    );
+    await waitFor(async () => {
+      const reminders = await getStorage().reminders.listByTask(task.id);
+      expect(reminders.some((r) => r.kind === 'explicit' && r.enabled)).toBe(true);
+    });
+
+    await user.click(
+      await screen.findByRole('button', { name: t('taskDetail', 'planning.reminder.change') }),
+    );
+    await user.click(
+      screen.getByRole('button', { name: t('taskDetail', 'planning.picker.nextMonth') }),
+    );
+    const [firstDayOfNextMonth] = await screen.findAllByRole('gridcell');
+    if (firstDayOfNextMonth === undefined) throw new Error('ожидалась хотя бы одна ячейка');
+    await user.click(firstDayOfNextMonth);
+
+    // Конкурентная запись — «другое устройство» создало свой active
+    // explicit reminder на эту же задачу прямо сейчас, пока эта форма
+    // ещё открыта.
+    const concurrent = makeExplicitReminder(task.id);
+    await seedReminder(getStorage(), concurrent);
+
+    await user.click(
+      screen.getByRole('button', { name: t('taskDetail', 'planning.reminder.save') }),
+    );
+
+    // Ошибка ВИДНА — не silent rejection.
+    await waitFor(() =>
+      expect(screen.getByText(t('taskDetail', 'planning.reminder.limitError'))).toBeInTheDocument(),
+    );
+    // Экран перечитал canonical state — старый (уже отменённый) reminder
+    // отменён В ХРАНИЛИЩЕ, и экран это отражает: ровно одна enabled
+    // explicit-запись на задачу — та самая конкурентная, не новая
+    // (create отклонён) и не старая (уже cancel).
+    const reminders = await getStorage().reminders.listByTask(task.id);
+    const enabledExplicit = reminders.filter((r) => r.kind === 'explicit' && r.enabled);
+    expect(enabledExplicit.map((r) => r.id)).toEqual([concurrent.id]);
+
+    // Наблюдаемо на экране, не только в хранилище: `concurrent` создан с
+    // ПУСТЫМ `localRuleJson` (`makeExplicitReminder` фикстура) — если бы
+    // `explicitReminder` в React-состоянии остался старым (не перечитан
+    // после отказа), строка показывала бы РЕАЛЬНЫЙ чип с датой (у старого
+    // reminder A дата была — «сегодня»), а не «нет напоминания». Без
+    // `loadAll()` в отклонённой ветке этот текст не появился бы.
+    expect(screen.getByText(t('taskDetail', 'planning.reminder.empty'))).toBeInTheDocument();
+  });
 });
 
 describe('TaskDetail — Explicit Reminder: реконсиляция расписания (00§7 шаг 5, Task A4)', () => {
@@ -945,6 +1122,91 @@ describe('TaskDetail — ST10: capability notice для inexact alarm (Task B6, 
         name: t('taskDetail', 'planning.reminder.openExactAlarmSettings'),
       }),
     ).not.toBeInTheDocument();
+  });
+
+  it('ST10 подтверждается и на EDIT-пути (замена существующего напоминания), не только на первом create (Task B8, Задача 5 — регрессия после фикса countExplicitByTask)', async () => {
+    // Подтверждает исходный B6 contract ПОСЛЕ исправления более ранней
+    // причины (Задача 2/countExplicitByTask): до фикса это ветвление до
+    // `reconcileTaskReminders()`/`setSchedulingPrecision()` просто не
+    // доходило (`create` отклонялся правилом 19, экран падал в
+    // stale-состояние — Задача 4) — здесь весь путь целиком: exact
+    // capability=false → замена существующего напоминания реально
+    // остаётся enabled в хранилище → reconcile вызван → scheduler.schedule
+    // получил id НОВОГО напоминания → ST10 notice виден.
+    const user = userEvent.setup();
+    const scheduler = fakeScheduler([], 'inexact');
+    const host: AppHost = {
+      platform: { ...createUnavailablePlatform(), notificationScheduler: scheduler },
+      storageBackend: { kind: 'memory' },
+    };
+    const task = makeTask({ title: 'Замена при inexact capability' });
+    const { getStorage } = renderTaskDetail(task.id, { tasks: [task] }, 'todayEmpty', host);
+
+    // Создаём A — с той же (inexact) capability, ST10 уже видна после
+    // create (соседний тест выше это отдельно проверяет). Следующий
+    // месяц, НЕ «сегодня» — та же ловушка, что и в соседних
+    // реконсиляционных тестах этого файла: «сегодня в полночь» уже в
+    // прошлом относительно момента запуска теста, реконсиляция намеренно
+    // не реплеит просроченное (`01§18` Testing Acceptance #34), `schedule`
+    // не вызвался бы вовсе.
+    await user.click(
+      await screen.findByRole('button', { name: t('taskDetail', 'planning.reminder.add') }),
+    );
+    await user.click(
+      screen.getByRole('button', { name: t('taskDetail', 'planning.picker.nextMonth') }),
+    );
+    const [firstOfMonthForA] = await screen.findAllByRole('gridcell');
+    if (firstOfMonthForA === undefined) throw new Error('ожидалась хотя бы одна ячейка');
+    await user.click(firstOfMonthForA);
+    await user.click(
+      screen.getByRole('button', { name: t('taskDetail', 'planning.reminder.save') }),
+    );
+    const reminderA = await waitFor(async () => {
+      const reminders = await getStorage().reminders.listByTask(task.id);
+      const found = reminders.find((r) => r.kind === 'explicit' && r.enabled);
+      if (found === undefined) throw new Error('reminder A ещё не создан');
+      return found;
+    });
+    await waitFor(() => expect(scheduler.calls.scheduled).toContain(reminderA.id));
+    await waitFor(() =>
+      expect(
+        screen.getByText(t('taskDetail', 'planning.reminder.inexactNotice')),
+      ).toBeInTheDocument(),
+    );
+
+    // Замена — «Изменить напоминание», новая дата, «Сохранить».
+    await user.click(
+      await screen.findByRole('button', { name: t('taskDetail', 'planning.reminder.change') }),
+    );
+    await user.click(
+      screen.getByRole('button', { name: t('taskDetail', 'planning.picker.nextMonth') }),
+    );
+    const [firstDayOfNextMonth] = await screen.findAllByRole('gridcell');
+    if (firstDayOfNextMonth === undefined) throw new Error('ожидалась хотя бы одна ячейка');
+    await user.click(firstDayOfNextMonth);
+    await user.click(
+      screen.getByRole('button', { name: t('taskDetail', 'planning.reminder.save') }),
+    );
+
+    // Замена реально осталась ENABLED в хранилище (не жертва Задачи
+    // 2/4-регрессии) — ровно одна active explicit-запись, с НОВЫМ id.
+    const reminderB = await waitFor(async () => {
+      const reminders = await getStorage().reminders.listByTask(task.id);
+      const enabledExplicit = reminders.filter((r) => r.kind === 'explicit' && r.enabled);
+      if (enabledExplicit.length !== 1) throw new Error('замена ещё не применилась');
+      const [only] = enabledExplicit;
+      if (only === undefined || only.id === reminderA.id) throw new Error('всё ещё старый id');
+      return only;
+    });
+
+    // Reconcile реально вызвал scheduler.schedule для НОВОГО id (не
+    // просто «что-то запланировалось») — и ST10 снова видна.
+    await waitFor(() => expect(scheduler.calls.scheduled).toContain(reminderB.id));
+    await waitFor(() =>
+      expect(
+        screen.getByText(t('taskDetail', 'planning.reminder.inexactNotice')),
+      ).toBeInTheDocument(),
+    );
   });
 });
 

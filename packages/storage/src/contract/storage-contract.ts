@@ -669,5 +669,77 @@ export function runStorageContract(name: string, factory: () => StoragePort): vo
         );
       });
     });
+
+    describe('ReminderRepository — countExplicitByTask считает только ACTIVE (Task B8, ST10-расследование)', () => {
+      /**
+       * Нормативный смысл правила 19 (`02§2`) — «не более одного
+       * ACTIVE/ENABLED explicit reminder на задачу», НЕ «не более одной
+       * explicit-строки за всю историю задачи». `cancelReminderCommand`
+       * (`@shagi/core`) — это `enabled:false`, не физическое удаление
+       * (см. её же комментарий про незакрытый шов) — отменённая, но не
+       * стёртая запись обязана переставать блокировать создание нового
+       * active explicit reminder, иначе штатный edit-flow
+       * (`TaskDetail.handleSubmitReminder`: cancel старого → create нового)
+       * ломается вживую: живой прогон Task B8 (Android emulator smoke,
+       * Step 2c) поймал это напрямую — после cancel+create в SQLite не
+       * оставалось ни одной enabled explicit-записи, потому что create
+       * отвергался лимитом, который считал уже отменённую запись.
+       */
+      it('cancelled/disabled explicit reminder НЕ учитывается в счётчике', async () => {
+        const storage = factory();
+        const task = makeTask();
+        const disabled = { ...makeExplicitReminder(task.id), enabled: false };
+
+        await storage.runTransaction(async (tx) => {
+          await tx.applyMutation({
+            writes: [{ entity: 'reminder', value: disabled }],
+            outbox: [makeOutboxEntry('reminder', disabled.id)],
+          });
+        });
+
+        await expect(storage.reminders.countExplicitByTask(task.id)).resolves.toBe(0);
+      });
+
+      it('ДВА одновременно enabled explicit reminder на одной задаче по-прежнему считаются как 2 — invariant §19 не ослаблен', async () => {
+        const storage = factory();
+        const task = makeTask();
+        const first = makeExplicitReminder(task.id);
+        const second = makeExplicitReminder(task.id);
+
+        await storage.runTransaction(async (tx) => {
+          await tx.applyMutation({
+            writes: [
+              { entity: 'reminder', value: first },
+              { entity: 'reminder', value: second },
+            ],
+            outbox: [makeOutboxEntry('reminder', first.id), makeOutboxEntry('reminder', second.id)],
+          });
+        });
+
+        await expect(storage.reminders.countExplicitByTask(task.id)).resolves.toBe(2);
+      });
+
+      it('один enabled + один disabled на одной задаче считаются как 1 (реальный edit-flow: cancel старого, затем create нового)', async () => {
+        const storage = factory();
+        const task = makeTask();
+        const disabledOld = { ...makeExplicitReminder(task.id), enabled: false };
+        const enabledNew = makeExplicitReminder(task.id);
+
+        await storage.runTransaction(async (tx) => {
+          await tx.applyMutation({
+            writes: [
+              { entity: 'reminder', value: disabledOld },
+              { entity: 'reminder', value: enabledNew },
+            ],
+            outbox: [
+              makeOutboxEntry('reminder', disabledOld.id),
+              makeOutboxEntry('reminder', enabledNew.id),
+            ],
+          });
+        });
+
+        await expect(storage.reminders.countExplicitByTask(task.id)).resolves.toBe(1);
+      });
+    });
   });
 }

@@ -154,10 +154,18 @@ async function countActiveTaskLabelsByTask(access: StoreAccess, taskId: Uuid): P
   const links = await allTaskLabels(access);
   return links.filter((link) => link.taskId === taskId && isTaskLabelActive(link)).length;
 }
+// `reminder.enabled` — правило 19 (`02§2`) считает ACTIVE explicit
+// reminder'ы, не строки за всю историю задачи: `cancelReminderCommand`
+// (`@shagi/core`) пишет `enabled:false`, а не удаляет запись физически —
+// без этого фильтра отменённая запись продолжала бы блокировать создание
+// нового active explicit reminder, ломая штатный edit-flow (cancel
+// старого → create нового). Найдено живым прогоном Task B8 (Android
+// emulator smoke, Step 2c).
 async function countExplicitRemindersByTask(access: StoreAccess, taskId: Uuid): Promise<number> {
   const reminders = await allReminders(access);
-  return reminders.filter((reminder) => reminder.taskId === taskId && reminder.kind === 'explicit')
-    .length;
+  return reminders.filter(
+    (reminder) => reminder.taskId === taskId && reminder.kind === 'explicit' && reminder.enabled,
+  ).length;
 }
 async function countTaskLinksByTask(access: StoreAccess, taskId: Uuid): Promise<number> {
   const links = await allTaskLinks(access);

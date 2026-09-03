@@ -1456,6 +1456,16 @@ export function TaskDetail(): ReactElement | null {
       return;
     }
     setReminderError(t('taskDetail', 'planning.reminder.limitError'));
+    // Task B8 (ST10-расследование, владелец, Задача 4): если это была замена
+    // (`explicitReminder !== null` выше — старый уже отменён ДО этого
+    // `create`), отказ `create` не имеет права оставить экран показывать
+    // отменённый `explicitReminder`, как будто он всё ещё активен —
+    // `loadAll()` честно перечитывает canonical-состояние из хранилища
+    // (в т.ч. `setExplicitReminder`, см. её комментарий про правило 19),
+    // экран покажет ПУСТОЕ состояние напоминания, а не застрявший старый
+    // чип. Ошибка (`reminderError` выше) при этом остаётся видимой — это
+    // не «молчаливый отказ», картинка на экране просто перестаёт врать.
+    await loadAll();
   }
 
   function handleCancelReminder(): void {

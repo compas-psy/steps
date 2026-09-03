@@ -378,10 +378,18 @@ export function createReminderRepository(driver: SqliteDriverPort): ReminderRepo
       return rows.map(rowToReminder);
     },
     async countExplicitByTask(taskId) {
+      // `AND enabled = ?` — правило 19 (`02§2`) считает ACTIVE explicit
+      // reminder'ы, не строки за всю историю задачи: `cancelReminderCommand`
+      // (`@shagi/core`) пишет `enabled:false`, а не удаляет запись физически
+      // (единственный доступный ей канал мутации) — без этого фильтра
+      // отменённая запись продолжала бы блокировать создание нового
+      // active explicit reminder правилом 19, ломая штатный edit-flow
+      // (cancel старого → create нового). Найдено живым прогоном Task B8
+      // (Android emulator smoke, Step 2c).
       return countRows(
         driver,
-        `SELECT COUNT(*) AS n FROM "reminders" WHERE task_id = ? AND kind = 'explicit'`,
-        [uuidToSql(taskId)],
+        `SELECT COUNT(*) AS n FROM "reminders" WHERE task_id = ? AND kind = 'explicit' AND enabled = ?`,
+        [uuidToSql(taskId), booleanToSql(true)],
       );
     },
     async listAllEnabled() {

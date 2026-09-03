@@ -196,10 +196,17 @@ function countActiveTaskLabelsByTask(tables: InMemoryTables, taskId: Uuid): numb
   return count;
 }
 
+// `reminder.enabled` — правило 19 (`02§2`) считает ACTIVE explicit
+// reminder'ы, не строки за всю историю задачи: `cancelReminderCommand`
+// (`@shagi/core`) пишет `enabled:false`, а не удаляет запись физически —
+// без этого фильтра отменённая запись продолжала бы блокировать создание
+// нового active explicit reminder, ломая штатный edit-flow (cancel
+// старого → create нового). Найдено живым прогоном Task B8 (Android
+// emulator smoke, Step 2c).
 function countExplicitRemindersByTask(tables: InMemoryTables, taskId: Uuid): number {
   let count = 0;
   for (const reminder of tables.reminders.values()) {
-    if (reminder.taskId === taskId && reminder.kind === 'explicit') count += 1;
+    if (reminder.taskId === taskId && reminder.kind === 'explicit' && reminder.enabled) count += 1;
   }
   return count;
 }
