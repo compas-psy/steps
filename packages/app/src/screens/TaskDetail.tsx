@@ -1143,14 +1143,26 @@ export function TaskDetail(): ReactElement | null {
   // «Время»). Только ГЛАВНЫЙ чекбокс задачи — чекбоксы subtasks ниже
   // (`handleCompleteSubtask`) остаются на `completeTaskCommand`: subtasks не
   // могут сами иметь повтор (`01§11.1`).
+  //
+  // Реконсиляция ПОСЛЕ завершения (00§7 шаг 5, Task B5 — до этого фикса этот
+  // главный чекбокс был единственным путём complete/delete в дереве
+  // экранов, который НЕ вызывал `reconcileTaskReminders`: завершённая с
+  // главного экрана задачи задача сохраняла живой native alarm со СТАРЫМ
+  // заголовком до следующего полного скана на старте приложения —
+  // `Today.tsx`/`ProjectDetail.tsx`/`Inbox.tsx`/`Plan.tsx`/`Search.tsx` уже
+  // делали это, этот экран — нет).
   function handleComplete(): void {
     if (task === null || task.status === 'completed') return;
+    const id = task.id;
     void runAndRefresh(
       completeOccurrenceCommand(
-        { id: task.id, occurrenceLocalDate: Temporal.Now.plainDateISO() },
+        { id, occurrenceLocalDate: Temporal.Now.plainDateISO() },
         commandDeps(),
       ),
-      refreshOk,
+      async () => {
+        await refreshOk();
+        await reconcileTaskReminders(id);
+      },
       showError,
     );
   }
@@ -1450,14 +1462,23 @@ export function TaskDetail(): ReactElement | null {
    * комментарий). Без подтверждения — обратимо тем же способом, что и
    * обычное завершение (Undo-тост UI вне охвата этого пакета работ, см.
    * заголовок файла). */
+  // Реконсиляция ПОСЛЕ пропуска — тот же пробел и тот же фикс, что у
+  // `handleComplete` выше (Task B5): «Пропустить» тоже переводит текущий
+  // occurrence в неактивное состояние (`completionKind:'skipped'`), и без
+  // явной реконсиляции его native alarm тоже пережил бы отмену вплоть до
+  // следующего полного скана.
   function handleSkipOccurrence(): void {
     if (task === null) return;
+    const id = task.id;
     void runAndRefresh(
       skipOccurrenceCommand(
-        { id: task.id, occurrenceLocalDate: Temporal.Now.plainDateISO() },
+        { id, occurrenceLocalDate: Temporal.Now.plainDateISO() },
         commandDeps(),
       ),
-      refreshOk,
+      async () => {
+        await refreshOk();
+        await reconcileTaskReminders(id);
+      },
       showError,
     );
   }

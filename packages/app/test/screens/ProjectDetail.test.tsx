@@ -379,6 +379,38 @@ describe('ProjectDetail — действия меню задачи', () => {
     expect(stored?.deletedAt).not.toBeNull();
   });
 
+  it('«Завершить» с активным напоминанием отменяет его в scheduler (Task B5 — до фикса не вызывалось вовсе)', async () => {
+    const user = userEvent.setup();
+    const project = makeProject({ title: 'Проект с завершаемым напоминанием' });
+    const task = makeTask({ title: 'Задача-завершение с напоминанием', projectId: project.id });
+    const reminder = makeExplicitReminder(task.id);
+    // Уже «запланировано» до монтирования (см. `fakeScheduler`) — тест
+    // проверяет именно `cancel`, не побочный `schedule`.
+    const scheduler = fakeScheduler([reminder.id]);
+    const host: AppHost = {
+      platform: { ...createUnavailablePlatform(), notificationScheduler: scheduler },
+      storageBackend: { kind: 'memory' },
+    };
+    const { getStorage } = renderProjectDetail(project, [], [task], [], host);
+
+    await waitFor(() =>
+      expect(screen.getByText('Задача-завершение с напоминанием')).toBeInTheDocument(),
+    );
+    await seedReminder(getStorage(), reminder);
+    await user.click(
+      screen.getByRole('button', {
+        name: t('projectDetail', 'menu.triggerLabel', {
+          title: 'Задача-завершение с напоминанием',
+        }),
+      }),
+    );
+    await user.click(
+      screen.getByRole('menuitem', { name: t('projectDetail', 'actions.complete') }),
+    );
+
+    await waitFor(() => expect(scheduler.calls.cancelled).toEqual([reminder.id]));
+  });
+
   it('«Удалить» с активным напоминанием отменяет его в scheduler (00§7 шаг 5, Task A4)', async () => {
     const user = userEvent.setup();
     const project = makeProject({ title: 'Проект с напоминанием' });
