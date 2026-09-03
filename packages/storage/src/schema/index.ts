@@ -42,3 +42,4 @@ export {
   TASK_STATUS_PLANNED_DATE_INDEX,
 } from './indexes.js';
 export type { FtsIndexDefinition, IndexDefinition } from './indexes.js';
+export { computeEraseOrder } from './erase-order.js';

@@ -13,7 +13,7 @@
  */
 import { Temporal } from '@js-temporal/polyfill';
 
-import { ALL_TABLES } from '../schema/index.js';
+import { ALL_TABLES, computeEraseOrder } from '../schema/index.js';
 import { runMigrations } from '../migration/migration.js';
 import type {
   StoragePort,
@@ -133,17 +133,41 @@ export class SqliteStorage implements StoragePort {
     });
   }
 
+  /**
+   * M52 (`05§13`). Реальный дефект, найденный Android-смоуком: наивный
+   * `DELETE FROM` по `ALL_TABLES` в исходном порядке объявления падал
+   * `FOREIGN KEY constraint failed` на `tasks` — при включённых внешних
+   * ключах (`00§2`, обязательны) таблицы-сателлиты (`task_labels`/
+   * `checklist_items`/...) всё ещё ссылались на удаляемые строки. Порядок
+   * теперь — `computeEraseOrder(ALL_TABLES)` (`../schema/erase-order.ts`):
+   * топологическая сортировка по реальному графу FK, а не список,
+   * который можно забыть обновить.
+   *
+   * Список таблиц по-прежнему берётся из схемы (`ALL_TABLES`), не
+   * переписывается здесь: второй список однажды отстанет ровно на ту
+   * таблицу, которую забудут стереть. `tasks_fts` — не в `ALL_TABLES` (это
+   * виртуальная FTS5-таблица, `./fts.ts`) и без FK, поэтому названа
+   * отдельно и явно, порядок для неё не важен.
+   *
+   * Никакой `PRAGMA foreign_keys = OFF`/`defer_foreign_keys` — корректный
+   * порядок делает это ненужным: self-referencing колонки `tasks`
+   * (`parent_task_id`/`generated_from_occurrence_id`) обнуляются ОТДЕЛЬНЫМ
+   * шагом до удаления (обе nullable — `SET NULL` не нарушает ограничение
+   * ни для одной строки), после чего ни одна строка `tasks` не ссылается
+   * на другую и `DELETE FROM "tasks"` безопасен независимо от порядка
+   * построчной обработки внутри самого SQLite.
+   */
   async eraseAllLocalData(): Promise<void> {
-    // Список таблиц берётся из схемы (`ALL_TABLES`), а не переписывается
-    // здесь: второй список однажды отстанет ровно на ту таблицу, которую
-    // забудут стереть. `tasks_fts` — не в `ALL_TABLES` (это виртуальная
-    // FTS5-таблица, `./fts.ts`), поэтому названа отдельно и явно.
     await this.driver.transaction(async () => {
-      for (const table of ALL_TABLES) {
-        // eslint-disable-next-line no-await-in-loop -- одна транзакция, порядок неважен, параллелить нечем
+      await this.driver.execute('DELETE FROM "tasks_fts"');
+      await this.driver.execute(
+        'UPDATE "tasks" SET parent_task_id = NULL, generated_from_occurrence_id = NULL ' +
+          'WHERE parent_task_id IS NOT NULL OR generated_from_occurrence_id IS NOT NULL',
+      );
+      for (const table of computeEraseOrder(ALL_TABLES)) {
+        // eslint-disable-next-line no-await-in-loop -- одна транзакция; порядок ЗНАЧИМ (FK-граф) — параллелить нельзя
         await this.driver.execute(`DELETE FROM "${table.name}"`);
       }
-      await this.driver.execute('DELETE FROM tasks_fts');
     });
   }
 
