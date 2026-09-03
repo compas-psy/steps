@@ -83,4 +83,33 @@ describe('createWebPlatform', () => {
     ).resolves.toBeUndefined();
     await platform.notificationScheduler.cancel('test-1');
   });
+
+  it('listScheduled возвращает id всех запланированных, не отменённых уведомлений', async () => {
+    const platform = createWebPlatform();
+    if (!isAvailable(platform.notificationScheduler)) throw new Error('unreachable');
+    // Дата — недалёкое будущее (дни, не десятилетия): `setTimeout` в Node
+    // хранит задержку в 32-битном signed int, а дата из исходного плана
+    // (2099-01-01, ~73 года вперёд) в неё не помещается — задержка
+    // переполняется, Node тут же исполняет колбэк (TimeoutOverflowWarning),
+    // а колбэк трогает глобальный `Notification`, которого нет в happy-dom.
+    // Тест падает не из-за listScheduled, а из-за этого побочного эффекта,
+    // не относящегося к проверке. Здесь важно только, что таймер стоит.
+    const now = Temporal.Now.plainDateISO('UTC');
+    await platform.notificationScheduler.schedule(
+      'r1',
+      'Заголовок',
+      now.add({ days: 5 }),
+      null,
+      'UTC',
+    );
+    await platform.notificationScheduler.schedule(
+      'r2',
+      'Заголовок 2',
+      now.add({ days: 6 }),
+      null,
+      'UTC',
+    );
+    await platform.notificationScheduler.cancel('r1');
+    expect(await platform.notificationScheduler.listScheduled()).toEqual(['r2']);
+  });
 });

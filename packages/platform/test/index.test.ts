@@ -71,6 +71,11 @@ describe('@shagi/platform', () => {
         expect(typeof localDb.reason).toBe('string');
       }
     });
+
+    it('createUnavailablePlatform().notificationScheduler остаётся Unavailable после расширения порта listScheduled', () => {
+      const registry = createUnavailablePlatform();
+      expect(isAvailable(registry.notificationScheduler)).toBe(false);
+    });
   });
 
   describe('createUnavailablePlatform()', () => {

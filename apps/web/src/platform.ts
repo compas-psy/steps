@@ -107,6 +107,12 @@ function createNotificationScheduler(): NotificationSchedulerPort {
         timers.delete(id);
       }
     },
+    // Живой набор ключей `timers` и есть источник истины «что реально
+    // запланировано» — таймер живёт только пока жив он сам (см. заголовок
+    // функции), так что снимок ключей всегда честен, без отдельного стейта.
+    async listScheduled() {
+      return Array.from(timers.keys());
+    },
     // Веб не может гарантировать доставку при закрытом браузере (SPEC
     // §11.1) — ответ всегда `'no-guarantee'`, никогда `'exact'`/`'inexact'`.
     async getSchedulingCapability() {
