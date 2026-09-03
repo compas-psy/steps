@@ -844,9 +844,26 @@ async function main() {
     },
   );
   if (scheduledAfterAdd === null) {
+    // Диагностика ПЕРЕД fail() (Task B8 — второй живой прогон после
+    // pm grant POST_NOTIFICATIONS не помог; нужны реальные данные, а не
+    // вторая догадка вслепую). `requestPermission()` в установленном
+    // guest-js реально идёт через `window.Notification.requestPermission()`
+    // (браузерный Web Notification API внутри WebView), НЕ через нативный
+    // invoke — подтверждено чтением `dist-js/index.js` при подготовке
+    // Task B4. `pm grant` меняет ANDROID-разрешение приложения, но не
+    // обязан менять то, что видит JS внутри WebView-песочницы — это ровно
+    // не проверенный вживую риск, который отчёт Task B4 (concern #2) прямо
+    // назвал и адресовал этой задаче. Печатаем реальное состояние вместо
+    // того, чтобы гадать дальше.
+    const notificationApiState = await first.cdp
+      .evaluate(
+        '(() => { try { return { hasNotification: typeof window.Notification !== "undefined", permission: typeof window.Notification !== "undefined" ? window.Notification.permission : null }; } catch (e) { return { error: String(e) }; } })()',
+      )
+      .catch((error) => ({ evaluateThrew: String(error) }));
     fail(
       `после добавления напоминания \`dumpsys alarm\` не показывает ни одной записи ${APPLICATION_ID} — ` +
-        'реальный OS-level alarm не создан, хотя приложение могло сообщить об успехе.',
+        'реальный OS-level alarm не создан, хотя приложение могло сообщить об успехе. ' +
+        `Диагностика window.Notification в WebView: ${JSON.stringify(notificationApiState)}`,
     );
   }
   const dbPathAfterAdd = pullDatabase('reminder-scheduled');
