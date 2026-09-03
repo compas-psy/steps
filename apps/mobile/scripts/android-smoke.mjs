@@ -238,6 +238,118 @@ function alarmWindowMs(blockText) {
   return parseDurationToken(match[1]);
 }
 
+/** Тот же приём, что `alarmWindowMs` выше, для соседнего поля того же блока
+ * — `exactAllowReason=` печатается ТОЛЬКО когда AOSP реально признал alarm
+ * exact (см. живой пример Step 2b: `exactAllowReason=permission`); для
+ * inexact-пути поле в дампе попросту отсутствует, поэтому `null`, а не
+ * пустая строка, — самостоятельный, независимый от `window=` признак того
+ * же факта, нужный ИСКЛЮЧИТЕЛЬНО для диагностики ST10-находки (владелец,
+ * запрос "соберём в одной точке" после Step 2c) — не заменяет и не меняет
+ * существующую проверку `alarmWindowMs`. */
+function exactAllowReasonOf(blockText) {
+  const match = /\bexactAllowReason=(\S+)/.exec(blockText);
+  return match === null ? null : match[1];
+}
+
+/**
+ * Диагностический снимок (Task B8, ST10-расследование — владелец прямо
+ * запросил собрать четыре факта «в одной временной точке», не гадать по
+ * одному). НЕ проверяет ничего сама — только читает и печатает; ни одна
+ * существующая проверка/таймаут/assertion этой функцией не заменяется и не
+ * ослабляется (она вызывается ДОПОЛНИТЕЛЬНО к уже существующим `waitFor`/
+ * `fail()` Step 2c, не вместо них).
+ *
+ * Четыре факта:
+ * 1. SQLite (`readEnabledReminder`) — то, что домен считает желаемым.
+ * 2. Нативная capability (`window.__TAURI_INTERNALS__.invoke(
+ *    'plugin:alarm-capability|can_schedule_exact')`) — ТОТ ЖЕ вызов, что
+ *    делает `notification-bridge.ts`'s `getSchedulingCapability()`, но
+ *    напрямую из WebView через CDP, в обход React — если `cdp` не передан
+ *    (снимок делается без живой WebView-сессии), поле просто `null`.
+ * 3. `dumpsys alarm` (`listSystemAlarmBlocks`/`alarmWindowMs`/
+ *    `exactAllowReasonOf`) — реальное состояние AlarmManager. Дамп не
+ *    печатает id/request-code alarm'а буквально (проверено предыдущими
+ *    прогонами Step 2b/2c) — фильтр по-прежнему по имени пакета, как везде
+ *    в этом файле; для интерпретации снимок печатает и SQLite-id рядом.
+ * 4. `pending()` плагина (`plugin:notification|get_pending`, тот же
+ *    guest-js вызов, что `notification-bridge.ts`'s `listScheduled()`) —
+ *    отдельно от dumpsys: P0-риск владельца — `pending()` читает
+ *    `NotificationStorage` плагина, а НЕ AlarmManager, это разные
+ *    источники истины, и это исследование должно увидеть их расхождение
+ *    живьём, если оно есть, а не полагаться на прежнее предположение A6.
+ */
+async function captureReminderSnapshot(label, taskTitle, cdp) {
+  console.log(`── Диагностический снимок: ${label} ──`);
+  const dbPath = pullDatabase(`diag-${label.replace(/[^a-z0-9]+/giu, '-')}`);
+  const sqlite = readEnabledReminder(dbPath, taskTitle);
+  console.log(`  SQLite (enabled explicit reminder): ${JSON.stringify(sqlite)}`);
+
+  let nativeCapability = null;
+  if (cdp !== undefined) {
+    nativeCapability = await cdp
+      .evaluate("window.__TAURI_INTERNALS__.invoke('plugin:alarm-capability|can_schedule_exact')")
+      .catch((error) => `evaluate упал: ${error.message}`);
+  }
+  console.log(`  Нативная capability (can_schedule_exact): ${JSON.stringify(nativeCapability)}`);
+
+  const blocks = listSystemAlarmBlocks();
+  const alarmSummaries = blocks.map((block) => {
+    const text = block.join('\n');
+    return { window: alarmWindowMs(text), exactAllowReason: exactAllowReasonOf(text) };
+  });
+  console.log(
+    `  AlarmManager (dumpsys, ${blocks.length} запис${blocks.length === 1 ? 'ь' : 'ей'}): ` +
+      JSON.stringify(alarmSummaries),
+  );
+
+  let pluginPending = null;
+  if (cdp !== undefined) {
+    pluginPending = await cdp
+      .evaluate("window.__TAURI_INTERNALS__.invoke('plugin:notification|get_pending')")
+      .catch((error) => `evaluate упал: ${error.message}`);
+  }
+  console.log(`  Plugin pending() (NotificationStorage): ${JSON.stringify(pluginPending)}`);
+
+  return { label, sqlite, nativeCapability, alarms: alarmSummaries, pluginPending };
+}
+
+/**
+ * Слушает `Runtime.exceptionThrown`/`Runtime.consoleAPICalled` БЕЗ
+ * перезагрузки страницы (в отличие от `captureBlankScreenDiagnostics`,
+ * которая намеренно перезагружает — здесь этого не нужно и это разрушило
+ * бы уже накопленное React-состояние, которое как раз и нужно
+ * пронаблюдать). Нужна ОДИН раз для конкретной проверки владельца:
+ * `onClick={() => void handleSubmitReminder()}` (`TaskDetail.tsx`) —
+ * `void` глушит успешный резолв, но НЕ глушит настоящую unhandled
+ * rejection, если промис внутри отклонится, — она долетает до
+ * `window.onunhandledrejection`/CDP `Runtime.exceptionThrown` тем же
+ * путём, что и любое необработанное исключение. Возвращает МАССИВ,
+ * который наполняется по мере событий уже ПОСЛЕ вызова (ссылка, не
+ * снимок) — вызывающий код читает его после нужного действия.
+ */
+async function attachConsoleCapture(cdp) {
+  const events = [];
+  cdp.on('Runtime.exceptionThrown', (params) => {
+    const ex = params.exceptionDetails;
+    events.push({
+      kind: 'exception',
+      text: ex?.text,
+      description: ex?.exception?.description ?? ex?.exception?.value,
+      url: ex?.url,
+      line: ex?.lineNumber,
+    });
+  });
+  cdp.on('Runtime.consoleAPICalled', (params) => {
+    if (params.type !== 'error' && params.type !== 'warning') return;
+    events.push({
+      kind: `console.${params.type}`,
+      args: (params.args ?? []).map((a) => a.description ?? a.value ?? a.type),
+    });
+  });
+  await cdp.send('Runtime.enable');
+  return events;
+}
+
 /**
  * Триггерное время alarm'а из строки дампа — нужно и Step 3 (замена времени
  * при update), и Step 9b (смена часового пояса). НЕ гадаем вслепую (бриф
@@ -1043,6 +1155,19 @@ async function main() {
   adb(['shell', 'cmd', 'appops', 'set', APPLICATION_ID, 'SCHEDULE_EXACT_ALARM', 'deny'], {
     stdio: 'inherit',
   });
+  const appopsBeforeRelaunch = adb([
+    'shell',
+    'cmd',
+    'appops',
+    'get',
+    APPLICATION_ID,
+    'SCHEDULE_EXACT_ALARM',
+  ]);
+  console.log(`  appops (сразу после deny, до force-stop): ${appopsBeforeRelaunch}`);
+  // ДИАГНОСТИКА (не acceptance) — владелец прямо запросил снимок «до
+  // relaunch» СТАРОЙ, ещё живой сессией: пока `first.cdp` не закрыт, это
+  // тот самый процесс, что успешно прошёл Step 2b с exact-alarm'ом.
+  await captureReminderSnapshot('до relaunch, после revoke, старый процесс', taskTitle, first.cdp);
   first.cdp.close();
   // `am force-stop` ПЕРЕД `launchAndAttach` — та же ловушка, что уже
   // задокументирована у Step 5.3/Step 6 ниже (см. их комментарии): без него
@@ -1057,6 +1182,20 @@ async function main() {
   // не может быть кэширована предыдущим запуском.
   adb(['shell', 'am', 'force-stop', APPLICATION_ID], { stdio: 'inherit' });
   first = await launchAndAttach('после отзыва SCHEDULE_EXACT_ALARM');
+  // ДИАГНОСТИКА — тот же приём, что `captureBlankScreenDiagnostics`, но БЕЗ
+  // перезагрузки страницы (см. комментарий `attachConsoleCapture`):
+  // подписка ставится СРАЗУ после релонча, ДО первого клика, чтобы поймать
+  // абсолютно всё, что произойдёт при открытии карточки/пересохранении —
+  // владелец прямо просит проверить unhandled rejection из
+  // `onClick={() => void handleSubmitReminder()}`.
+  const consoleEventsDuringResave = await attachConsoleCapture(first.cdp);
+  // ДИАГНОСТИКА — снимок СРАЗУ после холодного релонча, ДО первого клика:
+  // владелец прямо спрашивает, может ли `pending()` плагина показывать
+  // устаревшую запись, пока `dumpsys alarm` уже пуст (force-stop чистит
+  // AlarmManager, `NotificationStorage` плагина — отдельное хранилище,
+  // могло не узнать об этом). Если стартовая реконсиляция (`App.tsx`)
+  // уже успела отработать к этому моменту — тоже будет видно здесь.
+  await captureReminderSnapshot('после cold relaunch, до любого клика', taskTitle, first.cdp);
   if ((await first.cdp.evaluate(openTaskRow(taskTitle))) !== true) {
     fail(`строка задачи «${taskTitle}» не открылась после отзыва exact-возможности`);
   }
@@ -1078,6 +1217,19 @@ async function main() {
   }
   await sleep(2000);
 
+  // ДИАГНОСТИКА — снимок СРАЗУ после пересохранения, ДО того, как узнаем,
+  // появилось ли уведомление ST10. Печатается ВСЕГДА (успех/провал), чтобы
+  // не зависеть от того, в какую ветку попадёт `waitFor` ниже.
+  const snapshotAfterResave = await captureReminderSnapshot(
+    'после пересохранения (claim #2 / ST10)',
+    taskTitle,
+    first.cdp,
+  );
+  console.log(
+    `  Console/exception события за время открытия карточки + пересохранения (${consoleEventsDuringResave.length}): ` +
+      JSON.stringify(consoleEventsDuringResave),
+  );
+
   const inexactNoticeText = await waitFor(
     'уведомление о неточном напоминании (ST10, Task B6)',
     15,
@@ -1094,7 +1246,10 @@ async function main() {
     fail(
       'после отзыва SCHEDULE_EXACT_ALARM экран не показал уведомление ST10 ' +
         `(planning.reminder.inexactNotice) — приложение молчит там, где обязано честно предупредить. ` +
-        `Экран: ${JSON.stringify(String(last).slice(0, 300))}`,
+        `Экран: ${JSON.stringify(String(last).slice(0, 300))}. ` +
+        `Диагностический снимок сразу после пересохранения: ${JSON.stringify(snapshotAfterResave)}. ` +
+        `appops (до force-stop): ${appopsBeforeRelaunch}. ` +
+        `Console/exception события: ${JSON.stringify(consoleEventsDuringResave)}.`,
     );
   }
   const linesAfterDeny = listSystemAlarms();
