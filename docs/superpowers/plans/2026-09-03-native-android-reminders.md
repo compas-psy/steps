@@ -1009,7 +1009,37 @@ impl<R: Runtime> AlarmCapability<R> {
         Err(crate::Error::UnsupportedPlatform)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Единственная host-testable часть этого крейта (`?22` — Android SDK
+    // здесь недоступен): чистая логика `desktop.rs`. `mobile.rs` — только
+    // JNI-мост, `commands.rs` — тонкая обёртка над `AlarmCapability` через
+    // Tauri State, ни то ни другое не имеет смысла юнит-тестировать без
+    // реального Tauri App/эмулятора (это делает Task B7/B8, не здесь).
+    #[test]
+    fn desktop_can_schedule_exact_is_always_false() {
+        let capability = AlarmCapability::<tauri::test::MockRuntime>(std::marker::PhantomData);
+        assert_eq!(capability.can_schedule_exact().unwrap(), false);
+    }
+
+    #[test]
+    fn desktop_open_exact_alarm_settings_is_unsupported() {
+        let capability = AlarmCapability::<tauri::test::MockRuntime>(std::marker::PhantomData);
+        assert!(matches!(
+            capability.open_exact_alarm_settings(),
+            Err(crate::Error::UnsupportedPlatform)
+        ));
+    }
+}
 ```
+
+(if `tauri::test::MockRuntime` isn't available without a `test` feature on the
+`tauri` dependency, add `features = ["test"]`/a `dev-dependencies` entry as
+needed — the concrete runtime type doesn't matter here, only that these two
+pure functions return what `05§3.1` requires.)
 
 - [ ] **Step 6: Write `src/lib.rs`**
 
@@ -1144,7 +1174,7 @@ import app.tauri.plugin.Plugin
 
 /**
  * Единственная задача этого плагина: то, чего нет в tauri-plugin-notification
- * (ADR-000X) — узнать ДО планирования, доступен ли точный alarm
+ * (ADR-0008) — узнать ДО планирования, доступен ли точный alarm
  * (`canScheduleExactAlarms()`, Android 12+/API 31+), и открыть системные
  * настройки, если нет (`ACTION_REQUEST_SCHEDULE_EXACT_ALARM`).
  * На API < 31 точные alarm разрешены безусловно — SCHEDULE_EXACT_ALARM
@@ -1242,7 +1272,7 @@ import * as plugin from '@tauri-apps/plugin-notification';
 import { createNotificationBridge } from '../src/notification-bridge.js';
 
 describe('createNotificationBridge', () => {
-  it('schedule запрашивает разрешение just-in-time и планирует через plugin:notification|batch (НЕ sendNotification — 05§ADR-000X: только batch пишет в NotificationStorage)', async () => {
+  it('schedule запрашивает разрешение just-in-time и планирует через plugin:notification|batch (НЕ sendNotification — 05§ADR-0008: только batch пишет в NotificationStorage)', async () => {
     vi.mocked(invoke).mockResolvedValueOnce([1]); // ответ batch — массив id
     const bridge = createNotificationBridge();
     await bridge.schedule(
@@ -1340,7 +1370,7 @@ Run: `export PATH=/usr/local/bin:$PATH && pnpm --filter @shagi/mobile test -- no
 // apps/mobile/src/notification-bridge.ts
 /**
  * Реализация `NotificationSchedulerPort` (`@shagi/platform`) поверх
- * `tauri-plugin-notification` (доставка/AlarmManager/boot-restore, ADR-000X)
+ * `tauri-plugin-notification` (доставка/AlarmManager/boot-restore, ADR-0008)
  * и локального `tauri-plugin-alarm-capability` (единственное, чего нет в
  * официальном плагине — capability-проверка ДО планирования, `05§3.1`).
  *
@@ -1425,7 +1455,7 @@ export function createNotificationBridge(): NotificationSchedulerPort {
       // здесь не полагаемся на него, чтобы не оставить два живых alarm.
       const id32 = nativeId(id);
       await pluginCancel([id32]);
-      // `plugin:notification|batch`, НЕ guest-js `sendNotification()` — ADR-000X
+      // `plugin:notification|batch`, НЕ guest-js `sendNotification()` — ADR-0008
       // (Task B1): только `batch` пишет в `NotificationStorage` на Android
       // (`NotificationPlugin.kt:143-149`), от которой зависят и boot-restore
       // (`LocalNotificationRestoreReceiver`), и `pending()`/`listScheduled()`
