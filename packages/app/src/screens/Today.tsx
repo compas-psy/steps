@@ -324,8 +324,10 @@ import {
   type TaskMenuItemData,
   type TaskRowState,
 } from '@shagi/ui';
+import { isAvailable } from '@shagi/platform';
 
-import { useAppController, useAppState, useStorage } from '../state/context.js';
+import { useAppController, useAppState, useHost, useStorage } from '../state/context.js';
+import { reconcileReminderScheduleForTask } from '../state/reminder-reconciliation.js';
 import './Today.css';
 
 /** Precedence `01§6` — порядок, в котором группы проверяются и рендерятся. */
@@ -836,6 +838,7 @@ function focusAssignmentPatch(group: TodayGroup): UpdateTaskPatch {
 
 export function Today(): ReactElement {
   const storage = useStorage();
+  const host = useHost();
   const controller = useAppController();
   const [groups, setGroups] = useState<TodayGroups | null>(null);
   /** Счётчик активных Входящих для бейджа заголовка — см. заголовок файла,
@@ -947,12 +950,21 @@ export function Today(): ReactElement {
   /** Общий разбор исхода команды (задание: "Обработай `status !== 'ok'` от
    * команд ... тихая ошибка недопустима"). `not_found`/`rejected` не
    * притворяются успехом — список не перезапрашивается, пользователь видит
-   * `Toast`. */
-  async function runCommand(promise: Promise<TaskCommandResult>): Promise<void> {
+   * `Toast`. `afterOk` — необязательный постфикс ПОСЛЕ перезапроса списка,
+   * только для команд, которым он реально нужен (реконсиляция напоминаний
+   * после `completeOccurrenceCommand` — `handlers.onComplete` ниже, 00§7
+   * шаг 5) — остальные вызовы `runCommand`
+   * (`onRescheduleToday`/`onRescheduleTomorrow`/метки) его не передают и не
+   * заводят лишнего похода к `NotificationSchedulerPort`. */
+  async function runCommand(
+    promise: Promise<TaskCommandResult>,
+    afterOk?: () => Promise<void>,
+  ): Promise<void> {
     const result = await promise;
     if (result.status === 'ok') {
       setErrorMessage(null);
       await refreshGroups();
+      if (afterOk !== undefined) await afterOk();
       return;
     }
     setErrorMessage(t('today', 'errors.actionFailed'));
@@ -960,6 +972,20 @@ export function Today(): ReactElement {
 
   function commandDeps(): { storage: typeof storage; now: Temporal.Instant; deviceId: Uuid } {
     return { storage, now: Temporal.Now.instant(), deviceId: getDeviceId() };
+  }
+
+  /** См. `Search.tsx` — тот же постфикс реконсиляции после успешной команды
+   * (00§7 шаг 5). */
+  async function reconcileTaskReminders(taskId: Uuid): Promise<void> {
+    const scheduler = host.platform.notificationScheduler;
+    if (!isAvailable(scheduler)) return;
+    await reconcileReminderScheduleForTask(
+      storage,
+      scheduler,
+      taskId,
+      Temporal.Now.plainDateTimeISO(),
+      Temporal.Now.timeZoneId(),
+    );
   }
 
   /** «Выбрать» / «Готово» — вход и выход из режима выбора экрана
@@ -1091,7 +1117,18 @@ export function Today(): ReactElement {
     let anyFailed = false;
     for (const id of ids) {
       const result = await deleteTaskCommand({ id }, commandDeps());
-      if (result.status !== 'ok') anyFailed = true;
+      if (result.status !== 'ok') {
+        anyFailed = true;
+        continue;
+      }
+      // Реконсиляция ПОСЛЕ каждого удаления (00§7 шаг 5) — саму удалённую
+      // задачу и её каскадированные subtasks (`affectedSubtaskIds`,
+      // `DeleteTaskResult`), у каждой из которых мог быть собственный
+      // reminder.
+      await reconcileTaskReminders(id);
+      for (const subtaskId of result.affectedSubtaskIds) {
+        await reconcileTaskReminders(subtaskId);
+      }
     }
     await refreshGroups();
     setSelection({ active: false, selectedIds: new Set() });
@@ -1120,12 +1157,27 @@ export function Today(): ReactElement {
     setBulkCompletion(null);
     const result = await completeManyCommand({ ids }, commandDeps());
     let anyFailed = result.status !== 'ok';
+    if (result.status === 'ok') {
+      // `result.completedIds`, не входной `ids` — `completeManyCommand`
+      // одной транзакцией завершает ещё и каскадных детей сверх явного
+      // выбора (`additionalChildCount`, см. её комментарий), у которых
+      // тоже мог быть собственный reminder; `ids` этого расширения не
+      // отражает (00§7 шаг 5).
+      for (const id of result.completedIds) {
+        // eslint-disable-next-line no-await-in-loop -- последовательно, тот же приём, что `runBulkDelete` рядом
+        await reconcileTaskReminders(id);
+      }
+    }
     for (const id of result.skippedRecurringIds) {
       const occurrence = await completeOccurrenceCommand(
         { id, occurrenceLocalDate: Temporal.Now.plainDateISO() },
         commandDeps(),
       );
-      if (occurrence.status !== 'ok') anyFailed = true;
+      if (occurrence.status !== 'ok') {
+        anyFailed = true;
+        continue;
+      }
+      await reconcileTaskReminders(id);
     }
     await refreshGroups();
     setSelection({ active: false, selectedIds: new Set() });
@@ -1148,6 +1200,7 @@ export function Today(): ReactElement {
           { id, occurrenceLocalDate: Temporal.Now.plainDateISO() },
           commandDeps(),
         ),
+        () => reconcileTaskReminders(id),
       );
     },
     onRescheduleToday: (id) => {

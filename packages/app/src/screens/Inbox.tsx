@@ -198,8 +198,10 @@ import {
   type CalendarMonth,
   type MenuItemData,
 } from '@shagi/ui';
+import { isAvailable } from '@shagi/platform';
 
-import { useAppController, useStorage } from '../state/context.js';
+import { useAppController, useHost, useStorage } from '../state/context.js';
+import { reconcileReminderScheduleForTask } from '../state/reminder-reconciliation.js';
 import './Inbox.css';
 
 // --- Календарь `DatePicker` — конвертация Temporal ↔ простых чисел ------------
@@ -281,6 +283,7 @@ interface DatePickerState {
 
 export function Inbox(): ReactElement {
   const storage = useStorage();
+  const host = useHost();
   const controller = useAppController();
 
   const [tasks, setTasks] = useState<readonly Task[] | null>(null);
@@ -321,12 +324,25 @@ export function Inbox(): ReactElement {
   }
 
   /** Тот же разбор исхода команды, что `Today.tsx` `runCommand`: провал не
-   * проглатывается молча, список не перезапрашивается под ошибкой. */
-  async function runCommand(promise: Promise<TaskCommandResult>): Promise<void> {
+   * проглатывается молча, список не перезапрашивается под ошибкой.
+   * `afterOk` — необязательный постфикс ПОСЛЕ перезапроса списка, только
+   * для команд, которым он реально нужен (реконсиляция напоминаний после
+   * `completeTaskCommand`, 00§7 шаг 5) — остальные вызовы `runCommand`
+   * (`handleToday`/`handleSelectDate`/`handleAssignProject`) его не
+   * передают и не заводят лишнего похода к `NotificationSchedulerPort`.
+   * `handleDelete` ниже НЕ идёт через этот хелпер — `deleteTaskCommand`
+   * каскадирует subtasks (`affectedSubtaskIds`, `DeleteTaskResult` в
+   * `@shagi/core`), и реконсиляции нужен доступ к этому полю, которого нет
+   * на базовом `TaskCommandResult`, к которому сужен параметр здесь. */
+  async function runCommand(
+    promise: Promise<TaskCommandResult>,
+    afterOk?: () => Promise<void>,
+  ): Promise<void> {
     const result = await promise;
     if (result.status === 'ok') {
       setErrorMessage(null);
       await refreshTasks();
+      if (afterOk !== undefined) await afterOk();
       return;
     }
     setErrorMessage(t('inbox', 'errors.actionFailed'));
@@ -336,11 +352,27 @@ export function Inbox(): ReactElement {
     return { storage, now: Temporal.Now.instant(), deviceId: getDeviceId() };
   }
 
+  /** См. `Search.tsx` — тот же постфикс реконсиляции после успешной команды
+   * (00§7 шаг 5). */
+  async function reconcileTaskReminders(taskId: Uuid): Promise<void> {
+    const scheduler = host.platform.notificationScheduler;
+    if (!isAvailable(scheduler)) return;
+    await reconcileReminderScheduleForTask(
+      storage,
+      scheduler,
+      taskId,
+      Temporal.Now.plainDateTimeISO(),
+      Temporal.Now.timeZoneId(),
+    );
+  }
+
   /** Завершение прямо из списка — чекбокс в строке (`TaskRow`). Та же
    * команда, что на Today; список перезапрашивается через общий
    * `runCommand`. */
   function handleComplete(task: Task): void {
-    void runCommand(completeTaskCommand({ id: task.id }, commandDeps()));
+    void runCommand(completeTaskCommand({ id: task.id }, commandDeps()), () =>
+      reconcileTaskReminders(task.id),
+    );
   }
 
   function handleToday(task: Task): void {
@@ -389,8 +421,24 @@ export function Inbox(): ReactElement {
     );
   }
 
+  /** Не через общий `runCommand` (см. её комментарий выше) — удаление
+   * каскадирует subtasks, и реконсиляции нужен `affectedSubtaskIds`
+   * `DeleteTaskResult`, чтобы отменить и ИХ напоминания синхронно, а не
+   * ждать следующего полного скана (00§7 шаг 5, `App.tsx`). */
   function handleDelete(task: Task): void {
-    void runCommand(deleteTaskCommand({ id: task.id }, commandDeps()));
+    void (async () => {
+      const result = await deleteTaskCommand({ id: task.id }, commandDeps());
+      if (result.status === 'ok') {
+        setErrorMessage(null);
+        await refreshTasks();
+        await reconcileTaskReminders(task.id);
+        for (const subtaskId of result.affectedSubtaskIds) {
+          await reconcileTaskReminders(subtaskId);
+        }
+        return;
+      }
+      setErrorMessage(t('inbox', 'errors.actionFailed'));
+    })();
   }
 
   /** «Пропустить» — см. заголовок файла, блок «Очередь и фокус»: НЕ

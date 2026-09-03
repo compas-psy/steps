@@ -3,10 +3,15 @@ import { useEffect, useState, type ReactElement } from 'react';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Temporal } from '@js-temporal/polyfill';
-import { createUnavailablePlatform } from '@shagi/platform';
+import {
+  createUnavailablePlatform,
+  type NotificationPrecision,
+  type NotificationSchedulerPort,
+} from '@shagi/platform';
 import { formatDate, t } from '@shagi/i18n';
 import {
   makeChecklistItem,
+  makeExplicitReminder,
   makeLabel,
   makeOutboxEntry,
   makeProject,
@@ -39,6 +44,38 @@ import { TaskDetail } from '../../src/screens/TaskDetail.js';
 
 function testHost(): AppHost {
   return { platform: createUnavailablePlatform(), storageBackend: { kind: 'memory' } };
+}
+
+/** Тот же фейк, что `test/state/reminder-reconciliation.test.ts` (Task A3)
+ * и `test/App.test.tsx` (Task A4) — платформа целиком в памяти.
+ * `initialScheduled` — id, уже «запланированные» до монтирования экрана
+ * (имитирует прошлый успешный проход реконсиляции): нужен тестам
+ * complete/delete subtask ниже, которым важно НАЧАТЬ с уже-запланированным
+ * напоминанием, чтобы проверить именно `scheduler.cancel`, а не
+ * `scheduler.schedule` (idempotency-путь Task A3 не трогает уже
+ * запланированный id). */
+function fakeScheduler(initialScheduled: readonly string[] = []): NotificationSchedulerPort & {
+  calls: { scheduled: string[]; cancelled: string[] };
+} {
+  const scheduled = new Set<string>(initialScheduled);
+  const calls = { scheduled: [] as string[], cancelled: [] as string[] };
+  return {
+    calls,
+    async schedule(id) {
+      scheduled.add(id);
+      calls.scheduled.push(id);
+    },
+    async cancel(id) {
+      scheduled.delete(id);
+      calls.cancelled.push(id);
+    },
+    async listScheduled() {
+      return Array.from(scheduled);
+    },
+    async getSchedulingCapability(): Promise<NotificationPrecision> {
+      return 'exact';
+    },
+  };
 }
 
 interface Seed {
@@ -112,6 +149,23 @@ async function seed(storage: StoragePort, entities: Seed): Promise<void> {
   }
 }
 
+/** Отдельно от `seed()`/`Seed` (реминдеры нужны только новым тестам
+ * реконсиляции ниже, не всему файлу) — пишет напоминание НАПРЯМУЮ в
+ * хранилище, минуя `createExplicitReminderCommand` (тестам реконсиляции
+ * не важен путь создания, важно только что реминдер уже есть и `enabled`
+ * ДО действия, которое должно его отменить). */
+async function seedReminder(
+  storage: StoragePort,
+  reminder: ReturnType<typeof makeExplicitReminder>,
+): Promise<void> {
+  await storage.runTransaction(async (tx) => {
+    await tx.applyMutation({
+      writes: [{ entity: 'reminder', value: reminder }],
+      outbox: [makeOutboxEntry('reminder', reminder.id)],
+    });
+  });
+}
+
 /** См. `Today.test.tsx`/`ProjectDetail.test.tsx` за тем же обоснованием
  * узкой фикстуры-дублёра `RecurrenceSeries`. */
 function seedRecurrenceSeries(
@@ -172,6 +226,7 @@ function renderTaskDetail(
   taskId: Uuid,
   entities: Seed,
   fromScreen: ScreenId = 'todayEmpty',
+  host: AppHost = testHost(),
 ): { getStorage: () => StoragePort; controller: ReturnType<typeof createAppController> } {
   const controller = createAppController({
     screen: 'taskDetail',
@@ -180,7 +235,7 @@ function renderTaskDetail(
   });
   let capturedStorage: StoragePort | undefined;
   render(
-    <AppProvider host={testHost()} controller={controller}>
+    <AppProvider host={host} controller={controller}>
       <SeedThenTaskDetailCapturing
         entities={entities}
         onStorage={(storage) => (capturedStorage = storage)}
@@ -696,6 +751,85 @@ describe('TaskDetail — Explicit Reminder (M31, `01§18`)', () => {
   });
 });
 
+describe('TaskDetail — Explicit Reminder: реконсиляция расписания (00§7 шаг 5, Task A4)', () => {
+  it('успешное создание вызывает scheduler.schedule с id нового напоминания', async () => {
+    const user = userEvent.setup();
+    const scheduler = fakeScheduler();
+    const host: AppHost = {
+      platform: { ...createUnavailablePlatform(), notificationScheduler: scheduler },
+      storageBackend: { kind: 'memory' },
+    };
+    const task = makeTask({ title: 'Без напоминания' });
+    const { getStorage } = renderTaskDetail(task.id, { tasks: [task] }, 'todayEmpty', host);
+
+    await user.click(
+      await screen.findByRole('button', { name: t('taskDetail', 'planning.reminder.add') }),
+    );
+    // Следующий месяц, не «сегодня» — при пустом времени `firesAt` падает
+    // на полночь ДАТЫ (`buildExplicitLocalRuleJson`, `@shagi/core`), и
+    // «сегодня в полночь» уже в прошлом относительно момента запуска
+    // теста — реконсиляция намеренно не реплеит просроченное (`01§18`
+    // Testing Acceptance #34), `schedule` не вызвался бы. Любая дата
+    // следующего месяца гарантированно в будущем — тот же приём, что
+    // `planning.picker.nextMonth` тест выше в файле.
+    await user.click(
+      screen.getByRole('button', { name: t('taskDetail', 'planning.picker.nextMonth') }),
+    );
+    const [firstDayOfNextMonth] = await screen.findAllByRole('gridcell');
+    if (firstDayOfNextMonth === undefined) throw new Error('ожидалась хотя бы одна ячейка');
+    await user.click(firstDayOfNextMonth);
+    await user.click(
+      screen.getByRole('button', { name: t('taskDetail', 'planning.reminder.save') }),
+    );
+
+    const reminder = await waitFor(async () => {
+      const reminders = await getStorage().reminders.listByTask(task.id);
+      const found = reminders.find((r) => r.kind === 'explicit' && r.enabled);
+      if (found === undefined) throw new Error('напоминание ещё не создано');
+      return found;
+    });
+    await waitFor(() => expect(scheduler.calls.scheduled).toEqual([reminder.id]));
+  });
+
+  it('«Отменить» вызывает scheduler.cancel с id отменённого напоминания', async () => {
+    const user = userEvent.setup();
+    const scheduler = fakeScheduler();
+    const host: AppHost = {
+      platform: { ...createUnavailablePlatform(), notificationScheduler: scheduler },
+      storageBackend: { kind: 'memory' },
+    };
+    const task = makeTask({ title: 'С напоминанием' });
+    const { getStorage } = renderTaskDetail(task.id, { tasks: [task] }, 'todayEmpty', host);
+
+    await user.click(
+      await screen.findByRole('button', { name: t('taskDetail', 'planning.reminder.add') }),
+    );
+    await user.click(
+      screen.getByRole('button', { name: t('taskDetail', 'planning.picker.nextMonth') }),
+    );
+    const [firstDayOfNextMonth] = await screen.findAllByRole('gridcell');
+    if (firstDayOfNextMonth === undefined) throw new Error('ожидалась хотя бы одна ячейка');
+    await user.click(firstDayOfNextMonth);
+    await user.click(
+      screen.getByRole('button', { name: t('taskDetail', 'planning.reminder.save') }),
+    );
+
+    const reminder = await waitFor(async () => {
+      const reminders = await getStorage().reminders.listByTask(task.id);
+      const found = reminders.find((r) => r.kind === 'explicit' && r.enabled);
+      if (found === undefined) throw new Error('напоминание ещё не создано');
+      return found;
+    });
+    await waitFor(() => expect(scheduler.calls.scheduled).toEqual([reminder.id]));
+
+    await user.click(
+      await screen.findByRole('button', { name: t('taskDetail', 'planning.reminder.cancel') }),
+    );
+
+    await waitFor(() => expect(scheduler.calls.cancelled).toEqual([reminder.id]));
+  });
+});
+
 describe('TaskDetail — Organization: приоритет (после E08.2 — тот же экран, без регрессии)', () => {
   it('«Приоритет» открывает picker приоритета', async () => {
     const user = userEvent.setup();
@@ -929,6 +1063,73 @@ describe('TaskDetail — Subtasks', () => {
     });
     const storedSubtask = await getStorage().tasks.findById(subtask.id);
     expect(storedSubtask?.deletedAt).not.toBeNull();
+  });
+});
+
+describe('TaskDetail — Subtasks: реконсиляция расписания напоминаний (00§7 шаг 5, Task A4)', () => {
+  it('завершение subtask с активным напоминанием отменяет его в scheduler', async () => {
+    const user = userEvent.setup();
+    const parent = makeTask({ title: 'Родитель с напоминанием у подзадачи' });
+    const subtask = makeTask({
+      title: 'Подзадача с напоминанием',
+      parentTaskId: parent.id,
+      projectId: null,
+      captureState: 'processed',
+    });
+    // Напоминание уже «запланировано» ДО монтирования (см. комментарий
+    // `fakeScheduler`) — так тест проверяет именно `cancel`, а не побочный
+    // `schedule` от idempotency-пути.
+    const reminder = makeExplicitReminder(subtask.id);
+    const scheduler = fakeScheduler([reminder.id]);
+    const host: AppHost = {
+      platform: { ...createUnavailablePlatform(), notificationScheduler: scheduler },
+      storageBackend: { kind: 'memory' },
+    };
+    const { getStorage } = renderTaskDetail(
+      parent.id,
+      { tasks: [parent, subtask] },
+      'todayEmpty',
+      host,
+    );
+    await waitFor(() => expect(screen.getByText('Подзадача с напоминанием')).toBeInTheDocument());
+    await seedReminder(getStorage(), reminder);
+
+    await user.click(screen.getByRole('checkbox', { name: 'Подзадача с напоминанием' }));
+
+    await waitFor(() => expect(scheduler.calls.cancelled).toEqual([reminder.id]));
+  });
+
+  it('удаление subtask с активным напоминанием отменяет его в scheduler', async () => {
+    const user = userEvent.setup();
+    const parent = makeTask({ title: 'Родитель, удаление подзадачи' });
+    const subtask = makeTask({
+      title: 'Удаляемая с напоминанием',
+      parentTaskId: parent.id,
+      projectId: null,
+      captureState: 'processed',
+    });
+    const reminder = makeExplicitReminder(subtask.id);
+    const scheduler = fakeScheduler([reminder.id]);
+    const host: AppHost = {
+      platform: { ...createUnavailablePlatform(), notificationScheduler: scheduler },
+      storageBackend: { kind: 'memory' },
+    };
+    const { getStorage } = renderTaskDetail(
+      parent.id,
+      { tasks: [parent, subtask] },
+      'todayEmpty',
+      host,
+    );
+    await waitFor(() => expect(screen.getByText('Удаляемая с напоминанием')).toBeInTheDocument());
+    await seedReminder(getStorage(), reminder);
+
+    await user.click(
+      screen.getByRole('button', {
+        name: t('taskDetail', 'subtasks.deleteLabel', { title: 'Удаляемая с напоминанием' }),
+      }),
+    );
+
+    await waitFor(() => expect(scheduler.calls.cancelled).toEqual([reminder.id]));
   });
 });
 

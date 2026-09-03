@@ -37,12 +37,30 @@
  * этого хука `data-theme` после `location.reload()` оставался `null`, хотя
  * `localStorage` уже хранил `'light'`/`'dark'`). `Unavailable` — молча
  * пропускается, тот же приём, что `useBootstrapLocalDb` рядом.
+ *
+ * --- Boot-реконсиляция напоминаний (00§7 шаг 5, Task A4) -------------------
+ *
+ * `useBootstrapReminderReconciliation` — на каждом запуске сверяет ВЕСЬ
+ * желаемый набор напоминаний workspace с тем, что реально запланировано на
+ * платформе (`reconcileReminderSchedule`, Task A3,
+ * `state/reminder-reconciliation.ts`), и молча чинит расхождение
+ * (доспланирует недостающее, отменяет лишнее). Источник истины —
+ * SQLite/IndexedDB, не память нативного слоя: если ОС потеряла alarm
+ * (Android `RECEIVE_BOOT_COMPLETED` — Phase B), этот проход при следующем
+ * открытии приложения его находит и пересоздаёт. Точечная реконсиляция
+ * ПОСЛЕ конкретной команды (create/cancel reminder, complete/delete task —
+ * `reconcileReminderScheduleForTask`, экраны `packages/app/src/screens/*`)
+ * покрывает обычный путь; этот полный скан — сеть безопасности на случай,
+ * когда синхронный путь не отработал (краш до реконсиляции, sync с другого
+ * устройства, потерянный alarm) — тот же принцип "источник истины — база,
+ * не память платформы", что документирует сам `reconcileReminderSchedule`.
  */
 import { useEffect, type ReactElement } from 'react';
+import { Temporal } from '@js-temporal/polyfill';
 
 import { isAvailable, type PlatformCapabilitiesRegistry } from '@shagi/platform';
 
-import { AppProvider, useAppController, useAppState } from './state/context.js';
+import { AppProvider, useAppController, useAppState, useStorage } from './state/context.js';
 import type { StoragePort } from '@shagi/storage';
 
 import type { StorageBackend } from './state/storage-backend.js';
@@ -50,6 +68,7 @@ import { QuickAdd } from './screens/QuickAdd.js';
 import { SCREENS } from './screens/index.js';
 import { AppShell, isMainTabScreen } from './shell/AppShell.js';
 import { OfflineBanner } from './shell/OfflineBanner.js';
+import { reconcileReminderSchedule } from './state/reminder-reconciliation.js';
 import type { AppController } from './state/store.js';
 import { THEME_PREFERENCE_KEY, applyTheme, isThemePreference } from './theme/preference.js';
 
@@ -134,9 +153,37 @@ function useGlobalQuickAddShortcut(controller: AppController): void {
   }, [controller]);
 }
 
+/** См. заголовок файла, блок «Boot-реконсиляция напоминаний». Полный скан
+ * (`reconcileReminderSchedule`, Task A3) — не по одной задаче: на старте
+ * (или после `RECEIVE_BOOT_COMPLETED` на Android, где ОС могла потерять
+ * alarm между перезагрузкой и тем, как этот код успел отреагировать) нет
+ * единственной задачи, которая могла разойтись, разойтись мог весь
+ * workspace. `void` — реконсиляция не блокирует первый рендер экрана
+ * (уведомления — фоновая забота, не то, от чего зависит, что человек видит
+ * первым кадром). `Unavailable` — молча пропускается, тот же принцип
+ * честности, что `useBootstrapLocalDb`/`useBootstrapTheme` рядом. */
+function useBootstrapReminderReconciliation(
+  platform: PlatformCapabilitiesRegistry,
+  storage: StoragePort,
+): void {
+  useEffect(() => {
+    const scheduler = platform.notificationScheduler;
+    if (!isAvailable(scheduler)) return;
+    void reconcileReminderSchedule(
+      storage,
+      scheduler,
+      Temporal.Now.plainDateTimeISO(),
+      Temporal.Now.timeZoneId(),
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- один раз на монтирование хоста (00§7 шаг 5), не на каждый рендер; `storage`/`platform` стабильны на время жизни `AppProvider`, та же причина, что у `useBootstrapLocalDb`
+  }, []);
+}
+
 function Bootstrap({ host }: { host: AppHost }): ReactElement {
+  const storage = useStorage();
   useBootstrapLocalDb(host.platform);
   useBootstrapTheme(host.platform);
+  useBootstrapReminderReconciliation(host.platform, storage);
   useGlobalQuickAddShortcut(useAppController());
   return (
     <>
