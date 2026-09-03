@@ -128,11 +128,14 @@ async function findWebViewTarget() {
 }
 
 /** Минимальный клиент Chrome DevTools Protocol: одно соединение, запросы по
- * возрастающему `id`. Полноценная библиотека здесь избыточна — нужен ровно
- * `Runtime.evaluate`. */
+ * возрастающему `id`. Полноценная библиотека здесь избыточна — нужны
+ * `Runtime.evaluate` плюс (для диагностики белого экрана, ниже) сырой
+ * `send`/подписка на события по `method` (у событий CDP нет `id` — их
+ * рассылка отделена от резолвинга запросов по `pending`). */
 function createCdp(webSocketDebuggerUrl) {
   const socket = new WebSocket(webSocketDebuggerUrl);
   const pending = new Map();
+  const listeners = new Map();
   let nextId = 1;
 
   const ready = new Promise((resolve, reject) => {
@@ -142,15 +145,41 @@ function createCdp(webSocketDebuggerUrl) {
 
   socket.addEventListener('message', (event) => {
     const message = JSON.parse(String(event.data));
-    const resolver = pending.get(message.id);
-    if (resolver === undefined) return;
-    pending.delete(message.id);
-    resolver(message);
+    if (message.id !== undefined) {
+      const resolver = pending.get(message.id);
+      if (resolver !== undefined) {
+        pending.delete(message.id);
+        resolver(message);
+      }
+      return;
+    }
+    // Событие CDP (`method`+`params`, без `id`) — например
+    // `Runtime.exceptionThrown`/`Runtime.consoleAPICalled`.
+    const handlers = listeners.get(message.method);
+    if (handlers !== undefined) for (const handler of handlers) handler(message.params);
   });
 
   return {
     ready,
     close: () => socket.close(),
+    /** Сырой CDP-запрос (не `Runtime.evaluate`) — нужен диагностике белого
+     * экрана ниже для `Page.enable`/`Runtime.enable`/`Page.reload` и т.п. */
+    async send(method, params = {}) {
+      const id = nextId;
+      nextId += 1;
+      const response = await new Promise((resolve) => {
+        pending.set(id, resolve);
+        socket.send(JSON.stringify({ id, method, params }));
+      });
+      if (response.error) throw new Error(`DevTools ${method}: ${response.error.message}`);
+      return response.result;
+    },
+    /** Подписка на события CDP (не запросы) по имени метода. */
+    on(method, handler) {
+      const handlers = listeners.get(method) ?? [];
+      handlers.push(handler);
+      listeners.set(method, handlers);
+    },
     /** Выполняет выражение В СТРАНИЦЕ и возвращает значение по значению. */
     async evaluate(expression) {
       const id = nextId;
@@ -174,6 +203,80 @@ function createCdp(webSocketDebuggerUrl) {
       return response.result?.result?.value;
     },
   };
+}
+
+/**
+ * Диагностика ПУСТОГО экрана — вызывается ТОЛЬКО из уже провалившейся ветки
+ * (после того, как `waitFor('первый отрисованный экран', ...)` исчерпал все
+ * попытки), поэтому не меняет тайминг/поведение проходящего сценария ни на
+ * миллисекунду и не ослабляет ни одну существующую проверку — только
+ * добавляет текст к уже принятому решению `fail()`.
+ *
+ * `adb logcat` для этого бесполезен (проверено разбором прогона
+ * `33742579888`): WebView не форвардит `console.*`/необработанные исключения
+ * в logcat сам по себе — это должен явно включить хост через
+ * `WebChromeClient.onConsoleMessage`, чего wry/tauri не делает. Единственный
+ * способ узнать РЕАЛЬНУЮ ошибку — слушать CDP `Runtime.exceptionThrown`/
+ * `Runtime.consoleAPICalled` и `window.onerror`/`unhandledrejection` внутри
+ * самой страницы. Подписка на CDP-события могла не успеть до первого краша
+ * (сокет открывается почти сразу после старта WebView, но не гарантированно
+ * раньше первого исполнения скрипта) — поэтому дополнительно ставим
+ * `Page.addScriptToEvaluateOnNewDocument` (сработает до любого скрипта
+ * страницы при следующей навигации) и один раз перезагружаем страницу, чтобы
+ * гарантированно поймать даже самый ранний краш вживую, а не только то, что
+ * случайно попало в буфер CDP-событий до этого момента.
+ */
+async function captureBlankScreenDiagnostics(cdp) {
+  const cdpEvents = [];
+  cdp.on('Runtime.exceptionThrown', (params) => {
+    const ex = params.exceptionDetails;
+    cdpEvents.push({
+      kind: 'exception',
+      text: ex?.text,
+      description: ex?.exception?.description ?? ex?.exception?.value,
+      url: ex?.url,
+      line: ex?.lineNumber,
+    });
+  });
+  cdp.on('Runtime.consoleAPICalled', (params) => {
+    if (params.type !== 'error' && params.type !== 'warning') return;
+    cdpEvents.push({
+      kind: `console.${params.type}`,
+      args: (params.args ?? []).map((a) => a.description ?? a.value ?? a.type),
+    });
+  });
+  cdp.on('Log.entryAdded', (params) => {
+    if (params.entry?.level !== 'error') return;
+    cdpEvents.push({ kind: 'log', text: params.entry.text, source: params.entry.source });
+  });
+
+  try {
+    await cdp.send('Runtime.enable');
+    await cdp.send('Log.enable');
+    await cdp.send('Page.enable');
+    await cdp.send('Page.addScriptToEvaluateOnNewDocument', {
+      source: `
+        window.__shagiDiag__ = [];
+        window.addEventListener('error', (e) => {
+          window.__shagiDiag__.push('error: ' + String(e.error && e.error.stack || e.message));
+        });
+        window.addEventListener('unhandledrejection', (e) => {
+          window.__shagiDiag__.push('unhandledrejection: ' + String((e.reason && e.reason.stack) || e.reason));
+        });
+      `,
+    });
+    await cdp.send('Page.reload', { ignoreCache: true });
+    // Фиксированная пауза ВНУТРИ уже провалившейся ветки, не новый таймаут
+    // прохождения сценария: сценарий уже решил `fail()`, дальше только
+    // собираем максимум объяснения перед выходом с ненулевым кодом.
+    await sleep(5000);
+    const pageErrors = await cdp
+      .evaluate('JSON.stringify(window.__shagiDiag__ || [])')
+      .catch((error) => `evaluate после reload не удался: ${error.message}`);
+    return JSON.stringify({ cdpEvents, pageErrorsAfterReload: pageErrors });
+  } catch (error) {
+    return JSON.stringify({ cdpEvents, captureError: error.message });
+  }
 }
 
 // --- Работа с НАСТОЯЩИМ файлом базы на устройстве ---------------------------
@@ -316,8 +419,10 @@ async function launchAndAttach(label) {
     return typeof text === 'string' && text.length > 0 ? text : null;
   });
   if (screen === null) {
+    const diagnostics = await captureBlankScreenDiagnostics(cdp);
     fail(
-      `WebView отрисовал ПУСТОЙ экран (${label}): в [data-shagi-app-root] нет ни одного видимого символа`,
+      `WebView отрисовал ПУСТОЙ экран (${label}): в [data-shagi-app-root] нет ни одного видимого символа. ` +
+        `Диагностика (CDP + перезагрузка с перехватом ошибок): ${diagnostics}`,
     );
   }
   console.log(`Видимый текст: ${JSON.stringify(screen.slice(0, 120))}`);
