@@ -27,8 +27,11 @@ import {
   clickByText,
   openTaskRow,
   READ_APP_TEXT,
+  READ_DEVICE_TIME,
   READ_STORAGE_STATE,
   READ_TASK_ROW_TITLES,
+  selectDialOption,
+  selectTodayInDateGrid,
   typeIntoFirstInput,
   typeIntoLabeled,
 } from './page-actions.mjs';
@@ -74,6 +77,71 @@ await wait(1000);
 check(
   'в карточке есть раздел планирования',
   String(await run(READ_APP_TEXT)).includes('ПЛАНИРОВАНИЕ'),
+);
+
+// ── Напоминание (Task B8, Steps 2/3/4): та же разметка `DatePicker`/
+// `TimePicker`, что и на Android — только реальный `dumpsys alarm` здесь
+// проверить нечем (`android-smoke.mjs` — единственное место с настоящим
+// `AlarmManager`), но селекторы календарной сетки/циферблата и текстовые
+// переходы empty→chip→empty те же самые, и ошибка в них здесь ловится за
+// секунды, а не десятиминутным циклом эмулятора.
+/** Паддинг до двух разрядов — вынесена из `pickNearFutureTime` в область
+ * модуля (`oxlint` `unicorn/consistent-function-scoping`), та же причина,
+ * что у `pad2` в `android-smoke.mjs`. */
+function pad2(value) {
+  return String(value).padStart(2, '0');
+}
+
+async function pickNearFutureTime(minutesAhead) {
+  const now = JSON.parse(String(await run(READ_DEVICE_TIME)));
+  const total = now.hour * 60 + now.minute + minutesAhead;
+  const rounded = Math.ceil(total / 5) * 5;
+  const hour = Math.floor(rounded / 60) % 24;
+  const minute = rounded % 60;
+  const pad = pad2;
+  await run(selectDialOption('Часы', pad(hour)));
+  await wait(200);
+  await run(selectDialOption('Минуты', pad(minute)));
+  await wait(200);
+}
+
+check(
+  'пустое состояние напоминания перед добавлением',
+  String(await run(READ_APP_TEXT)).includes('Нет напоминания'),
+);
+check('кнопка «Добавить напоминание»', (await run(clickByText('Добавить напоминание'))) === true);
+await wait(700);
+check('сегодняшняя ячейка в сетке дат', (await run(selectTodayInDateGrid)) === true);
+await wait(400);
+await pickNearFutureTime(5);
+check(
+  'кнопка «Сохранить» напоминания',
+  (await run(clickByText('Сохранить', { exact: true }))) === true,
+);
+await wait(1000);
+check(
+  'напоминание создано — пустое состояние исчезло',
+  !String(await run(READ_APP_TEXT)).includes('Нет напоминания'),
+);
+
+check('кнопка «Изменить напоминание»', (await run(clickByText('Изменить напоминание'))) === true);
+await wait(700);
+await pickNearFutureTime(20);
+check(
+  'кнопка «Сохранить» изменённого напоминания',
+  (await run(clickByText('Сохранить', { exact: true }))) === true,
+);
+await wait(1000);
+check(
+  'напоминание после изменения всё ещё не в пустом состоянии',
+  !String(await run(READ_APP_TEXT)).includes('Нет напоминания'),
+);
+
+check('кнопка «Отменить напоминание»', (await run(clickByText('Отменить напоминание'))) === true);
+await wait(1000);
+check(
+  'напоминание отменено — пустое состояние вернулось',
+  String(await run(READ_APP_TEXT)).includes('Нет напоминания'),
 );
 
 for (const subtask of [LIVE_SUBTASK, DOOMED_SUBTASK]) {

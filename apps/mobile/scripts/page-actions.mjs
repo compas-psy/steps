@@ -148,6 +148,67 @@ export function typeIntoLabeled(label, text) {
 }
 
 /**
+ * Часы:минуты устройства ПРЯМО В СТРАНИЦЕ (не хоста CI) — источник истины
+ * для «ближайшего будущего» момента напоминания (Task B8, Step 2). Момент
+ * планирования вычисляется на стороне WebView намеренно: часы CI-раннера и
+ * эмулятора не обязаны совпадать, а `TimePicker` (`packages/ui`) кликается
+ * по циферблату САМОГО устройства — расхождение в минуту-другую между
+ * часами хоста и эмулятора иначе увело бы клик мимо реального «сейчас+N».
+ */
+export const READ_DEVICE_TIME = `
+  (() => {
+    const now = new Date();
+    return JSON.stringify({ hour: now.getHours(), minute: now.getMinutes() });
+  })()
+`;
+
+/**
+ * Кликает ячейку «сегодня» в открытом `DatePicker` (`packages/ui`,
+ * `role="grid"`, `aria-current="date"` на сегодняшней ячейке — тот же
+ * пропс `today`, каким экран уже снабжает компонент). Скоуп —
+ * `.shagi-modal`: на экране в любой момент открыт максимум один `Modal`
+ * (компонент рендерится условно, `open ? … : null`), так что сетка внутри
+ * него единственная, но явный скоуп дешевле и однозначнее, чем полагаться
+ * на это неявно.
+ */
+export const selectTodayInDateGrid = `
+  (() => {
+    const cell = document.querySelector('.shagi-modal [role="grid"] [aria-current="date"]');
+    if (!cell) return false;
+    cell.click();
+    return true;
+  })()
+`;
+
+/**
+ * Кликает пункт списка (`role="option"`) внутри циферблата `TimePicker`
+ * (`packages/ui`, `Dial` — два независимых `role="listbox"`, часы и
+ * минуты) по видимому имени ЕГО диска (`dialLabel` — `aria-label` самого
+ * `listbox`, не значения) и видимому паддингованному числу (`valueLabel`,
+ * например `"09"`). Поиск диска по `aria-label`, а не «первый/второй
+ * listbox на странице» — часы и минуты используют одни и те же подписи
+ * значений (кратные 5 минуты пересекаются с часами: и там, и там есть
+ * «05», «10», …), и без явной привязки к диску клик по часам мог бы попасть
+ * в кнопку минут с тем же текстом.
+ */
+export function selectDialOption(dialLabel, valueLabel) {
+  return `
+    (() => {
+      const dial = Array.from(document.querySelectorAll('.shagi-modal [role="listbox"]')).find(
+        (node) => (node.getAttribute('aria-label') || '') === ${JSON.stringify(dialLabel)},
+      );
+      if (!dial) return false;
+      const option = Array.from(dial.querySelectorAll('[role="option"]')).find(
+        (node) => (node.innerText || '').trim() === ${JSON.stringify(valueLabel)},
+      );
+      if (!option) return false;
+      option.click();
+      return true;
+    })()
+  `;
+}
+
+/**
  * Слепок состояния хранилища ПРЯМО В СТРАНИЦЕ: origin, список баз
  * IndexedDB с версиями, число задач в каждой и флаг пройденного онбординга.
  *
