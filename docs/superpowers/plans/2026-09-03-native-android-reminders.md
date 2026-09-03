@@ -838,7 +838,8 @@ In `apps/mobile/src-tauri/capabilities/default.json`, add `"notification:default
 
 - [ ] **Step 6: Install and verify it builds**
 
-Run: `export PATH=/usr/local/bin:$PATH && pnpm install --frozen-lockfile && cd apps/mobile/src-tauri && cargo check`
+Run: `export PATH=/usr/local/bin:$PATH && pnpm install && cd apps/mobile/src-tauri && cargo check`
+(**Not** `--frozen-lockfile` here — Step 3 just added a new npm dependency, so `pnpm-lock.yaml` is not yet in sync with `package.json`; plain `pnpm install` regenerates it. Every OTHER verification step in this task and the rest of this plan uses `--frozen-lockfile` as normal, per CLAUDE.md's "Проверка перед сдачей" — this step is the one deliberate exception, because it's the one that makes the lockfile match again.)
 Expected: succeeds, `Cargo.lock` gains `tauri-plugin-notification` and its transitive deps (this WILL add new crates to `Cargo.lock` — Security CI's `osv-scanner` (P1 fix from the earlier security-review work) will scan them on the next push; do not add a blanket ignore preemptively, only if a real, verified, unfixable finding shows up, following the exact per-crate verification discipline already established in `.osv-scanner.toml`).
 
 - [ ] **Step 7: Run existing full local verification**
@@ -850,7 +851,7 @@ Expected: all green — this task adds no new logic, so nothing should behaviora
 
 ```bash
 git add apps/mobile/src-tauri/Cargo.toml apps/mobile/package.json apps/mobile/src-tauri/src/lib.rs apps/mobile/src-tauri/capabilities/default.json pnpm-lock.yaml apps/mobile/src-tauri/Cargo.lock
-git commit -m "build(mobile): подключить tauri-plugin-notification 2.4.0 (ADR-000X)"
+git commit -m "build(mobile): подключить tauri-plugin-notification 2.4.0 (ADR-0008)"
 ```
 
 ---
