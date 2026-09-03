@@ -693,6 +693,52 @@ git commit -m "feat(app): пересчёт напоминаний при сме�
 
 ---
 
+### Task A6: Content-aware reconciliation — `scheduledFingerprint` gets real semantics
+
+**OWNER-MANDATED, inserted after Task A3/A4 were already implemented (binding ruling, recorded in the SDD ledger).** Task A3's PRE-FLIGHT RULING made reconciliation idempotent purely by id-presence in `listScheduled()` — correct for "is something scheduled at all under this id" but blind to whether its CONTENT still matches what should currently be scheduled. Two concrete, already-proven cases where content drifts without the `Reminder` row changing at all:
+
+1. **Title.** `Reminder` has no `title` field — it's a snapshot of the owning `Task`'s current title, resolved fresh by `NotificationSchedulerPort.schedule(id, title, ...)`'s `title` argument at the moment reconciliation calls it. Renaming a task does not touch its `Reminder` row (id unchanged, `enabled` unchanged) — so today's id-presence check would never re-call `schedule()`, and the native layer would go on displaying the STALE title forever. Verified this is real, not theoretical: cloned and read `tauri-plugin-notification` 2.4.0's actual Kotlin source (Task B1's ADR) — title/body are frozen into a `Parcelable android.app.Notification` at `schedule()`/`batch()` time and replayed verbatim at fire time; the plugin never re-reads them from anywhere.
+2. **`firesAt` and `enabled` drift** the PRE-FLIGHT RULING already reasoned were covered because every mutation either flips `enabled:false` on the same row (dropping it from `desired`) or mints a brand-new id (`createExplicitReminderCommand`'s `generateId()`) — that reasoning holds for the `Reminder` row's OWN fields, but not for `title`, which lives on a DIFFERENT entity (`Task`) that can change independently. The ruling's id-presence design is not wrong for what it was designed against — it is incomplete for a field it didn't know could drift out-of-band.
+
+**Design decision (this task, informed by reading the real plugin source, not guessed):** verified `tauri-plugin-notification`'s `pending()`/`get_pending` DOES return real content (`PendingNotification { id, title?, body?, schedule }`, `plugins/notification/guest-js/index.ts:268-272`) — Option 1 from the owner's list (compare against what the scheduler itself reports) is genuinely available on Android, once Task B4 schedules via `batch` (Task B1's ADR correction — `get_pending` reads from `NotificationStorage`, which only `batch()` populates). But relying on the native scheduler's echo-back as the comparison source would make reconciliation logic platform-dependent (the web adapter's in-memory `Map` would need matching treatment, and any future platform must promise the same fidelity) and untestable against `createInMemoryStorage()`+a fake scheduler the same way Task A3's own tests already are. **Chosen instead: Option 2** — `scheduledFingerprint` becomes the fingerprint that was last SUCCESSFULLY applied via `schedule()`, written back through a proper command after that call succeeds, and compared against a FRESHLY computed "what should be scheduled right now" fingerprint (title included, read live via the same `findById` reconciliation already performs for eligibility) on every pass. Platform-neutral, testable purely against `createInMemoryStorage()`, and gives the persisted column the real decision-making role the owner required — it is no longer computed and ignored.
+
+**Files:**
+
+- Modify: `packages/core/src/commands/reminder-fingerprint.ts` — `computeReminderFingerprint` gains a `title: string` parameter (fourth field in the hash: `kind|firesAt|enabled|title`). No `body` field: `NotificationSchedulerPort.schedule`'s signature (`id, title, date, time, timezone, precision?`) has no body parameter at all — nothing to include. Update the doc comment to state the TRUE mechanism now (no more speculative "read at fire time" language — see Task B1's correction).
+- Modify: `packages/core/src/commands/reminder-explicit.ts`, `reminder-deadline.ts` — both creation commands must resolve the owning task's CURRENT title (via `deps.storage.tasks.findById(taskId)`, same `deps` already passed to every command — no new dependency) and pass it into `computeReminderFingerprint` at creation time, replacing the 3-argument call.
+- Create: `packages/core/src/commands/reminder-confirm-scheduled.ts` — `confirmReminderScheduledCommand({ reminderId, fingerprint }, deps)`: the ONLY way `scheduledFingerprint` is ever updated after creation. Read the real reminder row, write back through the SAME shared internal write path `reminder-explicit.ts`/`reminder-cancel.ts` already use (find it — likely `writeReminder` or equivalent in `reminder-port.ts`/a shared helper; Step 1 below pins the exact name and its field-clock/revision contract before writing anything) — this task must NOT invent a new direct storage write, it must reuse the existing command-layer write primitive with `scheduledFingerprint` as the only changed field.
+- Modify: `packages/core/src/commands/index.ts` — export `confirmReminderScheduledCommand`.
+- Modify: `packages/app/src/state/reminder-reconciliation.ts` (Task A3, already merged) — `desiredReminders`/`desiredRemindersForTask` thread the task's title (already fetched for eligibility) into a freshly computed fingerprint per entry; `applyReconciliation`'s idempotency branch changes from pure id-presence to id-presence AND fingerprint-match; on a successful `schedule()` call, await `confirmReminderScheduledCommand` before moving to the next entry.
+- Test: extend `packages/core/test/commands/reminder-fingerprint.test.ts` (title now required, add a case proving two reminders with identical kind/firesAt/enabled but different titles produce different fingerprints), a new `packages/core/test/commands/reminder-confirm-scheduled.test.ts`, and extend `packages/app/test/state/reminder-reconciliation.test.ts` with the scenario this whole task exists for: a reminder already correctly scheduled (id present, fingerprint matches) is left alone (idempotent, no `schedule()`/`cancel()` calls — same call-count-assertion discipline Task A3 already established) — THEN the same reminder's owning task is renamed (via `updateTaskCommand`'s title patch, or however this codebase's real task-rename path works — confirm in Step 1) — THEN reconciliation runs again and THIS TIME calls `schedule()` again with the new title, and `confirmReminderScheduledCommand` updates the stored fingerprint so a THIRD pass is idempotent again. This three-pass shape is the actual proof the owner asked for — a test that only checks "schedule got called once after rename" without checking the THIRD pass returns to idempotent would leave the write-back path itself unverified.
+
+**Interfaces:**
+
+- `computeReminderFingerprint(reminder: Pick<Reminder, 'kind' | 'localRuleJson' | 'enabled'>, title: string): string`
+- `confirmReminderScheduledCommand(input: { reminderId: Uuid; fingerprint: string }, deps: CommandDeps): Promise<CommandResult>` (mirror whatever result-shape convention `cancelReminderCommand` already uses — `{status: 'ok'} | {status: 'not_found'}` or similar, confirm in Step 1)
+
+- [ ] **Step 1: Read the real write path and revision/clock contract before writing anything**
+
+Run: `grep -n "function writeReminder\|export.*writeReminder" packages/core/src/commands/*.ts` and read the full function. Confirm: does `Reminder`'s underlying storage row carry `fieldClocksJson`/`revision`/`baseRevision` (per-field HLC, CLAUDE.md domain item 5) despite the domain `Reminder` TS interface not listing them (entities sometimes carry sync metadata the domain type omits — check `packages/storage/src/sqlite/mappers.ts`'s `reminderToRow`/`rowToReminder` for the real column set)? If so, `confirmReminderScheduledCommand` must bump them correctly on write, the same way `reminder-explicit.ts`'s creation path already does — copy that pattern exactly, do not invent a new one. Also find this codebase's real task-rename path (`grep -n "title" packages/core/src/commands/update-task.ts` or equivalent) for the Step-3 test below.
+
+- [ ] **Step 2: Write the failing tests** (fingerprint signature change, new confirm command, three-pass reconciliation scenario per the Files section above)
+
+- [ ] **Step 3: Run, verify red**
+
+Run: `export PATH=/usr/local/bin:$PATH && pnpm --filter @shagi/core test -- reminder-fingerprint reminder-confirm-scheduled && pnpm --filter @shagi/app test -- reminder-reconciliation`
+
+- [ ] **Step 4: Implement `computeReminderFingerprint`'s new signature, the three call-site updates in `reminder-explicit.ts`/`reminder-deadline.ts`, `confirmReminderScheduledCommand`, and `reminder-reconciliation.ts`'s revised idempotency branch**
+
+- [ ] **Step 5: Run, verify green; typecheck/lint/format across `packages/core` and `packages/app`**
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add packages/core/src/commands packages/app/src/state/reminder-reconciliation.ts packages/core/test packages/app/test/state
+git commit -m "feat(core,app): scheduledFingerprint — реальная семантика, title входит в отпечаток (02§14)"
+```
+
+---
+
 ## Phase B — Native Android layer
 
 ### Task B1: ADR — adopt `tauri-plugin-notification`, document the port extension
@@ -708,8 +754,12 @@ git commit -m "feat(app): пересчёт напоминаний при сме�
 - `tauri-plugin-notification` 2.4.0's Android Kotlin (`TauriNotificationManager.kt`) already implements `AlarmManager.setExactAndAllowWhileIdle`/`setExact` with a `canScheduleExactAlarms()` check and graceful degrade (`setExactIfPossible`), `PendingIntent`-based firing via `TimedNotificationPublisher: BroadcastReceiver`, and `BOOT_COMPLETED`/`LOCKED_BOOT_COMPLETED`/`QUICKBOOT_POWERON` restore via `LocalNotificationRestoreReceiver` (its manifest fragment, merged automatically by Android Gradle manifest merging — no manual manifest edits needed for these receivers).
 - Gap: it does NOT expose the exact-alarm capability check or the Android 12+ settings-redirect intent (`ACTION_REQUEST_SCHEDULE_EXACT_ALARM`) to JS/Rust — only uses it internally at schedule-time to silently degrade. SPEC §11.1/§3.1 forbid silently presenting inexact as exact — the app must know BEFORE scheduling. This is why Task B3 adds one small local plugin for exactly this.
 - The plugin's own notification IDs are 32-bit integers, not UUIDs — Task B4's adapter must map `Reminder.id` (UUID string) to a stable `i32` internally (document the exact hash choice — Task B4 uses a deterministic UUID→i32 via the low 31 bits of a stable hash, never negative, never colliding within practical reminder counts per device).
-- `NotificationSchedulerPort.listScheduled` (Task A1) is implemented for Android by calling the plugin's `pending()` (returns `PendingNotification[]` with the same `i32` ids) and mapping back through the same id table.
-- Firing-time re-check of task-active status (per `reminder-deadline.ts`'s own documented deferral) happens in the Kotlin receiver, reading the current task state from the pulled SQLite file path — NOT from what was true when `schedule()` was called. Document exactly how (Task B5).
+- `NotificationSchedulerPort.listScheduled` (Task A1) is implemented for Android by calling the plugin's `pending()` (returns `PendingNotification[]` — **with real content**: `{id, title, body, schedule}`, not just ids) and mapping back through the same id table.
+- **CORRECTED (owner-directed verification against the real 2.4.0 source, superseding this plan's earlier draft assumption):** the plugin's single-notification path (`sendNotification()`/`notify`/Kotlin `show()`) calls `manager.schedule(notification)` ONLY — it never writes to `NotificationStorage` (`NotificationPlugin.kt:134-140` vs `:143-149`). Only `batch()` does (`notificationStorage.appendNotifications(args.notifications)`). Two consequences, both load-bearing, both MUST be in the ADR:
+  1. **Boot-restore silently does not work for `show()`-scheduled reminders.** `LocalNotificationRestoreReceiver` reads exclusively from `NotificationStorage` (`getSavedNotificationIds()`/`getSavedNotification()`). A reminder scheduled via `show()` is invisible to it — it would NOT survive a device reboot via the plugin's own mechanism, contradicting this plan's original premise ("boot-restore already implemented and verified"). It WAS verified — for `batch()`, not for `show()`.
+  2. **`pending()`/`get_pending` also reads exclusively from `NotificationStorage`** (`getPending()`, `NotificationPlugin.kt:179-183`: `notificationStorage.getSavedNotifications()`). A reminder scheduled via `show()` would never appear in `pending()` either — breaking `NotificationSchedulerPort.listScheduled()` (Task A1) at the root, not just boot-restore: Task A3's entire reconciliation engine depends on `listScheduled()` reporting truth.
+  - **Binding decision:** Task B4's adapter MUST schedule via the plugin's `batch` command (`invoke('plugin:notification|batch', {notifications:[...]})`, registered mobile-only command, listed in `plugins/notification/build.rs`'s `COMMANDS`, same invocation category as `get_pending`/`cancel` which this plan's draft already used successfully) — even for a single reminder (an array of length 1) — NEVER the guest-js `sendNotification()` helper, which routes through `notify`→Kotlin `show()`, the non-persisting path. This is now Task B4's Step 4 (rewritten below).
+- Firing-time re-check of task-active status (per `reminder-deadline.ts`'s own documented deferral): **CORRECTED** — `TimedNotificationPublisher.onReceive` (`TauriNotificationManager.kt:473-500`) does NOT read SQLite or any live app state at fire time; it re-displays the Parcelable `android.app.Notification` frozen at `schedule()`/`batch()` time verbatim (only `notification.\`when\`` — the displayed timestamp — is touched). The plan's earlier draft claim that the Kotlin receiver "reads current task state from the pulled SQLite file path" was WRONG and must not appear in the ADR. Task B5's proof obligation (already amended to require end-to-end evidence, not an accepted limitation) is unaffected by this correction — it already didn't rely on this false claim, it's this ADR content that needed fixing before it repeated the error in a durable document.
 
 - [ ] **Step 1: Confirm the next ADR number**
 
@@ -1143,12 +1193,12 @@ git commit -m "feat(mobile): tauri-plugin-alarm-capability — canScheduleExactA
 
 **Interfaces:**
 
-- Consumes: `@tauri-apps/plugin-notification`'s `sendNotification`/`cancel`/`pending`/`requestPermission`/`isPermissionGranted` (guest-js, Task B2), `invoke('plugin:alarm-capability|can_schedule_exact')`/`invoke('plugin:alarm-capability|open_exact_alarm_settings')` (Task B3 — confirm the exact Tauri-generated invoke command name format, likely `plugin:alarm-capability|can_schedule_exact`, by reading how `@tauri-apps/plugin-deep-link`'s guest-js calls its own commands, e.g. `apps/mobile/node_modules/@tauri-apps/plugin-deep-link/dist-js/index.js` after `pnpm install`, for the exact naming convention this Tauri version uses).
+- Consumes: `@tauri-apps/plugin-notification`'s `cancel`/`pending`/`requestPermission`/`isPermissionGranted` (guest-js, Task B2) PLUS a raw `invoke('plugin:notification|batch', {notifications:[...]})` call for scheduling itself — **NOT** the guest-js `sendNotification()` helper (see Task B1's ADR, corrected finding: `sendNotification()` routes through the Kotlin `show()` command, which never writes to `NotificationStorage`, breaking both boot-restore and `pending()`/`listScheduled()` for anything scheduled that way; `batch` is a registered mobile-only command in the plugin's own `COMMANDS` list, `plugins/notification/build.rs`, invoked the exact same way `get_pending`/`cancel` already are in this file, just not wrapped by the guest-js package) — plus `invoke('plugin:alarm-capability|can_schedule_exact')`/`invoke('plugin:alarm-capability|open_exact_alarm_settings')` (Task B3 — confirm the exact Tauri-generated invoke command name format, likely `plugin:alarm-capability|can_schedule_exact`, by reading how `@tauri-apps/plugin-deep-link`'s guest-js calls its own commands, e.g. `apps/mobile/node_modules/@tauri-apps/plugin-deep-link/dist-js/index.js` after `pnpm install`, for the exact naming convention this Tauri version uses).
 - Produces: `createNotificationBridge(): NotificationSchedulerPort`.
 
 - [ ] **Step 1: Confirm the exact plugin command invocation names**
 
-Run (after Task B2/B3's `pnpm install`): `cat apps/mobile/node_modules/@tauri-apps/plugin-notification/dist-js/index.js | grep -n "invoke("` and the same for the deep-link plugin, to get the literal `invoke('plugin:xyz|command', ...)` string format this Tauri version generates.
+Run (after Task B2/B3's `pnpm install`): `cat apps/mobile/node_modules/@tauri-apps/plugin-notification/dist-js/index.js | grep -n "invoke("` and the same for the deep-link plugin, to get the literal `invoke('plugin:xyz|command', ...)` string format this Tauri version generates — confirm `get_pending`/`cancel` follow the `plugin:notification|<command>` pattern this task assumes for `batch` too (same plugin, same registration mechanism, not wrapped by guest-js the same way `get_pending`/`cancel` aren't either — verify by the same method, do not assume blind).
 
 - [ ] **Step 2: Write the failing test**
 
@@ -1159,7 +1209,6 @@ import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
 vi.mock('@tauri-apps/plugin-notification', () => ({
-  sendNotification: vi.fn(),
   cancel: vi.fn(),
   pending: vi.fn().mockResolvedValue([]),
   isPermissionGranted: vi.fn().mockResolvedValue(true),
@@ -1171,7 +1220,8 @@ import * as plugin from '@tauri-apps/plugin-notification';
 import { createNotificationBridge } from '../src/notification-bridge.js';
 
 describe('createNotificationBridge', () => {
-  it('schedule запрашивает разрешение just-in-time и планирует через плагин', async () => {
+  it('schedule запрашивает разрешение just-in-time и планирует через plugin:notification|batch (НЕ sendNotification — 05§ADR-000X: только batch пишет в NotificationStorage)', async () => {
+    vi.mocked(invoke).mockResolvedValueOnce([1]); // ответ batch — массив id
     const bridge = createNotificationBridge();
     await bridge.schedule(
       'reminder-1',
@@ -1181,7 +1231,12 @@ describe('createNotificationBridge', () => {
       'Europe/Moscow',
     );
     expect(plugin.requestPermission).toHaveBeenCalled();
-    expect(plugin.sendNotification).toHaveBeenCalled();
+    expect(invoke).toHaveBeenCalledWith(
+      'plugin:notification|batch',
+      expect.objectContaining({
+        notifications: [expect.objectContaining({ title: 'Напомнить' })],
+      }),
+    );
   });
 
   it('cancel вызывает плагин с числовым id, стабильно выведенным из строкового', async () => {
@@ -1195,6 +1250,7 @@ describe('createNotificationBridge', () => {
     const bridge = createNotificationBridge();
     // расписать сначала, чтобы таблица id была заполнена — реализация
     // обязана помнить обратное отображение int32 → исходный string id
+    vi.mocked(invoke).mockResolvedValueOnce([123]);
     await bridge.schedule(
       'reminder-1',
       'Напомнить',
@@ -1202,8 +1258,11 @@ describe('createNotificationBridge', () => {
       null,
       'UTC',
     );
-    const idMap = vi.mocked(plugin.sendNotification).mock.calls[0][0] as { id: number };
-    vi.mocked(plugin.pending).mockResolvedValueOnce([{ id: idMap.id } as never]);
+    const batchCall = vi.mocked(invoke).mock.calls[0][1] as {
+      notifications: readonly { id: number }[];
+    };
+    expect(batchCall.notifications[0].id).toBe(123);
+    vi.mocked(plugin.pending).mockResolvedValueOnce([{ id: 123 } as never]);
     expect(await bridge.listScheduled()).toEqual(['reminder-1']);
   });
 
@@ -1246,7 +1305,6 @@ import {
   isPermissionGranted,
   pending as pluginPending,
   requestPermission,
-  sendNotification,
 } from '@tauri-apps/plugin-notification';
 import type { NotificationPrecision, NotificationSchedulerPort } from '@shagi/app';
 import type { Temporal } from '@js-temporal/polyfill';
@@ -1305,10 +1363,24 @@ export function createNotificationBridge(): NotificationSchedulerPort {
         plainDateTime.minute,
         plainDateTime.second,
       );
-      await sendNotification({
-        id: nativeId(id),
-        title,
-        schedule: { at: jsDate, repeating: false, allowWhileIdle: true },
+      // `plugin:notification|batch`, НЕ guest-js `sendNotification()` — ADR-000X
+      // (Task B1): только `batch` пишет в `NotificationStorage` на Android
+      // (`NotificationPlugin.kt:143-149`), от которой зависят и boot-restore
+      // (`LocalNotificationRestoreReceiver`), и `pending()`/`listScheduled()`
+      // ниже. `sendNotification()` (Kotlin `show()`) этого не делает —
+      // реально запланированный этим путём alarm был бы невидим для обоих.
+      // Один элемент в массиве — тот же реальный, зарегистрированный
+      // mobile-only команда плагина (`plugins/notification/build.rs`
+      // `COMMANDS`), тем же способом, что `get_pending`/`cancel` уже
+      // вызываются в этом файле — просто не обёрнута guest-js.
+      await invoke('plugin:notification|batch', {
+        notifications: [
+          {
+            id: nativeId(id),
+            title,
+            schedule: { at: jsDate, repeating: false, allowWhileIdle: true },
+          },
+        ],
       });
     },
 
