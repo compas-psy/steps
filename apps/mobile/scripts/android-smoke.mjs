@@ -817,6 +817,67 @@ async function main() {
     stdio: 'inherit',
   });
 
+  // Найдено при исследовании Step 2b (владелец остановил дальнейший сценарий,
+  // потребовав разобраться в наблюдаемом `window=+5m22s197ms`, прежде чем
+  // писать новый эвристический парсер). Причина — НЕ баг парсинга и НЕ
+  // отсутствие сигнала в системе: `adb shell dumpsys alarm --proto`
+  // (`AlarmProto.window_length_ms`, field 4, `core/proto/android/server/alarm/
+  // alarmmanagerservice.proto`, сверено с реальной AOSP-схемой) отдаёт ТО ЖЕ
+  // самое значение, что и plain-text `window=` — просто в виде `int64`
+  // миллисекунд вместо строки `TimeUtils.formatDuration`. Второго,
+  // отдельного «exact»-признака в proto нет: exact определяется структурно —
+  // `window_length_ms == 0`, ровно то поле, что уже читает `alarmWindowMs`
+  // выше. Переход на `--proto` не даёт новой информации, только меняет
+  // формат уже читаемого значения — не делается.
+  //
+  // Настоящая причина ненулевого `window=` — реальный вызов
+  // `TauriNotificationManager.setExactIfPossible` (установленный крейт
+  // `tauri-plugin-notification` 2.4.0, `android/src/main/java/
+  // TauriNotificationManager.kt:365-383`): если `alarmManager.
+  // canScheduleExactAlarms() == false`, код НАМЕРЕННО и корректно уходит в
+  // `setAndAllowWhileIdle` (батчируемый, ненулевой `window`) вместо
+  // `setExactAndAllowWhileIdle`. А `canScheduleExactAlarms()` на свежей
+  // установке ЗАКОНОМЕРНО возвращает `false`: по официальной документации
+  // (developer.android.com/about/versions/14/changes/schedule-exact-alarms),
+  // начиная с приложений, нацеленных на Android 14 (API 34) и выше,
+  // `SCHEDULE_EXACT_ALARM` «no longer being pre-granted to most newly
+  // installed apps... will be set to denied by default» — а сгенерированный
+  // Tauri Android-проект компилируется с `compileSdk 36` (см. `android/
+  // build.gradle.kts` плагина `alarm-capability`), то есть заведомо выше
+  // порога. До этой правки сценарий ни разу не выдавал `SCHEDULE_EXACT_ALARM`
+  // ДО первого планирования (первая явная выдача/отзыв — только в Step 2c,
+  // через appops `deny`/`allow`) — Step 2b проверял «standalone alarm сразу
+  // после добавления», не выдав приложению то самое разрешение, без которого
+  // код прямо обязан деградировать. Это пробел ПОДГОТОВКИ теста, не находка
+  // о продукте: реальный человек, впервые поставивший приложение, тоже не
+  // имел бы точного будильника, пока explicit не даст доступ через системные
+  // настройки (тот самый экран, что открывает `exactAlarmSettings.
+  // openSettings()`, Task B4/B6) — сценарий обязан смоделировать именно
+  // «доступ уже дан», а не молчаливый дефолт свежего образа. `cmd appops
+  // set … allow` — тот же самый механизм, которым Step 2c ниже отзывает и
+  // восстанавливает эту возможность, применённый здесь ДО первого
+  // планирования, а не только для отзыва.
+  adb(['shell', 'cmd', 'appops', 'set', APPLICATION_ID, 'SCHEDULE_EXACT_ALARM', 'allow'], {
+    stdio: 'inherit',
+  });
+  const exactAlarmOpState = adb([
+    'shell',
+    'cmd',
+    'appops',
+    'get',
+    APPLICATION_ID,
+    'SCHEDULE_EXACT_ALARM',
+  ]);
+  if (!exactAlarmOpState.includes('allow')) {
+    fail(
+      `после \`appops set … allow\` состояние SCHEDULE_EXACT_ALARM не «allow»: ${JSON.stringify(exactAlarmOpState)} — ` +
+        'дальнейшая проверка exact-пути (Step 2b) беспредметна без реально выданной возможности.',
+    );
+  }
+  console.log(
+    `SCHEDULE_EXACT_ALARM: ${exactAlarmOpState} — базовая точная возможность подтверждена ДО планирования.`,
+  );
+
   // `let`, не `const` (Task B8): блоки напоминаний ниже перезапускают
   // приложение несколько раз (revoke/restore capability, force-stop,
   // BOOT_COMPLETED×3) и каждый раз переприсваивают `first` свежей сессии
