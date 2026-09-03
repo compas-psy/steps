@@ -7,9 +7,9 @@
 **Architecture:** Two independent layers, built bottom-up.
 
 1. **Domain/reconciliation layer** (`@shagi/core`, `@shagi/app`) — platform-agnostic. Computes `Reminder.scheduledFingerprint`, decides which reminders SHOULD be scheduled right now (active task, non-deleted, project not archived, `enabled:true`), and reconciles that "desired" set against whatever the platform reports as "actually scheduled" (`NotificationSchedulerPort.listScheduled` — a new port method this plan adds). This layer never touches Android/Kotlin and is fully unit-testable today.
-2. **Native Android layer** (`apps/mobile/src-tauri`) — adopts the **official** `tauri-plugin-notification` 2.4.0 for the OS primitive (AlarmManager exact/inexact scheduling via `setExactAndAllowWhileIdle`/`setExact` with `canScheduleExactAlarms()` fallback, `PendingIntent`-based firing, and a `BOOT_COMPLETED`/`LOCKED_BOOT_COMPLETED`/`QUICKBOOT_POWERON` restore receiver — all already implemented and verified by reading its Kotlin source, see Task B1's ADR). That plugin does **not** expose an exact-alarm *capability query* or the Android 12+ "take me to settings" intent to JS — so a second, small, local Tauri mobile plugin (`alarm-capability`, our own Kotlin, ~40 lines) supplies exactly that one gap. `apps/mobile/src/platform.ts` implements `NotificationSchedulerPort` by calling both.
+2. **Native Android layer** (`apps/mobile/src-tauri`) — adopts the **official** `tauri-plugin-notification` 2.4.0 for the OS primitive (AlarmManager exact/inexact scheduling via `setExactAndAllowWhileIdle`/`setExact` with `canScheduleExactAlarms()` fallback, `PendingIntent`-based firing, and a `BOOT_COMPLETED`/`LOCKED_BOOT_COMPLETED`/`QUICKBOOT_POWERON` restore receiver — all already implemented and verified by reading its Kotlin source, see Task B1's ADR). That plugin does **not** expose an exact-alarm _capability query_ or the Android 12+ "take me to settings" intent to JS — so a second, small, local Tauri mobile plugin (`alarm-capability`, our own Kotlin, ~40 lines) supplies exactly that one gap. `apps/mobile/src/platform.ts` implements `NotificationSchedulerPort` by calling both.
 
-This is a deliberate departure from ADR-0005's SQLite precedent ("write our own native bridge from scratch") — here an official, actively maintained plugin already solves the hard, easy-to-get-wrong part (AlarmManager scheduling, boot receivers, PendingIntent lifecycle) correctly, and reinventing it would be pure risk with no benefit. Task B1 documents this as an ADR, verified by reading the plugin's actual Kotlin/Rust source (same rigor ADR-0005 applied when it *rejected* `@tauri-apps/plugin-sql`).
+This is a deliberate departure from ADR-0005's SQLite precedent ("write our own native bridge from scratch") — here an official, actively maintained plugin already solves the hard, easy-to-get-wrong part (AlarmManager scheduling, boot receivers, PendingIntent lifecycle) correctly, and reinventing it would be pure risk with no benefit. Task B1 documents this as an ADR, verified by reading the plugin's actual Kotlin/Rust source (same rigor ADR-0005 applied when it _rejected_ `@tauri-apps/plugin-sql`).
 
 **Tech Stack:** TypeScript (`@shagi/core`, `@shagi/platform`, `@shagi/app`), Rust (`apps/mobile/src-tauri`, Tauri 2.11.5), Kotlin (Android, via Tauri's mobile-plugin `run_mobile_plugin`/`register_android_plugin` mechanism), `@tauri-apps/plugin-notification` 2.4.0 / `tauri-plugin-notification` 2.4.0.
 
@@ -27,9 +27,9 @@ This is a deliberate departure from ADR-0005's SQLite precedent ("write our own 
 - `packages/core`/`packages/storage`/`packages/platform` must stay platform-neutral (CLAUDE.md package boundary) — no Android/Kotlin/Tauri knowledge outside `apps/mobile`.
 - Native `Date` is forbidden in domain logic (CLAUDE.md, TZ §5) — use `@js-temporal/polyfill` exclusively; the only place raw epoch milliseconds may appear is inside the Android/Kotlin native layer (AlarmManager's own API), never in `@shagi/core`/`@shagi/app`.
 - All user-facing strings go through `@shagi/i18n`; no Cyrillic literals in `apps/*`/`packages/platform`/`packages/core` (CLAUDE.md, architecture-boundary test).
-- Comments and docs in Russian, explaining *why*, referencing the SPEC section (CLAUDE.md style rule) — this applies to all new code in this plan, including Kotlin.
+- Comments and docs in Russian, explaining _why_, referencing the SPEC section (CLAUDE.md style rule) — this applies to all new code in this plan, including Kotlin.
 - `pnpm -r typecheck && pnpm -r lint && pnpm -r test && pnpm format:check` must stay green after every task; `cargo test`/`cargo clippy` for every Rust change (`export PATH=/usr/local/bin:$PATH` first, per CLAUDE.md's environment trap).
-- Do not touch SQLite/`eraseAllLocalData`/`classify_statement` in this plan — ADR-0005 is closed, no regression, don't reopen it (M52 must still cancel reminders per Task A5/scope item 13, but that's calling the *reconciliation* module, not touching storage internals).
+- Do not touch SQLite/`eraseAllLocalData`/`classify_statement` in this plan — ADR-0005 is closed, no regression, don't reopen it (M52 must still cancel reminders per Task A5/scope item 13, but that's calling the _reconciliation_ module, not touching storage internals).
 - Do not build Undo (ST §58) or any new screen/UI beyond what §18/§19/ST10/the exact-alarm capability notice require — explicitly out of scope per the user's own instruction.
 
 ---
@@ -41,6 +41,7 @@ This is a deliberate departure from ADR-0005's SQLite precedent ("write our own 
 **Why:** SPEC §14 reconciliation compares "desired schedule fingerprints" against "OS scheduled notification IDs." The current port (`schedule`/`cancel`/`getSchedulingCapability`) has no way to ask "what's actually scheduled right now" — without it, reconciliation logic would have to guess or duplicate itself per-platform inside `apps/*`, violating the package boundary (CLAUDE.md: all product behavior lives in `packages/app`, not `apps/*`). Adding this method keeps reconciliation logic in one place (`packages/app`) and lets every platform (web, Android, future desktop/iOS) answer the same question uniformly.
 
 **Files:**
+
 - Modify: `packages/platform/src/index.ts` (the `NotificationSchedulerPort` interface, around line 199-238 — read current line numbers before editing, other tasks may have shifted them)
 - Modify: `apps/web/src/platform.ts` (`createNotificationScheduler`, ~line 74-116)
 - Modify: `apps/desktop/src/platform.ts` (stays `Unavailable`, no code change needed — confirm via test that `Unavailable` capability still type-checks against the extended interface)
@@ -48,6 +49,7 @@ This is a deliberate departure from ADR-0005's SQLite precedent ("write our own 
 - Test: `apps/web/test/platform.test.ts` (find the actual current test file for `createNotificationScheduler` via `grep -rl createNotificationScheduler apps/web/test`)
 
 **Interfaces:**
+
 - Produces: `NotificationSchedulerPort.listScheduled(): Promise<readonly string[]>` — returns the `id`s (same string ids passed to `schedule`) currently scheduled on this platform, in any order.
 
 - [ ] **Step 1: Read the current interface and web adapter verbatim**
@@ -96,24 +98,13 @@ In `apps/web/test/platform.test.ts` (exact file found in Step 1), add:
 ```ts
 it('listScheduled возвращает id всех запланированных, не отменённых уведомлений', async () => {
   const scheduler = createNotificationScheduler();
-  await scheduler.schedule(
-    'r1',
-    'Заголовок',
-    Temporal.PlainDate.from('2099-01-01'),
-    null,
-    'UTC',
-  );
-  await scheduler.schedule(
-    'r2',
-    'Заголовок 2',
-    Temporal.PlainDate.from('2099-01-02'),
-    null,
-    'UTC',
-  );
+  await scheduler.schedule('r1', 'Заголовок', Temporal.PlainDate.from('2099-01-01'), null, 'UTC');
+  await scheduler.schedule('r2', 'Заголовок 2', Temporal.PlainDate.from('2099-01-02'), null, 'UTC');
   await scheduler.cancel('r1');
   expect(await scheduler.listScheduled()).toEqual(['r2']);
 });
 ```
+
 (Adapt the exact `import`/setup boilerplate — Temporal import, test file's existing `describe` block — to match what's already in that file; don't duplicate an existing `describe('createNotificationScheduler'`.)
 
 - [ ] **Step 6: Run tests, verify they fail (method doesn't exist yet — should already pass after Steps 2-3; if you did Steps 2-3 first, this validates instead of red/green — either order is fine, but confirm both are internally consistent: TS compile error if `listScheduled` referenced before Step 2/3 land)**
@@ -140,6 +131,7 @@ git commit -m "feat(platform): NotificationSchedulerPort.listScheduled — ос�
 **Why:** `Reminder.scheduledFingerprint` exists in the schema and type but is hardcoded to `''` in all three creation commands (`reminder-explicit.ts:105`, `reminder-deadline.ts:130,175` — verify exact lines before editing). Reconciliation (Task A3) needs a REAL value here: something that changes if and only if what should be scheduled actually changed (title doesn't matter for re-scheduling decisions — only `kind` + the resolved fire moment + `enabled` do, since editing a reminder's time must trigger reschedule, but nothing else does).
 
 **Files:**
+
 - Create: `packages/core/src/commands/reminder-fingerprint.ts`
 - Modify: `packages/core/src/commands/reminder-explicit.ts` (replace `scheduledFingerprint: ''`)
 - Modify: `packages/core/src/commands/reminder-deadline.ts` (replace both `scheduledFingerprint: ''` occurrences)
@@ -147,6 +139,7 @@ git commit -m "feat(platform): NotificationSchedulerPort.listScheduled — ос�
 - Test: `packages/core/test/commands/reminder-fingerprint.test.ts`
 
 **Interfaces:**
+
 - Consumes: `Reminder['kind']`, `Reminder['localRuleJson']` (has a `firesAt: string` key per the doc comment in `reminder-explicit.ts` — a `PlainDateTime`-shaped ISO string, same field name across all three kinds), `Reminder['enabled']`.
 - Produces: `computeReminderFingerprint(reminder: Pick<Reminder, 'kind' | 'localRuleJson' | 'enabled'>): string` — deterministic, pure.
 
@@ -280,6 +273,7 @@ In `reminder-explicit.ts`, replace `scheduledFingerprint: ''` with `scheduledFin
 - [ ] **Step 6: Export from the package index**
 
 In `packages/core/src/commands/index.ts`, add near the other reminder command exports:
+
 ```ts
 export { computeReminderFingerprint } from './reminder-fingerprint.js';
 ```
@@ -307,10 +301,12 @@ git commit -m "feat(core): computeReminderFingerprint — заменяет place
 **Why:** This is the actual engine behind SPEC §14 and the transaction-pipeline step 5 (`00_MASTER...` §7: "5. notification reconciliation"). It answers: given the current DB state and what's actually scheduled on the platform, what needs to change? Two entry points: a full scan (boot/wake/timezone-change — §14's "every startup/background wake") and a per-task scan (called right after any command that changes a task's/reminder's schedulability — cheaper, avoids rescanning the whole workspace on every edit).
 
 **Files:**
+
 - Create: `packages/app/src/state/reminder-reconciliation.ts`
 - Test: `packages/app/test/state/reminder-reconciliation.test.ts`
 
 **Interfaces:**
+
 - Consumes: `StoragePort` (from `@shagi/storage` — `storage.reminders`/`storage.tasks`/`storage.projects` repositories, all already exist), `NotificationSchedulerPort` (from `@shagi/platform`, extended in Task A1 with `listScheduled`), `Temporal.PlainDateTime` "now local", IANA timezone string.
 - Produces:
   - `reconcileReminderSchedule(storage: StoragePort, scheduler: NotificationSchedulerPort, nowLocal: Temporal.PlainDateTime, timezone: string): Promise<ReconciliationSummary>` — full scan.
@@ -320,6 +316,7 @@ git commit -m "feat(core): computeReminderFingerprint — заменяет place
 - [ ] **Step 1: Read the real repository/entity shapes before writing anything**
 
 Run these to get exact current signatures (do not guess):
+
 ```
 grep -n "interface ReminderRepository" -A5 packages/storage/src/ports/reminder-repository.ts
 grep -n "interface TaskRepository" -A30 packages/storage/src/ports/task-repository.ts
@@ -327,6 +324,7 @@ grep -n "interface ProjectRepository" -A15 packages/storage/src/ports/project-re
 grep -n "^export interface Task " -A50 packages/core/src/entities/task.ts
 grep -n "^export interface Project " -A20 packages/core/src/entities/project.ts
 ```
+
 Confirm: how to enumerate ALL tasks (is there a `listAll`/`listByCaptureStateAndStatus`-only API? — if there's no "list every non-deleted task" method, this task must add one to `TaskRepository`/`StoragePort` first, as a sub-step here, matching the existing repository pattern file-for-file). Confirm `Task.status` values (`'active'` confirmed elsewhere in this codebase), `Task.deletedAt`, `Task.projectId`, `Project.archivedAt`/`Project.deletedAt`.
 
 - [ ] **Step 2: If no "list all reminders with their owning task" query exists, add it**
@@ -344,7 +342,9 @@ import type { NotificationSchedulerPort, NotificationPrecision } from '@shagi/pl
 import { reconcileReminderSchedule } from '../../src/state/reminder-reconciliation.js';
 // + createTaskCommand / createExplicitReminderCommand fixtures per Task A5's pattern
 
-function fakeScheduler(): NotificationSchedulerPort & { calls: { scheduled: string[]; cancelled: string[] } } {
+function fakeScheduler(): NotificationSchedulerPort & {
+  calls: { scheduled: string[]; cancelled: string[] };
+} {
   const scheduled = new Set<string>();
   const calls = { scheduled: [] as string[], cancelled: [] as string[] };
   return {
@@ -402,6 +402,7 @@ describe('reconcileReminderSchedule', () => {
   });
 });
 ```
+
 (This is a skeleton with real assertions on the observable behavior — fill in the exact seeding calls by reading `packages/app/test/screens/QuickAdd.test.tsx` and `packages/core/test/commands/create-recurring-task.test.ts` for the established fixture patterns already used elsewhere in this codebase, and `packages/storage/src/index.ts` for the real `createInMemoryStorage` export name before running.)
 
 - [ ] **Step 4: Run tests, verify they fail**
@@ -523,6 +524,7 @@ async function applyReconciliation(
 ```
 
 **PRE-FLIGHT RULING (recorded in the SDD ledger before Task A3 was dispatched — binding, do not re-litigate without a new fact):** the first draft of this function called `scheduler.schedule()` unconditionally for every desired-and-future entry, which contradicts Step 3's third test case (asserts idempotency: already-correct state calls neither `schedule` nor `cancel`). Fixed by skipping entries already present in `currentlyScheduled` (`listScheduled()`'s id set) — this is a deliberate simplification, not a spec shortcut: reconciliation does NOT read or write the persisted `Reminder.scheduledFingerprint` column at all. Two reasons, both load-bearing:
+
 1. CLAUDE.md's domain invariant #1 — "Прямая запись в хранилище запрещена," all writes go through a `*Command` — and there is no command for "update a reminder's `scheduledFingerprint` in place." Writing it directly from `packages/app` would bypass the command layer.
 2. It's unnecessary: every reminder-editing path in the current command surface (`cancelReminderCommand` sets `enabled:false` on the SAME row — which then simply drops out of `desired` entirely, so `currentlyScheduled.has(id)` correctly triggers a `cancel()` above, not a skip; `handleSubmitReminder`'s "edit" flow is cancel-then-`createExplicitReminderCommand` — a FRESH row with a FRESH `generateId()`, i.e. a new id) never mutates `localRuleJson`/`enabled` on a row that stays both enabled and same-id. Given that, comparing `listScheduled()` id-presence is provably equivalent to comparing fingerprints for everything the current command surface can produce — `computeReminderFingerprint` (Task A2) still runs and is still stored at creation time (real, useful: a persisted record of intended schedule state for diagnostics/future wave-2 sync), it's just not re-read by THIS function. If a future task adds a true in-place reminder-edit command, this ruling must be revisited — flag that explicitly rather than silently re-deriving it.
 
@@ -558,6 +560,7 @@ git commit -m "feat(app): reconcileReminderSchedule — движок 02§14, б�
 **Why:** Task A3 built the engine; nothing calls it yet. This task is the "5. notification reconciliation" pipeline step from `00_MASTER...` §7 made real: after any reminder-affecting command, and on every app startup/wake.
 
 **Files:**
+
 - Modify: `packages/app/src/screens/TaskDetail.tsx` (`handleSubmitReminder`/`handleCancelReminder`, exact lines found via `grep -n "handleSubmitReminder\|handleCancelReminder" packages/app/src/screens/TaskDetail.tsx`)
 - Modify: `packages/core/src/commands/complete-task.ts` — NO code change for scheduling itself (core stays platform-neutral), but confirm/verify this command's result gives the caller (`packages/app`) enough to know which task completed, so `packages/app` can call `reconcileReminderScheduleForTask` right after. Same for `delete-task.ts`, `project-archive.ts`.
 - Modify: every `packages/app` call site that currently calls `completeTaskCommand`/`deleteTaskCommand`/`projectArchiveCommand` (grep for each) — add a `void reconcileReminderScheduleForTask(...)` call after a successful result. Enumerate exact call sites via `grep -rn "completeTaskCommand\|deleteTaskCommand\|projectArchiveCommand" packages/app/src` before editing — there may be several screens (Today, TaskDetail, Plan, Project, Search, bulk actions).
@@ -565,11 +568,13 @@ git commit -m "feat(app): reconcileReminderSchedule — движок 02§14, б�
 - Test: extend `packages/app/test/screens/TaskDetail.test.tsx` and each modified call site's existing test file.
 
 **Interfaces:**
+
 - Consumes: `reconcileReminderScheduleForTask`/`reconcileReminderSchedule` from Task A3, `platform.notificationScheduler` from `AppHostContext` (confirm the exact hook name — likely `usePlatform()`/`useAppHost()`, grep `packages/app/src/state/context.tsx`).
 
 - [ ] **Step 1: Enumerate every call site**
 
 Run:
+
 ```
 grep -rn "completeTaskCommand(" packages/app/src
 grep -rn "deleteTaskCommand(" packages/app/src
@@ -577,6 +582,7 @@ grep -rn "createProjectArchiveCommand\|projectArchiveCommand" packages/app/src
 grep -n "handleSubmitReminder\|handleCancelReminder" packages/app/src/screens/TaskDetail.tsx
 grep -n "usePlatform\|useAppHost\|AppHostContext" packages/app/src/state/context.tsx
 ```
+
 Write down the exact file:line list — this determines how many near-identical edits Steps 3-4 make.
 
 - [ ] **Step 2: Write a failing test for the TaskDetail reminder call site**
@@ -590,6 +596,7 @@ Run: `export PATH=/usr/local/bin:$PATH && pnpm --filter @shagi/app test -- TaskD
 - [ ] **Step 4: Add the call after `createExplicitReminderCommand`/`cancelReminderCommand` in `TaskDetail.tsx`**
 
 After a successful `createExplicitReminderCommand`/`cancelReminderCommand` result inside `handleSubmitReminder`/`handleCancelReminder`, add (adapt variable names to what's actually in scope at that point — `platform`, `storage`, current local-time values already computed for `reminderDeps()`):
+
 ```ts
 if (isAvailable(platform.notificationScheduler)) {
   await reconcileReminderScheduleForTask(
@@ -613,6 +620,7 @@ Each gets its own failing-test-then-implementation cycle — do not batch-edit a
 - [ ] **Step 7: Add the startup full-reconciliation call**
 
 In `packages/app/src/App.tsx`'s top-level mount effect, add (guard with `isAvailable`):
+
 ```ts
 useEffect(() => {
   if (!isAvailable(host.platform.notificationScheduler)) return;
@@ -625,6 +633,7 @@ useEffect(() => {
   // eslint-disable-next-line react-hooks/exhaustive-deps -- один раз на монтирование хоста, не на каждый рендер
 }, []);
 ```
+
 (Confirm `Temporal.Now.timeZoneId()` — or whatever this codebase's established "current IANA timezone" accessor already is; grep `Temporal.Now.timeZone` across `packages/app/src` first, since native `Intl`/`Date` are forbidden and there may already be a wrapped accessor.)
 
 - [ ] **Step 8: Write a test for the startup reconciliation call**
@@ -650,6 +659,7 @@ git commit -m "feat(app): подключить reconcileReminderSchedule к ко
 **Why:** SPEC §19: "On timezone change app reschedules local reminders preserving 09:00 as local 09:00." Nothing currently detects a timezone change. Detection is comparison-based (persist last-known tz, compare on foreground/resume), not a native OS event listener (none of the three platforms expose one uniformly through `PlatformCapabilitiesRegistry` today, and adding one is out of scope — comparison on resume is sufficient per spec, which only requires correctness "on timezone change," not sub-second reaction).
 
 **Files:**
+
 - Modify: `packages/app/src/App.tsx` (extend the Task A4 Step 7 startup effect, and add a visibility/resume listener if one already exists in this codebase — check `grep -rn "visibilitychange\|onResume\|AppState" packages/app/src apps/mobile/src apps/web/src` first; if nothing exists, a foreground-detection primitive is itself out of scope for THIS plan — fall back to "check on every app startup/cold launch only," documented as a known limitation, not invented from scratch here)
 - Modify: wherever app preferences/local-only settings are persisted (find via `grep -rn "localStorage\|preferences" packages/app/src/state` — the existing `shagi.preferences.onboardingDone` key from earlier ADR-0005 work is the established pattern to follow for a new `shagi.preferences.lastKnownTimezone` key)
 - Test: extend `packages/app/test/App.test.tsx`
@@ -690,9 +700,11 @@ git commit -m "feat(app): пересчёт напоминаний при сме�
 **Why:** CLAUDE.md requires every architecture deviation to get an ADR in the same change as the implementation. Adopting a third-party plugin after ADR-0005 explicitly rejected one (`@tauri-apps/plugin-sql`) needs the same rigor: prove it by reading the actual source, not by reputation.
 
 **Files:**
+
 - Create: `docs/adr/0007-android-napominaniya-tauri-plugin-notification.md` (confirm next free ADR number via `ls docs/adr/` first — may not be 0007 if something landed since)
 
 **Content the ADR must state, each backed by what this plan's own research already verified (cite file paths inside the plugin's source tree by name, same as ADR-0005 cites `tauri-plugin-sql`'s source):**
+
 - `tauri-plugin-notification` 2.4.0's Android Kotlin (`TauriNotificationManager.kt`) already implements `AlarmManager.setExactAndAllowWhileIdle`/`setExact` with a `canScheduleExactAlarms()` check and graceful degrade (`setExactIfPossible`), `PendingIntent`-based firing via `TimedNotificationPublisher: BroadcastReceiver`, and `BOOT_COMPLETED`/`LOCKED_BOOT_COMPLETED`/`QUICKBOOT_POWERON` restore via `LocalNotificationRestoreReceiver` (its manifest fragment, merged automatically by Android Gradle manifest merging — no manual manifest edits needed for these receivers).
 - Gap: it does NOT expose the exact-alarm capability check or the Android 12+ settings-redirect intent (`ACTION_REQUEST_SCHEDULE_EXACT_ALARM`) to JS/Rust — only uses it internally at schedule-time to silently degrade. SPEC §11.1/§3.1 forbid silently presenting inexact as exact — the app must know BEFORE scheduling. This is why Task B3 adds one small local plugin for exactly this.
 - The plugin's own notification IDs are 32-bit integers, not UUIDs — Task B4's adapter must map `Reminder.id` (UUID string) to a stable `i32` internally (document the exact hash choice — Task B4 uses a deterministic UUID→i32 via the low 31 bits of a stable hash, never negative, never colliding within practical reminder counts per device).
@@ -719,6 +731,7 @@ git commit -m "docs(adr): решение — tauri-plugin-notification для An
 ### Task B2: Add `tauri-plugin-notification` dependency, register, grant capability
 
 **Files:**
+
 - Modify: `apps/mobile/src-tauri/Cargo.toml` (add `tauri-plugin-notification = "2.4.0"` under `[dependencies]`)
 - Modify: `apps/mobile/package.json` (add `"@tauri-apps/plugin-notification": "2.4.0"` — pinned exact, matching this repo's ADR-0001 "pin exact versions" convention, no `^`)
 - Modify: `apps/mobile/src-tauri/src/lib.rs` (`.plugin(tauri_plugin_notification::init())` alongside the existing `.plugin(tauri_plugin_deep_link::init())`)
@@ -732,6 +745,7 @@ Run: `cat apps/mobile/src-tauri/Cargo.toml apps/mobile/package.json apps/mobile/
 - [ ] **Step 2: Add the Rust dependency**
 
 In `Cargo.toml`, add to `[dependencies]` (alongside `rusqlite`, alphabetical if the file is already sorted — check first):
+
 ```toml
 tauri-plugin-notification = "2.4.0"
 ```
@@ -739,6 +753,7 @@ tauri-plugin-notification = "2.4.0"
 - [ ] **Step 3: Add the npm dependency**
 
 In `apps/mobile/package.json`, add to `dependencies` (alongside `@tauri-apps/plugin-deep-link`):
+
 ```json
 "@tauri-apps/plugin-notification": "2.4.0",
 ```
@@ -775,6 +790,7 @@ git commit -m "build(mobile): подключить tauri-plugin-notification 2.4
 **Why:** The one verified gap in Task B2's plugin (see Task B1's ADR). Must be its own small Tauri plugin crate — Tauri's mobile command dispatch (`register_android_plugin`/`run_mobile_plugin`) only exists for plugins built via `tauri_plugin::Builder` + an `android_path`, not for arbitrary code inside the app's own root crate.
 
 **Files:**
+
 - Create: `apps/mobile/src-tauri/plugins/alarm-capability/Cargo.toml`
 - Create: `apps/mobile/src-tauri/plugins/alarm-capability/build.rs`
 - Create: `apps/mobile/src-tauri/plugins/alarm-capability/src/lib.rs`
@@ -789,11 +805,13 @@ git commit -m "build(mobile): подключить tauri-plugin-notification 2.4
 - Test: `apps/mobile/src-tauri/plugins/alarm-capability/src/commands.rs` unit tests (host-testable parts only — the actual `canScheduleExactAlarms()` JNI call is only exercisable on-device/emulator, covered by Task B7's emulator smoke, not here)
 
 **Interfaces:**
+
 - Produces (Rust, callable from `apps/mobile/src/platform.ts` via `invoke`): `alarm_can_schedule_exact() -> Result<bool, String>`, `alarm_open_exact_alarm_settings() -> Result<(), String>`.
 
 - [ ] **Step 1: Scaffold the crate manifest**
 
 `apps/mobile/src-tauri/plugins/alarm-capability/Cargo.toml`:
+
 ```toml
 [package]
 name = "tauri-plugin-alarm-capability"
@@ -988,6 +1006,7 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
 - [ ] **Step 7: Write the Android Gradle scaffold**
 
 `apps/mobile/src-tauri/plugins/alarm-capability/android/build.gradle.kts` — copy the structure verified from `@tauri-apps/plugin-notification`'s own `android/build.gradle.kts` (same `com.android.library`/`org.jetbrains.kotlin.android` plugins, same `compileSdk`/`minSdk` — match `apps/mobile/src-tauri/tauri.conf.json`'s `bundle.android.minSdkVersion: 26`, NOT the notification plugin's own `minSdk = 24` — use this app's actual floor):
+
 ```kotlin
 plugins {
     id("com.android.library")
@@ -1017,11 +1036,13 @@ dependencies {
     implementation(project(":tauri-android"))
 }
 ```
+
 Also create an empty `apps/mobile/src-tauri/plugins/alarm-capability/android/consumer-rules.pro` (touch an empty file — matches the notification plugin's own scaffold) and `apps/mobile/src-tauri/plugins/alarm-capability/android/.gitignore` with `build/` (standard Gradle build-output ignore, same as any Android module).
 
 - [ ] **Step 8: Write the plugin's own `AndroidManifest.xml`**
 
 `apps/mobile/src-tauri/plugins/alarm-capability/android/src/main/AndroidManifest.xml`:
+
 ```xml
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <!-- SCHEDULE_EXACT_ALARM объявлен в apps/mobile/android-permissions.txt
@@ -1033,6 +1054,7 @@ Also create an empty `apps/mobile/src-tauri/plugins/alarm-capability/android/con
 - [ ] **Step 9: Write the Kotlin plugin class**
 
 `apps/mobile/src-tauri/plugins/alarm-capability/android/src/main/java/ru/cmpas/shagi/alarmcapability/AlarmCapabilityPlugin.kt`:
+
 ```kotlin
 package ru.cmpas.shagi.alarmcapability
 
@@ -1089,9 +1111,11 @@ class AlarmCapabilityPlugin(private val activity: Activity) : Plugin(activity) {
 - [ ] **Step 10: Wire the local plugin into the app crate**
 
 In `apps/mobile/src-tauri/Cargo.toml`, add:
+
 ```toml
 tauri-plugin-alarm-capability = { path = "plugins/alarm-capability" }
 ```
+
 In `apps/mobile/src-tauri/src/lib.rs`, add `.plugin(tauri_plugin_alarm_capability::init())`.
 
 - [ ] **Step 11: Verify it compiles on host (Rust side only — Kotlin is CI/emulator-only, no Android SDK here per `?22`)**
@@ -1111,12 +1135,14 @@ git commit -m "feat(mobile): tauri-plugin-alarm-capability — canScheduleExactA
 ### Task B4: TS adapter — implement `NotificationSchedulerPort` for Android
 
 **Files:**
+
 - Create: `apps/mobile/src/notification-bridge.ts`
 - Modify: `apps/mobile/src/platform.ts` (replace the `Unavailable` stub for `notificationScheduler`)
 - Modify: `apps/mobile/package.json` if any new transitive TS types are needed (unlikely — `@tauri-apps/plugin-notification`'s guest-js is already a dependency from Task B2)
 - Test: `apps/mobile/test/notification-bridge.test.ts` (mock `invoke`/the plugin's guest-js functions, same pattern as any existing mobile bridge test — check `apps/mobile/test/sqlite-bridge.test.ts` if it exists for the established mocking convention)
 
 **Interfaces:**
+
 - Consumes: `@tauri-apps/plugin-notification`'s `sendNotification`/`cancel`/`pending`/`requestPermission`/`isPermissionGranted` (guest-js, Task B2), `invoke('plugin:alarm-capability|can_schedule_exact')`/`invoke('plugin:alarm-capability|open_exact_alarm_settings')` (Task B3 — confirm the exact Tauri-generated invoke command name format, likely `plugin:alarm-capability|can_schedule_exact`, by reading how `@tauri-apps/plugin-deep-link`'s guest-js calls its own commands, e.g. `apps/mobile/node_modules/@tauri-apps/plugin-deep-link/dist-js/index.js` after `pnpm install`, for the exact naming convention this Tauri version uses).
 - Produces: `createNotificationBridge(): NotificationSchedulerPort`.
 
@@ -1270,9 +1296,7 @@ export function createNotificationBridge(): NotificationSchedulerPort {
         if (state !== 'granted') return; // ST10 — молча не планировать без разрешения, экран сам сообщает об отказе
       }
       const plainDateTime =
-        time === null
-          ? date.toPlainDateTime({ hour: 9, minute: 0 })
-          : date.toPlainDateTime(time);
+        time === null ? date.toPlainDateTime({ hour: 9, minute: 0 }) : date.toPlainDateTime(time);
       const jsDate = new Date(
         plainDateTime.year,
         plainDateTime.month - 1,
@@ -1311,6 +1335,7 @@ export function createNotificationBridge(): NotificationSchedulerPort {
   };
 }
 ```
+
 (Confirm the literal `invoke('plugin:alarm-capability|can_schedule_exact')` string against Step 1's finding before committing — this plan's guess follows the pattern seen in every other Tauri 2 plugin, but verify against this exact version.)
 
 - [ ] **Step 5: Wire into `platform.ts`**
@@ -1335,6 +1360,7 @@ git commit -m "feat(mobile): NotificationSchedulerPort через tauri-plugin-n
 **Why:** `reminder-deadline.ts`'s own doc comment (verified in research) explicitly defers the "+15 min **if active**" check to delivery time. `tauri-plugin-notification`'s `TimedNotificationPublisher` fires with whatever title/body were captured at `schedule()` time — it has no concept of "check SQLite before showing." Scope item 5 ("создание/обновление/отмена reminder") and the deadline-missed/approaching semantics require this.
 
 **Files:**
+
 - Modify: `apps/mobile/src-tauri/plugins/alarm-capability/` — reconsider: this check needs DB access (SQLite), which lives in the MAIN app crate (`sqlite.rs`), not the small capability plugin. Two viable designs, pick one and document the choice in this task's own commit message (do not silently default):
   - **(a)** Extend `tauri-plugin-notification`'s own `notify` call to happen from Rust (not directly from TS `sendNotification`) — Rust reads SQLite via the existing `sqlite.rs` bridge synchronously before calling the plugin's Rust API (`Notification::builder()...show()` — but this only fires immediately, not on a schedule, so it doesn't fit a scheduled alarm firing later while the app is closed).
   - **(b)** Accept that `tauri-plugin-notification`'s own scheduled firing (via its `TimedNotificationPublisher`, which runs even with the app fully closed) shows the notification with the STALE title/body captured at schedule time, and instead rely on `enabled:false` + reconciliation's `cancel()` (Task A3/A4) to remove the alarm the MOMENT a task completes/is deleted — since reconciliation is called synchronously right after `completeTaskCommand`/`deleteTaskCommand` (Task A4), the alarm is normally cancelled well before it would fire. The residual risk is narrow: task completed by a DIFFERENT device (sync, out of R1 scope — no backend yet) or completed while this device was fully powered off with the alarm still pending — in both cases the notification fires with stale content once, which is a materially different (much smaller) risk than a full replay storm, and matches this repo's already-documented pattern of deferring the check rather than guaranteeing DB access from inside a `BroadcastReceiver` with no async runtime.
@@ -1377,11 +1403,13 @@ git commit -m "docs(adr): аддендум — firing-time active-check, док�
 **Why:** SPEC §18/§11.1 forbid asking permission at first launch; Screen State Matrix names `ST10 notification permission` and "Android exact-alarm capability notice" as approved edge states needing DS treatment, not ad-hoc UI.
 
 **Files:**
+
 - Modify: `packages/app/src/screens/TaskDetail.tsx` (the reminder creation flow — after Task A4's `reconcileReminderScheduleForTask` call, if `getSchedulingCapability()` returns `'inexact'`, show the disclosure)
 - Modify: `packages/i18n` catalog (`ru-RU` — add the exact strings; check `check-i18n-catalog.mjs` gate requirements first, every key used must exist)
 - Test: extend `packages/app/test/screens/TaskDetail.test.tsx`
 
 **Copy (Russian, adult/calm tone per CLAUDE.md — exact wording is a product decision; this plan gives placeholder-free but reviewable draft text, the implementer should treat the literal wording as a proposal, not gospel, and can request final copy sign-off if unsure — this is the one place where "no placeholders" means "real, usable text," not "text nobody may ever revise"):**
+
 - Capability notice (Android, `inexact`): `«Точное время сейчас недоступно — Android ограничивает его для этого приложения. Открыть настройки?»` with a button that calls `platform.notificationScheduler`-adjacent settings-open (need to also expose `openExactAlarmSettings` through the port or call it directly via the mobile-only bridge — since `NotificationSchedulerPort` is platform-neutral and other platforms have no equivalent settings screen, add this as an EXTRA method only mobile's concrete type has, invoked via a capability-specific escape hatch already established elsewhere in this codebase for platform-specific extras — check `grep -rn "platform-specific\|as unknown as" packages/app/src` for the precedent before inventing a new one).
 
 - [ ] **Step 1: Find the established pattern for platform-specific extras beyond the generic port**
@@ -1418,6 +1446,7 @@ git commit -m "feat(app): ST10 just-in-time permission + уведомление 
 **Why:** `apps/mobile/src-tauri`'s existing CI step "Тесты Rust-части оболочки" (`build-android.yml`) already runs `cargo test` for the whole workspace including path-dependency crates — no new CI job needed, only new `#[cfg(test)]` coverage inside the two crates from Task B3, matching the rigor `sqlite.rs` already established (host-testable pure logic, real assertions, not mocks-all-the-way-down).
 
 **Files:**
+
 - Modify: `apps/mobile/src-tauri/plugins/alarm-capability/src/desktop.rs` (add `#[cfg(test)] mod tests` — the `can_schedule_exact() == Ok(false)` desktop behavior IS host-testable, unlike the Kotlin path)
 
 - [ ] **Step 1: Write the failing test**
@@ -1439,6 +1468,7 @@ mod tests {
     }
 }
 ```
+
 (Confirm `tauri::test::MockRuntime` is the right type — check whether `tauri` needs a `test` feature flag added to `[dev-dependencies]` in this new crate's `Cargo.toml`, mirroring how the main `shagi-mobile` crate's own tests are set up, if it does anything similar — grep `apps/mobile/src-tauri/Cargo.toml` for `[dev-dependencies]`.)
 
 - [ ] **Step 2: Run, verify it passes (or adjust the mock-runtime approach per Step 1's finding)**
@@ -1459,29 +1489,31 @@ git commit -m "test(mobile): юнит-тест desktop-заглушки alarm-ca
 **Why:** Everything above is real but unverified end-to-end until it runs on an actual Android emulator with a real `AlarmManager`. This is the acceptance gate the user explicitly asked for.
 
 **Files:**
+
 - Modify: `apps/mobile/scripts/android-smoke.mjs`
 - Modify: `apps/mobile/scripts/page-actions.mjs` (any new UI-reading expressions the reminder flow needs — reuse `READ_APP_TEXT`/`READ_TASK_ROW_TITLES` where possible before adding new ones)
 - Modify: `apps/mobile/scripts/verify-page-actions.mjs` (mirror any new page-action expression against the web build first, per this repo's own established convention — catches selector bugs in seconds instead of a 10-minute emulator cycle)
 
 **What "real alarm exists in Android" means operationally** (for the implementer): `adb shell dumpsys alarm` lists every registered `AlarmManagerService` alarm with its package and trigger time — grep its output for `ru.cmpas.shagi` to prove a real OS-level alarm exists, not just a `Reminder` row in SQLite. This is the concrete mechanism behind every "существует/отменён" assertion below.
 
-**AMENDED BY USER RULING (recorded in the SDD ledger — binding):** adopting the official plugin (Task B1's ADR) is a *direction*, not proof of compliance — its presence in the dependency tree does not by itself satisfy any requirement. This task must independently verify, on the real emulator, the following 9 claims about the plugin's actual behavior (not re-derive them from reading its Kotlin source a second time — that reading already happened during planning; this is about what the device actually does):
+**AMENDED BY USER RULING (recorded in the SDD ledger — binding):** adopting the official plugin (Task B1's ADR) is a _direction_, not proof of compliance — its presence in the dependency tree does not by itself satisfy any requirement. This task must independently verify, on the real emulator, the following 9 claims about the plugin's actual behavior (not re-derive them from reading its Kotlin source a second time — that reading already happened during planning; this is about what the device actually does):
 
-| # | Claim | Covered by |
-|---|---|---|
-| 1 | `setExactAndAllowWhileIdle` (or the plugin's exact path) is genuinely used for our scenario, not silently the inexact branch | New Step 2b below |
-| 2 | Android 12+ behavior when `canScheduleExactAlarms()` is false is correct (degrades to inexact, discloses it, does not lie) | New Step 2c below |
-| 3 | Schedule survives force-stop | Step 5 |
-| 4 | Correct behavior after reboot | Step 6 |
-| 5 | The plugin's OWN persistence + boot-reschedule mechanism (`LocalNotificationRestoreReceiver`/`NotificationStorage.kt`) doesn't fight or duplicate OUR app-level reconciliation | New Step 6b below |
-| 6 | Update genuinely replaces the old alarm, not two live at once | Step 3 |
-| 7 | Cancel genuinely removes the alarm | Step 4 |
-| 8 | Notification/alarm IDs are stable across runs (dedupe holds) | New Step 6b below (repeat-restart variant) |
-| 9 | The plugin creates no constraint that conflicts with our timezone/reconciliation semantics | New Step 9b below |
+| #   | Claim                                                                                                                                                                          | Covered by                                 |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------ |
+| 1   | `setExactAndAllowWhileIdle` (or the plugin's exact path) is genuinely used for our scenario, not silently the inexact branch                                                   | New Step 2b below                          |
+| 2   | Android 12+ behavior when `canScheduleExactAlarms()` is false is correct (degrades to inexact, discloses it, does not lie)                                                     | New Step 2c below                          |
+| 3   | Schedule survives force-stop                                                                                                                                                   | Step 5                                     |
+| 4   | Correct behavior after reboot                                                                                                                                                  | Step 6                                     |
+| 5   | The plugin's OWN persistence + boot-reschedule mechanism (`LocalNotificationRestoreReceiver`/`NotificationStorage.kt`) doesn't fight or duplicate OUR app-level reconciliation | New Step 6b below                          |
+| 6   | Update genuinely replaces the old alarm, not two live at once                                                                                                                  | Step 3                                     |
+| 7   | Cancel genuinely removes the alarm                                                                                                                                             | Step 4                                     |
+| 8   | Notification/alarm IDs are stable across runs (dedupe holds)                                                                                                                   | New Step 6b below (repeat-restart variant) |
+| 9   | The plugin creates no constraint that conflicts with our timezone/reconciliation semantics                                                                                     | New Step 9b below                          |
 
 - [ ] **Step 1: Add a `dumpsys alarm` helper**
 
 In `android-smoke.mjs`, add a function analogous to the existing `pullDatabase`/`inspectDatabase` pair:
+
 ```js
 function listSystemAlarms() {
   const output = adb(['shell', 'dumpsys', 'alarm'], { encoding: 'utf8' });
@@ -1517,9 +1549,19 @@ Immediately after scheduling (before force-stop, reusing the existing force-stop
 - [ ] **Step 6: Extend the scenario — reboot reconciliation**
 
 `adb reboot` is too slow/flaky for a CI smoke test (full device reboot can take minutes and the existing smoke budget is ~10 minutes total) — instead, simulate the boot-completed broadcast directly, which is the actual mechanism both `tauri-plugin-notification`'s own restore receiver AND this app's reconciliation startup call (Task A4 Step 7) respond to:
+
 ```js
-adb(['shell', 'am', 'broadcast', '-a', 'android.intent.action.BOOT_COMPLETED', '-p', APPLICATION_ID]);
+adb([
+  'shell',
+  'am',
+  'broadcast',
+  '-a',
+  'android.intent.action.BOOT_COMPLETED',
+  '-p',
+  APPLICATION_ID,
+]);
 ```
+
 Then relaunch the app (already an existing step later in the script) and assert `listSystemAlarms()` still/again shows the expected alarm, and `inspectDatabase()`'s reminder count is unchanged (reconciliation restored state, didn't duplicate or lose it).
 
 - [ ] **Step 6b: The plugin's own boot-restore doesn't fight our reconciliation, and native ids stay stable across restarts (claims #5, #8)**
@@ -1565,6 +1607,7 @@ git commit -m "test(mobile): emulator smoke — реальный dumpsys alarm �
 ## Self-Review
 
 **1. Spec coverage** — checked against the user's 15-item scope list:
+
 1. Runtime `POST_NOTIFICATIONS` — Task B4 (`isPermissionGranted`/`requestPermission` via the official plugin, just-in-time per Task B6).
 2. `SCHEDULE_EXACT_ALARM` — already reserved (`?28`), used by Task B3/B2's plugin internally; not re-litigated.
 3. `canScheduleExactAlarms()` check — Task B3 (`alarm-capability` plugin), surfaced via Task B4's `getSchedulingCapability`.
