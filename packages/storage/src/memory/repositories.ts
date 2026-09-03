@@ -317,6 +317,9 @@ export function createReminderRepository(tables: TablesAccessor): ReminderReposi
     async countExplicitByTask(taskId) {
       return countExplicitRemindersByTask(tables(), taskId);
     },
+    async listAllEnabled() {
+      return [...tables().reminders.values()].filter((reminder) => reminder.enabled);
+    },
   };
 }
 

@@ -402,6 +402,10 @@ export function createReminderRepository(access: StoreAccess): ReminderRepositor
     async countExplicitByTask(taskId) {
       return countExplicitRemindersByTask(access, taskId);
     },
+    async listAllEnabled() {
+      const reminders = await allReminders(access);
+      return reminders.filter((reminder) => reminder.enabled);
+    },
   };
 }
 

@@ -16,7 +16,7 @@ import type {
   TaskRepository,
 } from '../ports/index.js';
 
-import { sqlToNumber, uuidToSql } from './codec.js';
+import { booleanToSql, sqlToNumber, uuidToSql } from './codec.js';
 import type { SqliteParam, SqliteRow } from './driver-port.js';
 import {
   rowToAttachment,
@@ -383,6 +383,12 @@ export function createReminderRepository(driver: SqliteDriverPort): ReminderRepo
         `SELECT COUNT(*) AS n FROM "reminders" WHERE task_id = ? AND kind = 'explicit'`,
         [uuidToSql(taskId)],
       );
+    },
+    async listAllEnabled() {
+      const rows = await driver.queryAll<SqliteRow>(`SELECT * FROM "reminders" WHERE enabled = ?`, [
+        booleanToSql(true),
+      ]);
+      return rows.map(rowToReminder);
     },
   };
 }

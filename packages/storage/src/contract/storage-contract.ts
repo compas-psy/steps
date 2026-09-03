@@ -6,6 +6,7 @@ import type { StoragePort } from '../ports/index.js';
 
 import {
   makeChecklistItem,
+  makeExplicitReminder,
   makeHlc,
   makeOutboxEntry,
   makeProject,
@@ -636,6 +637,36 @@ export function runStorageContract(name: string, factory: () => StoragePort): vo
         });
 
         await expect(storage.checklistItems.countActiveByTask(task.id)).resolves.toBe(1);
+      });
+    });
+
+    describe('ReminderRepository — listAllEnabled (02§14 reconciliation, Task A3)', () => {
+      it('возвращает только enabled=true напоминания, вне зависимости от их задачи', async () => {
+        const storage = factory();
+        const task = makeTask();
+        const enabledOne = makeExplicitReminder(task.id);
+        const enabledTwo = makeExplicitReminder(newId());
+        const disabled = { ...makeExplicitReminder(task.id), enabled: false };
+
+        await storage.runTransaction(async (tx) => {
+          await tx.applyMutation({
+            writes: [
+              { entity: 'reminder', value: enabledOne },
+              { entity: 'reminder', value: enabledTwo },
+              { entity: 'reminder', value: disabled },
+            ],
+            outbox: [
+              makeOutboxEntry('reminder', enabledOne.id),
+              makeOutboxEntry('reminder', enabledTwo.id),
+              makeOutboxEntry('reminder', disabled.id),
+            ],
+          });
+        });
+
+        const result = await storage.reminders.listAllEnabled();
+        expect(result.map((reminder) => reminder.id).toSorted()).toEqual(
+          [enabledOne.id, enabledTwo.id].toSorted(),
+        );
       });
     });
   });
