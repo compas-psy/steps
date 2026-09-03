@@ -501,6 +501,7 @@ async function applyReconciliation(
   }
 
   for (const entry of desired) {
+    if (currentlyScheduled.has(entry.reminder.id)) continue; // уже запланировано под этим id — идемпотентность, не дёргаем платформу повторно
     const rule = entry.reminder.localRuleJson;
     const firesAt = typeof rule.firesAt === 'string' ? rule.firesAt : null;
     if (firesAt === null) continue;
@@ -520,6 +521,10 @@ async function applyReconciliation(
   return { scheduled, cancelled };
 }
 ```
+
+**PRE-FLIGHT RULING (recorded in the SDD ledger before Task A3 was dispatched — binding, do not re-litigate without a new fact):** the first draft of this function called `scheduler.schedule()` unconditionally for every desired-and-future entry, which contradicts Step 3's third test case (asserts idempotency: already-correct state calls neither `schedule` nor `cancel`). Fixed by skipping entries already present in `currentlyScheduled` (`listScheduled()`'s id set) — this is a deliberate simplification, not a spec shortcut: reconciliation does NOT read or write the persisted `Reminder.scheduledFingerprint` column at all. Two reasons, both load-bearing:
+1. CLAUDE.md's domain invariant #1 — "Прямая запись в хранилище запрещена," all writes go through a `*Command` — and there is no command for "update a reminder's `scheduledFingerprint` in place." Writing it directly from `packages/app` would bypass the command layer.
+2. It's unnecessary: every reminder-editing path in the current command surface (`cancelReminderCommand` sets `enabled:false` on the SAME row — which then simply drops out of `desired` entirely, so `currentlyScheduled.has(id)` correctly triggers a `cancel()` above, not a skip; `handleSubmitReminder`'s "edit" flow is cancel-then-`createExplicitReminderCommand` — a FRESH row with a FRESH `generateId()`, i.e. a new id) never mutates `localRuleJson`/`enabled` on a row that stays both enabled and same-id. Given that, comparing `listScheduled()` id-presence is provably equivalent to comparing fingerprints for everything the current command surface can produce — `computeReminderFingerprint` (Task A2) still runs and is still stored at creation time (real, useful: a persisted record of intended schedule state for diagnostics/future wave-2 sync), it's just not re-read by THIS function. If a future task adds a true in-place reminder-edit command, this ruling must be revisited — flag that explicitly rather than silently re-deriving it.
 
 **Note for the implementer:** `desiredReminders` is deliberately left throwing — Step 1's research determines its real body (which repository calls, which `Task`/`Project` fields). Do not proceed past this step with a placeholder committed; finish the real implementation before Step 6. This plan cannot hand you the exact field names with 100% certainty without you re-reading the live schema first (per Step 1) — that is the one legitimate exception to "no placeholders" in this document: a scaffold explicitly marked to be completed using Step 1's findings, not a TODO left for later.
 
@@ -1333,22 +1338,36 @@ git commit -m "feat(mobile): NotificationSchedulerPort через tauri-plugin-n
 - Modify: `apps/mobile/src-tauri/plugins/alarm-capability/` — reconsider: this check needs DB access (SQLite), which lives in the MAIN app crate (`sqlite.rs`), not the small capability plugin. Two viable designs, pick one and document the choice in this task's own commit message (do not silently default):
   - **(a)** Extend `tauri-plugin-notification`'s own `notify` call to happen from Rust (not directly from TS `sendNotification`) — Rust reads SQLite via the existing `sqlite.rs` bridge synchronously before calling the plugin's Rust API (`Notification::builder()...show()` — but this only fires immediately, not on a schedule, so it doesn't fit a scheduled alarm firing later while the app is closed).
   - **(b)** Accept that `tauri-plugin-notification`'s own scheduled firing (via its `TimedNotificationPublisher`, which runs even with the app fully closed) shows the notification with the STALE title/body captured at schedule time, and instead rely on `enabled:false` + reconciliation's `cancel()` (Task A3/A4) to remove the alarm the MOMENT a task completes/is deleted — since reconciliation is called synchronously right after `completeTaskCommand`/`deleteTaskCommand` (Task A4), the alarm is normally cancelled well before it would fire. The residual risk is narrow: task completed by a DIFFERENT device (sync, out of R1 scope — no backend yet) or completed while this device was fully powered off with the alarm still pending — in both cases the notification fires with stale content once, which is a materially different (much smaller) risk than a full replay storm, and matches this repo's already-documented pattern of deferring the check rather than guaranteeing DB access from inside a `BroadcastReceiver` with no async runtime.
-  - **This plan picks (b)**: no on-device sync exists yet (backend is wave 2, per CLAUDE.md), so "a different device completed the task" cannot happen in R1 at all — the only residual case is "phone was off past the fire time," which is already the correct, spec-compliant "deliver while main UI closed" behavior (SPEC §18), just possibly a few minutes stale if the task was ALSO completed in that same offline window, which is an edge case not covered by any Testing Acceptance item — do not over-engineer a Kotlin→SQLite JNI bridge for it now. Document this explicitly as a known, accepted, narrow limitation in the ADR from Task B1 (add a short "Аддендум" section, do not silently leave it unstated).
-- Modify: `docs/adr/000X-android-napominaniya-tauri-plugin-notification.md` (add the addendum described above)
+  - **AMENDED BY USER RULING (recorded in the SDD ledger — binding, supersedes the paragraph above):** (b) is NOT accepted as a final "known limitation" until proven end-to-end. If any real path through the app can leave a stale/incorrect notification actually able to fire after data changed, that is a **defect to close**, not a residual risk to write up. This task's job changed from "write an ADR addendum accepting (b)" to "**prove, for every one of the seven paths below, that reconciliation deterministically cancels/rebuilds the native alarm before it could fire stale — or find the gap and close it**":
+    1. `completeTaskCommand`
+    2. `deleteTaskCommand`
+    3. reminder date/time changed (the cancel-then-recreate flow in `TaskDetail.tsx`)
+    4. reminder edited any other way the UI allows (re-check `grep -rn "Reminder" packages/app/src/screens` once Task A4 is committed — do not assume path #3 is the only one)
+    5. `projectArchiveCommand` (SPEC §18 line 489, Testing Acceptance #34)
+    6. M52 (`eraseAllLocalData` UI flow)
+    7. recurrence generation (does the new occurrence's reminder get scheduled; does completing/superseding the old occurrence cancel ITS reminder via path #1, with no cross-occurrence leak?)
+  - **Working hypothesis, to be proven not assumed:** paths #1/#2/#5/#6 are covered by Task A4's synchronous reconciliation calls; #3/#4 are covered structurally (cancel-then-recreate drops the old id from `desired` on the very next pass); #7 was not written with recurrence in mind and needs explicit checking.
+- Modify: `docs/adr/000X-android-napominaniya-tauri-plugin-notification.md` (record the OUTCOME of this task's investigation — either "verified closed, no residual gap" with evidence per path, or the real remaining gap and its fix)
 
-- [ ] **Step 1: Add the addendum to the Task B1 ADR**
+- [ ] **Step 1: For each of the 7 paths, trace the real committed Task A4 code and answer: does a synchronous `await reconcileReminderScheduleForTask(...)`/`reconcileReminderSchedule(...)` happen on this path before the command's result is considered final?**
 
-Append a dated addendum section explaining the (a)/(b) tradeoff above verbatim, and the decision, referencing `reminder-deadline.ts`'s own deferral comment by file/line.
+Read the actual committed diff, not this plan's prose. For each path, cite the exact file:line and confirm the call is `await`-ed, not fire-and-forget. Write the answer for all 7 paths into the ADR addendum (Step 3) as a table: path → file:line → awaited (yes/no) → verdict.
 
-- [ ] **Step 2: Confirm Task A4's cancellation IS synchronous and fires before any plausible alarm delay**
+- [ ] **Step 2: Any path where Step 1 finds no reconciliation call, or a fire-and-forget one, is the defect the user named — fix it before proceeding**
 
-No new code — re-read Task A4's implementation once complete and confirm `reconcileReminderScheduleForTask` is `await`-ed (not fire-and-forget) in `completeTaskCommand`/`deleteTaskCommand` call sites, so the cancel() call to the native layer has actually round-tripped through Tauri IPC before the UI considers the action done. If any call site made it fire-and-forget for UI responsiveness, flag this specifically — a fire-and-forget cancel racing a same-second alarm fire is the one case this task's chosen design does NOT cover, and must be called out to the user rather than silently accepted.
+The fix is almost always "add the missing synchronous reconciliation call at that call site" (extending Task A4's coverage), not new Kotlin/native code — reach for a native fix only if Step 1 proves the gap genuinely cannot be closed by an awaited reconciliation call (verify this is actually true for #6/#7 specifically — both run inside the WebView, not a native receiver, so both CAN be awaited same as #1/#2/#5). Write a failing test reproducing the gap first (same fake-scheduler pattern as Task A3/A4), then fix, then confirm it passes.
 
-- [ ] **Step 3: Commit**
+- [ ] **Step 3: Write the ADR addendum with the real findings**
+
+Document what Step 1 found (the 7-row table) and what Step 2 fixed, if anything. Only if every path is proven synchronously covered does the addendum close with a residual-risk note — and the ONLY acceptable residual is "device fully powered off past the fire time AND the task was also completed in that same offline window" (genuinely unclosable without on-device sync, out of R1 scope) — not a stand-in for an unverified path.
+
+- [ ] **Step 4: Commit**
 
 ```bash
 git add docs/adr/000X-android-napominaniya-tauri-plugin-notification.md
-git commit -m "docs(adr): аддендум — firing-time active-check полагается на синхронную отмену (Task A4), не на Kotlin→SQLite"
+# + любые файлы из Step 2, если там был реальный фикс (тест + код) —
+# добавить их в тот же коммит, не отдельным
+git commit -m "docs(adr): аддендум — firing-time active-check, доказано/закрыто по всем 7 путям (не принятое ограничение)"
 ```
 
 ---
@@ -1446,6 +1465,20 @@ git commit -m "test(mobile): юнит-тест desktop-заглушки alarm-ca
 
 **What "real alarm exists in Android" means operationally** (for the implementer): `adb shell dumpsys alarm` lists every registered `AlarmManagerService` alarm with its package and trigger time — grep its output for `ru.cmpas.shagi` to prove a real OS-level alarm exists, not just a `Reminder` row in SQLite. This is the concrete mechanism behind every "существует/отменён" assertion below.
 
+**AMENDED BY USER RULING (recorded in the SDD ledger — binding):** adopting the official plugin (Task B1's ADR) is a *direction*, not proof of compliance — its presence in the dependency tree does not by itself satisfy any requirement. This task must independently verify, on the real emulator, the following 9 claims about the plugin's actual behavior (not re-derive them from reading its Kotlin source a second time — that reading already happened during planning; this is about what the device actually does):
+
+| # | Claim | Covered by |
+|---|---|---|
+| 1 | `setExactAndAllowWhileIdle` (or the plugin's exact path) is genuinely used for our scenario, not silently the inexact branch | New Step 2b below |
+| 2 | Android 12+ behavior when `canScheduleExactAlarms()` is false is correct (degrades to inexact, discloses it, does not lie) | New Step 2c below |
+| 3 | Schedule survives force-stop | Step 5 |
+| 4 | Correct behavior after reboot | Step 6 |
+| 5 | The plugin's OWN persistence + boot-reschedule mechanism (`LocalNotificationRestoreReceiver`/`NotificationStorage.kt`) doesn't fight or duplicate OUR app-level reconciliation | New Step 6b below |
+| 6 | Update genuinely replaces the old alarm, not two live at once | Step 3 |
+| 7 | Cancel genuinely removes the alarm | Step 4 |
+| 8 | Notification/alarm IDs are stable across runs (dedupe holds) | New Step 6b below (repeat-restart variant) |
+| 9 | The plugin creates no constraint that conflicts with our timezone/reconciliation semantics | New Step 9b below |
+
 - [ ] **Step 1: Add a `dumpsys alarm` helper**
 
 In `android-smoke.mjs`, add a function analogous to the existing `pullDatabase`/`inspectDatabase` pair:
@@ -1460,6 +1493,14 @@ function listSystemAlarms() {
 - [ ] **Step 2: Extend the scenario — reminder scheduled**
 
 After the existing "Проверка сборки" task creation step, add: open the task, set an explicit reminder for a near-future time via the UI (reuse `typeIntoLabeled`/`clickByText` per the established page-action pattern), assert via `inspectDatabase` (extend it, per the existing `count('reminders')` pattern already used for other tables) that a `reminders` row exists with `enabled=1`, THEN assert `listSystemAlarms().length > 0` — a real OS alarm, not just a DB row.
+
+- [ ] **Step 2b: Verify `setExactAndAllowWhileIdle` (or the plugin's exact path) is genuinely used (claim #1)**
+
+Capture the raw matching line(s) from `listSystemAlarms()` right after Step 2's schedule and log them (add a `log()`/diagnostic print, matching whatever the script already uses for other diagnostics) BEFORE writing any assertion on their exact text — Android's `dumpsys alarm` prints no literal "exact"/"inexact" word; it prints a `type` (`RTC_WAKEUP`) and, distinguishing exact from inexact, whether the alarm is standalone/unbatched: alarms scheduled via `setExactAndAllowWhileIdle` are never coalesced into a delivery window, while inexact ones are batched and printed with a nonzero window. Run the smoke once for real (Step 11) to observe the actual line format for this Tauri/Android version, then hardcode the assertion against the observed marker and add a one-line comment recording the literal substring seen, exactly the same discipline Step 3 already requires for the trigger-time regex — do not guess either blind.
+
+- [ ] **Step 2c: Verify the Android 12+ capability-denied degrade path (claim #2)**
+
+Before scheduling, revoke the exact-alarm app op: `adb shell cmd appops set ru.cmpas.shagi SCHEDULE_EXACT_ALARM deny` (this is the standard, documented way to flip what `canScheduleExactAlarms()` reports without touching system settings UI). Reopen/relaunch the app so Task B6's just-in-time capability check re-reads it, then schedule a reminder via the UI same as Step 2. Assert two things together, not separately, so #1 and #2 verify each other: (a) at the UI level, the Task B6 capability notice is shown — read via `READ_APP_TEXT` — proving the app does not silently claim "exact" (Global Constraints: never present inexact as exact silently); (b) at the OS level, `listSystemAlarms()` still contains an entry (the plugin's own `setExactIfPossible` degrade schedules inexact rather than refusing, per Task B1's ADR research) whose line does NOT carry the "standalone/unbatched" marker established in Step 2b. Restore the app op afterward — `adb shell cmd appops set ru.cmpas.shagi SCHEDULE_EXACT_ALARM allow` — so later steps in the same smoke run see the normal exact-capable state.
 
 - [ ] **Step 3: Extend the scenario — update replaces the old alarm**
 
@@ -1481,6 +1522,10 @@ adb(['shell', 'am', 'broadcast', '-a', 'android.intent.action.BOOT_COMPLETED', '
 ```
 Then relaunch the app (already an existing step later in the script) and assert `listSystemAlarms()` still/again shows the expected alarm, and `inspectDatabase()`'s reminder count is unchanged (reconciliation restored state, didn't duplicate or lose it).
 
+- [ ] **Step 6b: The plugin's own boot-restore doesn't fight our reconciliation, and native ids stay stable across restarts (claims #5, #8)**
+
+Repeat the Step 6 cycle (`BOOT_COMPLETED` broadcast + relaunch) a second and third time, capturing `listSystemAlarms()` after each cycle. Assert the count of alarm entries matching the reminder's native id does NOT grow between cycles — this is the concrete check for claim #5: the plugin's own `LocalNotificationRestoreReceiver`/`NotificationStorage.kt` persistence and this app's own startup reconciliation (Task A4 Step 7) both react to the same broadcast, and neither may double-schedule because the other already restored it. Also assert `inspectDatabase()`'s reminder row is unchanged across all three cycles, and that `listSystemAlarms()`'s matching entry keeps the SAME native id across cycles (parse it out of the dumpsys line using Step 2b's established format) — claim #8. This guards the actual failure mode behind it: `notification-bridge.ts` (Task B4) keeps its string-id↔native-id mapping in an in-memory `Map`, which starts empty on every fresh process; if a post-restart reconciliation pass can't correctly recover a reminder's native id from `listScheduled()` (which itself depends on `pending()`'s returned ids matching what was actually persisted natively), it would look "missing" and get rescheduled under a freshly-hashed id, leaving the old alarm orphaned — this step is what would catch that.
+
 - [ ] **Step 7: Extend the scenario — overdue reminder does not storm**
 
 Create a reminder with a time already in the past relative to device time (or force-advance device time via `adb shell date` if the emulator image allows it — check feasibility first; if not settable, seed a reminder whose `firesAt` is in the past directly via a debug-only path is NOT available in production code, so instead: rely on Task A3's own unit test for this exact case — full storm-prevention coverage lives in `reminder-reconciliation.test.ts`, Step 3's third test case — and on the emulator only assert that triggering `BOOT_COMPLETED`/app-restart reconciliation does NOT create a burst of `listSystemAlarms()` entries beyond what's expected from the smoke's own seeded reminders). Document in a comment why this step is narrower than the unit test coverage, not a gap — the unit test is the actual proof, the emulator step is a sanity check that the wiring doesn't visibly misbehave.
@@ -1492,6 +1537,12 @@ After the existing M52 wipe assertions (Task from the ADR-0005 work — `tasks:0
 - [ ] **Step 9: Extend the "usable after wipe" scenario**
 
 After M52, create a NEW reminder via the UI (same pattern as the existing "creates a new task after wipe" check), assert it produces both a new `reminders` row AND a new `listSystemAlarms()` entry — "scheduler снова пригоден для работы" made concrete.
+
+- [ ] **Step 9b: The plugin creates no constraint conflicting with our timezone/reconciliation semantics (claim #9)**
+
+Why this is a real risk, not a formality: `tauri-plugin-notification`'s `Schedule.at(date, ...)` takes a JS `Date` — an absolute instant, with no timezone awareness of its own. If the device timezone changes after a reminder is scheduled, the native alarm stays fixed to that same absolute instant unless something explicitly recomputes and re-sends it; the plugin has no mechanism to do that itself, which is exactly why Task A5's timezone-change detection exists. This step is where that gets checked against what `AlarmManager` actually holds, not just what `reconcileReminderSchedule` computed in JS.
+
+Create a reminder for a specific local wall-clock time in the emulator's default timezone, capture its trigger time from `listSystemAlarms()` using Step 3's established parsing. Change the device timezone: `adb shell settings put global time_zone <a different IANA zone, e.g. Asia/Tokyo>`. Relaunch the app (Task A5's detection is startup-only, per its own documented limitation — no foreground listener in this plan's scope) and let the startup reconciliation run. Assert: (a) `listSystemAlarms()`'s matching entry now shows a DIFFERENT trigger time, one that preserves the same LOCAL wall-clock value in the new zone (compute the expected instant from the reminder's stored local date/time interpreted in the new zone, not the old absolute instant) — this is the on-device proof of SPEC §19, checked against the real OS alarm rather than only against `reconcileReminderSchedule`'s JS-side output; (b) no duplicate alarm was left behind (count for this reminder's native id is still exactly one, same check as Step 3). Restore the original timezone afterward (`adb shell settings put global time_zone <original>`) so it doesn't affect any step that runs after this one.
 
 - [ ] **Step 10: Run `verify-page-actions.mjs` against the web build first**
 
