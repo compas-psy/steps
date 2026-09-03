@@ -1390,7 +1390,7 @@ import type {
   NotificationPrecision,
   NotificationSchedulerPort,
   ScheduledNotificationSnapshot,
-} from '@shagi/app';
+} from '@shagi/platform';
 import { Temporal } from '@js-temporal/polyfill';
 
 /**
