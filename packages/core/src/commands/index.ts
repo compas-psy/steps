@@ -91,6 +91,10 @@ export {
   type CancelReminderInput,
   type CancelReminderResult,
 } from './reminder-cancel.js';
+// Отпечаток желаемого расписания (`02§14` reconciliation, task A3) — экспорт
+// нужен `packages/app`, чтобы пересчитывать отпечаток существующих
+// напоминаний и сравнивать его с сохранённым `scheduledFingerprint`.
+export { computeReminderFingerprint } from './reminder-fingerprint.js';
 
 // --- Позиция (`rank`) для Project/Section (E09) -------------------------------
 export { resolveRank, type NewRank } from './project-rank.js';

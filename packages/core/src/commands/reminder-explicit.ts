@@ -5,6 +5,7 @@ import { generateUuidV7 } from '../identity/index.js';
 import { validateExplicitReminder, type ReminderTaskDeadline } from '../validation/reminder.js';
 import { buildResult, makeIssue, type ValidationResult } from '../validation/types.js';
 import type { Uuid } from '../values.js';
+import { computeReminderFingerprint } from './reminder-fingerprint.js';
 import type { ReminderCommandDeps } from './reminder-port.js';
 import { writeReminder } from './reminder-write.js';
 
@@ -96,13 +97,18 @@ export async function createExplicitReminderCommand(
   const validation = validateExplicitReminder({ date: input.date, time: input.time }, deadline);
 
   const generateId = deps.generateId ?? generateUuidV7;
+  const localRuleJson = buildExplicitLocalRuleJson(input.date, input.time);
   const reminder: Reminder = {
     id: generateId(),
     taskId: input.taskId,
     kind: 'explicit',
-    localRuleJson: buildExplicitLocalRuleJson(input.date, input.time),
+    localRuleJson,
     enabled: true,
-    scheduledFingerprint: '',
+    scheduledFingerprint: computeReminderFingerprint({
+      kind: 'explicit',
+      localRuleJson,
+      enabled: true,
+    }),
   };
 
   await writeReminder(reminder, deps);

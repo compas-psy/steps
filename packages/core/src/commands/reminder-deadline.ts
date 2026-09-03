@@ -4,6 +4,7 @@ import type { Reminder } from '../entities/reminder.js';
 import { generateUuidV7 } from '../identity/index.js';
 import { effectiveDeadlineDateTime } from '../temporal/deadline.js';
 import type { Uuid } from '../values.js';
+import { computeReminderFingerprint } from './reminder-fingerprint.js';
 import type { ReminderCommandDeps } from './reminder-port.js';
 import { writeReminder } from './reminder-write.js';
 
@@ -115,19 +116,24 @@ export async function createDeadlineApproachingReminderCommand(
   }
 
   const generateId = deps.generateId ?? generateUuidV7;
+  const localRuleJson = buildDeadlineLocalRuleJson(
+    'deadline_approaching',
+    deadlineDate,
+    input.deadlineTime,
+    firesAt,
+    offsetHours,
+  );
   const reminder: Reminder = {
     id: generateId(),
     taskId: input.taskId,
     kind: 'deadline_approaching',
-    localRuleJson: buildDeadlineLocalRuleJson(
-      'deadline_approaching',
-      deadlineDate,
-      input.deadlineTime,
-      firesAt,
-      offsetHours,
-    ),
+    localRuleJson,
     enabled: true,
-    scheduledFingerprint: '',
+    scheduledFingerprint: computeReminderFingerprint({
+      kind: 'deadline_approaching',
+      localRuleJson,
+      enabled: true,
+    }),
   };
 
   await writeReminder(reminder, deps);
@@ -160,19 +166,24 @@ export async function createDeadlineMissedReminderCommand(
       : effectiveDeadlineDateTime(deadlineDate, input.deadlineTime).add({ minutes: 15 });
 
   const generateId = deps.generateId ?? generateUuidV7;
+  const localRuleJson = buildDeadlineLocalRuleJson(
+    'deadline_missed',
+    deadlineDate,
+    input.deadlineTime,
+    firesAt,
+    null,
+  );
   const reminder: Reminder = {
     id: generateId(),
     taskId: input.taskId,
     kind: 'deadline_missed',
-    localRuleJson: buildDeadlineLocalRuleJson(
-      'deadline_missed',
-      deadlineDate,
-      input.deadlineTime,
-      firesAt,
-      null,
-    ),
+    localRuleJson,
     enabled: true,
-    scheduledFingerprint: '',
+    scheduledFingerprint: computeReminderFingerprint({
+      kind: 'deadline_missed',
+      localRuleJson,
+      enabled: true,
+    }),
   };
 
   await writeReminder(reminder, deps);
