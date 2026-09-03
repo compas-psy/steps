@@ -87,6 +87,7 @@ describe('@shagi/platform', () => {
         'fileStore',
         'secureCredentials',
         'notificationScheduler',
+        'exactAlarmSettings',
         'deepLink',
         'share',
         'globalShortcut',
@@ -134,10 +135,10 @@ describe('@shagi/platform', () => {
   });
 
   describe('PlatformCapabilitiesRegistry', () => {
-    it('содержит ровно 16 портов', () => {
+    it('содержит ровно 17 портов', () => {
       const platform = createUnavailablePlatform();
       const keys = Object.keys(platform);
-      expect(keys).toHaveLength(16);
+      expect(keys).toHaveLength(17);
     });
 
     it('содержит все требуемые в ТЗ порты', () => {
@@ -148,6 +149,7 @@ describe('@shagi/platform', () => {
         'fileStore',
         'secureCredentials',
         'notificationScheduler',
+        'exactAlarmSettings',
         'deepLink',
         'share',
         'globalShortcut',
@@ -177,6 +179,7 @@ describe('@shagi/platform', () => {
         'fileStore',
         'secureCredentials',
         'notificationScheduler',
+        'exactAlarmSettings',
         'deepLink',
         'share',
         'globalShortcut',

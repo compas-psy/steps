@@ -202,7 +202,7 @@ import {
   type TemporalConflictType,
   type TimeValue,
 } from '@shagi/ui';
-import { isAvailable } from '@shagi/platform';
+import { isAvailable, type NotificationPrecision } from '@shagi/platform';
 
 import { useAppController, useHost, useStorage } from '../state/context.js';
 import { reconcileReminderScheduleForTask } from '../state/reminder-reconciliation.js';
@@ -907,6 +907,13 @@ export function TaskDetail(): ReactElement | null {
   const [explicitReminder, setExplicitReminder] = useState<Reminder | null>(null);
   const [reminderPicker, setReminderPicker] = useState<ReminderPickerState | null>(null);
   const [reminderError, setReminderError] = useState<string | null>(null);
+  /** ST10 (Task B6, SPEC §18/§11.1) — точность, с которой платформа реально
+   * может запланировать напоминание; `null` до первой реконсиляции этого
+   * экрана (см. `reconcileTaskReminders`), не запрошена заранее при
+   * монтировании — запрос заранее (не just-in-time) запрещён §18. */
+  const [schedulingPrecision, setSchedulingPrecision] = useState<NotificationPrecision | null>(
+    null,
+  );
 
   const descriptionRef = useRef<HTMLTextAreaElement>(null);
 
@@ -1031,7 +1038,16 @@ export function TaskDetail(): ReactElement | null {
    * дешёвый путь по ОДНОЙ задаче (`reconcileReminderScheduleForTask`,
    * Task A3), не полный скан workspace. `Unavailable` (тестовый режим/
    * платформа без нативных уведомлений) молча пропускается — тот же
-   * приём, что boot-эффекты `App.tsx`. */
+   * приём, что boot-эффекты `App.tsx`.
+   *
+   * **Task B6 (ST10).** Сразу после реконсиляции — ОДИН вызов
+   * `getSchedulingCapability()`, результат уходит в `schedulingPrecision`
+   * (не на каждый keystroke: этот метод и так вызывается только из
+   * дискретных обработчиков команд экрана, не из живого ввода). Именно
+   * здесь, а не отдельным эффектом при монтировании экрана — тот же повод,
+   * что у самой реконсиляции: желаемое состояние (и то, способна ли
+   * платформа его точно обещать) достоверно ровно после того, как
+   * `create`/`cancel` reminder уже применились к хранилищу. */
   async function reconcileTaskReminders(targetTaskId: Uuid): Promise<void> {
     const scheduler = host.platform.notificationScheduler;
     if (!isAvailable(scheduler)) return;
@@ -1042,6 +1058,7 @@ export function TaskDetail(): ReactElement | null {
       Temporal.Now.plainDateTimeISO(),
       Temporal.Now.timeZoneId(),
     );
+    setSchedulingPrecision(await scheduler.getSchedulingCapability());
   }
 
   function attachLabelDeps(): {
@@ -2011,6 +2028,37 @@ export function TaskDetail(): ReactElement | null {
               }
             />
             {reminderError !== null && <p>{reminderError}</p>}
+
+            {/* ST10 (Task B6, `01§18`/`00§11.1`) — just-in-time disclosure,
+             * НЕ upfront-запрос при первом запуске: показывается только
+             * после того, как реконсиляция (`reconcileTaskReminders`) уже
+             * реально спросила платформу и получила честный `'inexact'`, и
+             * только пока на задаче есть активное напоминание (без него
+             * пониженная точность ничего для этого человека прямо сейчас
+             * не значит). Кнопка — только когда `exactAlarmSettings`
+             * реально доступен (`isAvailable`, тот же идиом, что
+             * `DataPrivacy.tsx` `isAvailable(scheduler)`) — на платформах
+             * без системного экрана настроек (Web/Windows) её попросту
+             * негде показывать. */}
+            {schedulingPrecision === 'inexact' && explicitReminder !== null && (
+              <PlanningRow
+                title={t('taskDetail', 'planning.reminder.inexactNotice')}
+                actions={
+                  isAvailable(host.platform.exactAlarmSettings) && (
+                    <Button
+                      variant="secondary"
+                      onClick={() => {
+                        if (isAvailable(host.platform.exactAlarmSettings)) {
+                          void host.platform.exactAlarmSettings.openSettings();
+                        }
+                      }}
+                    >
+                      {t('taskDetail', 'planning.reminder.openExactAlarmSettings')}
+                    </Button>
+                  )
+                }
+              />
+            )}
           </CardBody>
         </Card>
 

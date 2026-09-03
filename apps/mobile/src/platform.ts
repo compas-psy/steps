@@ -28,7 +28,13 @@
  *    проверка `canScheduleExactAlarms()`) — разрешения из
  *    `android-permissions.txt` (`POST_NOTIFICATIONS`/`SCHEDULE_EXACT_ALARM`/
  *    `USE_EXACT_ALARM`/`RECEIVE_BOOT_COMPLETED`) теперь используются, а не
- *    просто зарезервированы.
+ *    просто зарезервированы;
+ *  - `exactAlarmSettings` — ST10 (Task B6): тот же `tauri-plugin-alarm-
+ *    capability`, вторая его команда — `open_exact_alarm_settings`
+ *    (`ACTION_REQUEST_SCHEDULE_EXACT_ALARM`), открывает системный экран,
+ *    куда экран задачи ведёт человека, когда `getSchedulingCapability()`
+ *    честно вернула `'inexact'` (SPEC §18/§11.1 — just-in-time, не
+ *    upfront-запрос при первом запуске).
  *
  * `Unavailable` с причиной — всё остальное:
  *  - `localDb`/`fileStore` — `@shagi/storage`, ещё не поставлен;
@@ -44,6 +50,7 @@
  *    пакете работ; R1/R1.1/R3 соответственно.
  */
 import type { PlatformCapabilitiesRegistry, Unavailable } from '@shagi/platform';
+import { invoke } from '@tauri-apps/api/core';
 import { onOpenUrl } from '@tauri-apps/plugin-deep-link';
 import { createNotificationBridge } from './notification-bridge.js';
 
@@ -146,6 +153,15 @@ export function createMobilePlatform(): PlatformCapabilitiesRegistry {
     fileStore: unavailable('Вложения — R1b (SPEC/00 §10)'),
     secureCredentials: unavailable('Аккаунта и синка в R1a нет — нечего защищённо хранить'),
     notificationScheduler: createNotificationBridge(),
+    // Task B6 (ST10): именно та же `tauri-plugin-alarm-capability` (Task
+    // B3), тот же `invoke('plugin:alarm-capability|<команда>')` формат, что
+    // `notification-bridge.ts` уже использует для `can_schedule_exact` —
+    // команда подтверждена тем же чтением `build.rs` установленного крейта
+    // (см. её комментарий): `open_exact_alarm_settings` соседствует с
+    // `can_schedule_exact` в списке `COMMANDS`.
+    exactAlarmSettings: {
+      openSettings: () => invoke('plugin:alarm-capability|open_exact_alarm_settings'),
+    },
     deepLink: createDeepLink(),
     share: unavailable(
       'ACTION_SEND через нативный intent не реализован в этом пакете работ — Android SDK недоступен в контейнере, чтобы это проверить',

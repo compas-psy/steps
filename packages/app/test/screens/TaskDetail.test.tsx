@@ -55,7 +55,14 @@ function testHost(): AppHost {
  * напоминанием, чтобы проверить именно `scheduler.cancel`, а не
  * `scheduler.schedule` (idempotency-путь Task A3 не трогает уже
  * запланированный id). */
-function fakeScheduler(initialScheduled: readonly string[] = []): NotificationSchedulerPort & {
+/** `capability` (Task B6, ST10) — по умолчанию `'exact'`, тот же честный
+ * ответ, что и раньше для всех уже существующих тестов этого файла; тесты
+ * disclosure ниже передают `'inexact'`, чтобы проверить именно реакцию
+ * экрана на пониженную точность, а не поведение самого фейка. */
+function fakeScheduler(
+  initialScheduled: readonly string[] = [],
+  capability: NotificationPrecision = 'exact',
+): NotificationSchedulerPort & {
   calls: { scheduled: string[]; cancelled: string[] };
 } {
   const scheduled = new Map<string, ScheduledNotificationSnapshot>(
@@ -92,7 +99,7 @@ function fakeScheduler(initialScheduled: readonly string[] = []): NotificationSc
       return Array.from(scheduled.values());
     },
     async getSchedulingCapability(): Promise<NotificationPrecision> {
-      return 'exact';
+      return capability;
     },
   };
 }
@@ -846,6 +853,98 @@ describe('TaskDetail — Explicit Reminder: реконсиляция распи�
     );
 
     await waitFor(() => expect(scheduler.calls.cancelled).toEqual([reminder.id]));
+  });
+});
+
+describe('TaskDetail — ST10: capability notice для inexact alarm (Task B6, `01§18`/`00§11.1`)', () => {
+  it('после создания напоминания на платформе, где getSchedulingCapability вернула inexact, показывает disclosure с кнопкой настроек', async () => {
+    const user = userEvent.setup();
+    const scheduler = fakeScheduler([], 'inexact');
+    const openSettings = vi.fn(async () => undefined);
+    const host: AppHost = {
+      platform: {
+        ...createUnavailablePlatform(),
+        notificationScheduler: scheduler,
+        exactAlarmSettings: { openSettings },
+      },
+      storageBackend: { kind: 'memory' },
+    };
+    const task = makeTask({ title: 'Без напоминания' });
+    renderTaskDetail(task.id, { tasks: [task] }, 'todayEmpty', host);
+
+    // До создания напоминания — экран ещё не спрашивал платформу
+    // (just-in-time, не upfront-запрос §18), disclosure не показан.
+    expect(
+      screen.queryByText(t('taskDetail', 'planning.reminder.inexactNotice')),
+    ).not.toBeInTheDocument();
+
+    await user.click(
+      await screen.findByRole('button', { name: t('taskDetail', 'planning.reminder.add') }),
+    );
+    // Следующий месяц — тот же приём, что и соседний тест реконсиляции
+    // выше: «сегодня в полночь» уже в прошлом относительно момента
+    // запуска теста, а `createExplicitReminderCommand` не примет дату в
+    // прошлом.
+    await user.click(
+      screen.getByRole('button', { name: t('taskDetail', 'planning.picker.nextMonth') }),
+    );
+    const [firstDayOfNextMonth] = await screen.findAllByRole('gridcell');
+    if (firstDayOfNextMonth === undefined) throw new Error('ожидалась хотя бы одна ячейка');
+    await user.click(firstDayOfNextMonth);
+    await user.click(
+      screen.getByRole('button', { name: t('taskDetail', 'planning.reminder.save') }),
+    );
+
+    await waitFor(() =>
+      expect(
+        screen.getByText(t('taskDetail', 'planning.reminder.inexactNotice')),
+      ).toBeInTheDocument(),
+    );
+
+    await user.click(
+      screen.getByRole('button', {
+        name: t('taskDetail', 'planning.reminder.openExactAlarmSettings'),
+      }),
+    );
+    expect(openSettings).toHaveBeenCalledTimes(1);
+  });
+
+  it('без exactAlarmSettings на платформе (Web/Windows) disclosure показывается без кнопки настроек (isAvailable-гвард)', async () => {
+    const user = userEvent.setup();
+    const scheduler = fakeScheduler([], 'inexact');
+    const host: AppHost = {
+      // `exactAlarmSettings` намеренно НЕ переопределён — остаётся
+      // `Unavailable` из `createUnavailablePlatform()`, тот же случай, что
+      // `apps/web|desktop/src/platform.ts` этой задачи.
+      platform: { ...createUnavailablePlatform(), notificationScheduler: scheduler },
+      storageBackend: { kind: 'memory' },
+    };
+    const task = makeTask({ title: 'Без напоминания' });
+    renderTaskDetail(task.id, { tasks: [task] }, 'todayEmpty', host);
+
+    await user.click(
+      await screen.findByRole('button', { name: t('taskDetail', 'planning.reminder.add') }),
+    );
+    await user.click(
+      screen.getByRole('button', { name: t('taskDetail', 'planning.picker.nextMonth') }),
+    );
+    const [firstDayOfNextMonth] = await screen.findAllByRole('gridcell');
+    if (firstDayOfNextMonth === undefined) throw new Error('ожидалась хотя бы одна ячейка');
+    await user.click(firstDayOfNextMonth);
+    await user.click(
+      screen.getByRole('button', { name: t('taskDetail', 'planning.reminder.save') }),
+    );
+
+    await waitFor(() =>
+      expect(
+        screen.getByText(t('taskDetail', 'planning.reminder.inexactNotice')),
+      ).toBeInTheDocument(),
+    );
+    expect(
+      screen.queryByRole('button', {
+        name: t('taskDetail', 'planning.reminder.openExactAlarmSettings'),
+      }),
+    ).not.toBeInTheDocument();
   });
 });
 

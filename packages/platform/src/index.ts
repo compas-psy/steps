@@ -285,6 +285,42 @@ export interface NotificationSchedulerPort {
 }
 
 /**
+ * `ExactAlarmSettingsPort` — интерфейс перехода в системные настройки
+ * точных будильников (Android `ACTION_REQUEST_SCHEDULE_EXACT_ALARM`,
+ * `05§3.1`).
+ *
+ * Отдельный порт, а не метод на `NotificationSchedulerPort`: открытие
+ * системного экрана настроек — это НЕ планирование уведомлений (другая
+ * природа действия, другое разрешение, `SCHEDULE_EXACT_ALARM` вместо
+ * `POST_NOTIFICATIONS`), и на платформах без этого системного экрана
+ * (Web, Windows) сама возможность отсутствует целиком, а не просто
+ * недоступна одна операция уже существующего порта — тот же принцип
+ * декомпозиции портов, что уже применён для `GlobalShortcutPort`/
+ * `HapticsPort` (узкие, платформенно-специфичные интерфейсы вместо одного
+ * разрастающегося).
+ *
+ * Ключевое требование (SPEC §18/§11.1): именно this UI just-in-time
+ * disclosure — «не смогли запросить точный будильник» → «открыть
+ * настройки» — заменяет запрос разрешения при первом запуске,
+ * запрещённый §18/§11.1.
+ *
+ * Поддержка: Android (когда `NotificationSchedulerPort.
+ * getSchedulingCapability()` вернул `'inexact'`).
+ * Недоступность: Web, Windows, iOS, macOS — нет эквивалентного системного
+ * экрана «точные будильники для этого приложения».
+ */
+export interface ExactAlarmSettingsPort {
+  /**
+   * Открыть системный экран настроек точных будильников для этого
+   * приложения. На Android это `ACTION_REQUEST_SCHEDULE_EXACT_ALARM`
+   * intent — человек сам решает, выдавать разрешение или нет; порт не
+   * читает и не ждёт результат (симметрично с тем, что делает нативная ОС
+   * с этим intent — она не возвращает решение синхронно вызывающему коду).
+   */
+  openSettings(): Promise<void>;
+}
+
+/**
  * `DeepLinkPort` — интерфейс обработки глубоких ссылок.
  *
  * На нативе это intent/URL scheme; на Web это fragment routing.
@@ -602,6 +638,7 @@ export interface PlatformCapabilitiesRegistry {
   readonly fileStore: FileStorePort | Unavailable;
   readonly secureCredentials: SecureCredentialsPort | Unavailable;
   readonly notificationScheduler: NotificationSchedulerPort | Unavailable;
+  readonly exactAlarmSettings: ExactAlarmSettingsPort | Unavailable;
   readonly deepLink: DeepLinkPort | Unavailable;
   readonly share: SharePort | Unavailable;
   readonly globalShortcut: GlobalShortcutPort | Unavailable;
@@ -643,6 +680,7 @@ export function createUnavailablePlatform(): PlatformCapabilitiesRegistry {
     fileStore: unavailable,
     secureCredentials: unavailable,
     notificationScheduler: unavailable,
+    exactAlarmSettings: unavailable,
     deepLink: unavailable,
     share: unavailable,
     globalShortcut: unavailable,

@@ -50,6 +50,7 @@ describe('createWebPlatform', () => {
     const expectedUnavailable = [
       'fileStore',
       'secureCredentials',
+      'exactAlarmSettings',
       'globalShortcut',
       'haptics',
       'widget',
