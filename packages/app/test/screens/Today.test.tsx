@@ -244,6 +244,7 @@ function renderTodayWithController(tasks: readonly Task[]): {
 function renderTodayCapturingStorageWithSeries(
   tasks: readonly Task[],
   series: readonly RecurrenceSeries[],
+  host: AppHost = testHost(),
 ): () => StoragePort {
   const controller = createAppController({ screen: 'todayEmpty' });
   let capturedStorage: StoragePort | undefined;
@@ -273,7 +274,7 @@ function renderTodayCapturingStorageWithSeries(
   }
 
   render(
-    <AppProvider host={testHost()} controller={controller}>
+    <AppProvider host={host} controller={controller}>
       <SeedThenTodayWithSeries />
     </AppProvider>,
   );
@@ -1155,6 +1156,109 @@ describe('Today — повторы (E11.2)', () => {
     expect(stored?.status).toBe('completed');
     expect(stored?.completionKind).toBe('done');
     expect(stored?.seriesId).toBeNull();
+  });
+});
+
+describe('Today — реконсиляция расписания напоминаний после завершения (00§7 шаг 5, Task A4 fix1)', () => {
+  it('чекбокс завершает НЕ-recurring задачу с активным напоминанием — completeOccurrenceCommand отменяет его в scheduler', async () => {
+    const user = userEvent.setup();
+    const task = makeTask({ title: 'Обычная с напоминанием', plannedDate: TODAY });
+    const reminder = makeExplicitReminder(task.id);
+    // Уже «запланировано» до монтирования (см. `fakeScheduler`) — тест
+    // проверяет именно `cancel`, не побочный `schedule`.
+    const scheduler = fakeScheduler([reminder.id]);
+    const host: AppHost = {
+      platform: { ...createUnavailablePlatform(), notificationScheduler: scheduler },
+      storageBackend: { kind: 'memory' },
+    };
+    const getStorage = renderTodayCapturingStorageWithSeries([task], [], host);
+
+    await waitFor(() => expect(screen.getByText('Обычная с напоминанием')).toBeInTheDocument());
+    await seedReminder(getStorage(), reminder);
+
+    await user.click(screen.getByRole('checkbox', { name: 'Обычная с напоминанием' }));
+
+    await waitFor(() => expect(scheduler.calls.cancelled).toEqual([reminder.id]));
+  });
+
+  it('чекбокс завершает recurring-задачу с активным напоминанием — completeOccurrenceCommand отменяет его в scheduler', async () => {
+    const user = userEvent.setup();
+    const series = seedRecurrenceSeries();
+    const task = makeTask({
+      title: 'Полив с напоминанием',
+      plannedDate: TODAY,
+      seriesId: series.id,
+      occurrenceSeq: 1n,
+    });
+    const reminder = makeExplicitReminder(task.id);
+    const scheduler = fakeScheduler([reminder.id]);
+    const host: AppHost = {
+      platform: { ...createUnavailablePlatform(), notificationScheduler: scheduler },
+      storageBackend: { kind: 'memory' },
+    };
+    const getStorage = renderTodayCapturingStorageWithSeries([task], [series], host);
+
+    await waitFor(() => expect(screen.getByText('Полив с напоминанием')).toBeInTheDocument());
+    await seedReminder(getStorage(), reminder);
+
+    await user.click(screen.getByRole('checkbox', { name: 'Полив с напоминанием' }));
+
+    await waitFor(() => expect(scheduler.calls.cancelled).toEqual([reminder.id]));
+  });
+
+  it('массовое завершение (completeManyCommand, НЕ-recurring) отменяет напоминания всех завершённых задач', async () => {
+    const user = userEvent.setup();
+    const first = makeTask({ title: 'Массовая А с напоминанием', plannedDate: TODAY });
+    const second = makeTask({ title: 'Массовая Б с напоминанием', plannedDate: TODAY });
+    const reminderA = makeExplicitReminder(first.id);
+    const reminderB = makeExplicitReminder(second.id);
+    const scheduler = fakeScheduler([reminderA.id, reminderB.id]);
+    const host: AppHost = {
+      platform: { ...createUnavailablePlatform(), notificationScheduler: scheduler },
+      storageBackend: { kind: 'memory' },
+    };
+    const getStorage = renderTodayCapturingStorage([first, second], host);
+
+    await waitFor(() => expect(screen.getByText('Массовая А с напоминанием')).toBeInTheDocument());
+    await seedReminder(getStorage(), reminderA);
+    await seedReminder(getStorage(), reminderB);
+    await user.click(screen.getByRole('button', { name: t('today', 'selection.enter') }));
+    await user.click(screen.getByRole('checkbox', { name: 'Массовая А с напоминанием' }));
+    await user.click(screen.getByRole('checkbox', { name: 'Массовая Б с напоминанием' }));
+    // Ни у одной из двух задач нет активных детей — `previewBulkCompletion`
+    // не требует подтверждения (`needsConfirmation`), поэтому клик по
+    // `bulk.complete` уходит сразу в `runBulkComplete`, без диалога.
+    await user.click(screen.getByRole('button', { name: t('today', 'bulk.complete') }));
+
+    await waitFor(() =>
+      expect(new Set(scheduler.calls.cancelled)).toEqual(new Set([reminderA.id, reminderB.id])),
+    );
+  });
+
+  it('массовое завершение с recurring-задачей в выборе отменяет и её напоминание (ветка skippedRecurringIds)', async () => {
+    const user = userEvent.setup();
+    const series = seedRecurrenceSeries();
+    const recurring = makeTask({
+      title: 'Повтор в массовом выборе',
+      plannedDate: TODAY,
+      seriesId: series.id,
+      occurrenceSeq: 1n,
+    });
+    const reminder = makeExplicitReminder(recurring.id);
+    const scheduler = fakeScheduler([reminder.id]);
+    const host: AppHost = {
+      platform: { ...createUnavailablePlatform(), notificationScheduler: scheduler },
+      storageBackend: { kind: 'memory' },
+    };
+    const getStorage = renderTodayCapturingStorageWithSeries([recurring], [series], host);
+
+    await waitFor(() => expect(screen.getByText('Повтор в массовом выборе')).toBeInTheDocument());
+    await seedReminder(getStorage(), reminder);
+    await user.click(screen.getByRole('button', { name: t('today', 'selection.enter') }));
+    await user.click(screen.getByRole('checkbox', { name: 'Повтор в массовом выборе' }));
+    await user.click(screen.getByRole('button', { name: t('today', 'bulk.complete') }));
+
+    await waitFor(() => expect(scheduler.calls.cancelled).toEqual([reminder.id]));
   });
 });
 

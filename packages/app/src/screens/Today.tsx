@@ -950,12 +950,21 @@ export function Today(): ReactElement {
   /** Общий разбор исхода команды (задание: "Обработай `status !== 'ok'` от
    * команд ... тихая ошибка недопустима"). `not_found`/`rejected` не
    * притворяются успехом — список не перезапрашивается, пользователь видит
-   * `Toast`. */
-  async function runCommand(promise: Promise<TaskCommandResult>): Promise<void> {
+   * `Toast`. `afterOk` — необязательный постфикс ПОСЛЕ перезапроса списка,
+   * только для команд, которым он реально нужен (реконсиляция напоминаний
+   * после `completeOccurrenceCommand` — `handlers.onComplete` ниже, 00§7
+   * шаг 5) — остальные вызовы `runCommand`
+   * (`onRescheduleToday`/`onRescheduleTomorrow`/метки) его не передают и не
+   * заводят лишнего похода к `NotificationSchedulerPort`. */
+  async function runCommand(
+    promise: Promise<TaskCommandResult>,
+    afterOk?: () => Promise<void>,
+  ): Promise<void> {
     const result = await promise;
     if (result.status === 'ok') {
       setErrorMessage(null);
       await refreshGroups();
+      if (afterOk !== undefined) await afterOk();
       return;
     }
     setErrorMessage(t('today', 'errors.actionFailed'));
@@ -1148,12 +1157,27 @@ export function Today(): ReactElement {
     setBulkCompletion(null);
     const result = await completeManyCommand({ ids }, commandDeps());
     let anyFailed = result.status !== 'ok';
+    if (result.status === 'ok') {
+      // `result.completedIds`, не входной `ids` — `completeManyCommand`
+      // одной транзакцией завершает ещё и каскадных детей сверх явного
+      // выбора (`additionalChildCount`, см. её комментарий), у которых
+      // тоже мог быть собственный reminder; `ids` этого расширения не
+      // отражает (00§7 шаг 5).
+      for (const id of result.completedIds) {
+        // eslint-disable-next-line no-await-in-loop -- последовательно, тот же приём, что `runBulkDelete` рядом
+        await reconcileTaskReminders(id);
+      }
+    }
     for (const id of result.skippedRecurringIds) {
       const occurrence = await completeOccurrenceCommand(
         { id, occurrenceLocalDate: Temporal.Now.plainDateISO() },
         commandDeps(),
       );
-      if (occurrence.status !== 'ok') anyFailed = true;
+      if (occurrence.status !== 'ok') {
+        anyFailed = true;
+        continue;
+      }
+      await reconcileTaskReminders(id);
     }
     await refreshGroups();
     setSelection({ active: false, selectedIds: new Set() });
@@ -1176,6 +1200,7 @@ export function Today(): ReactElement {
           { id, occurrenceLocalDate: Temporal.Now.plainDateISO() },
           commandDeps(),
         ),
+        () => reconcileTaskReminders(id),
       );
     },
     onRescheduleToday: (id) => {
