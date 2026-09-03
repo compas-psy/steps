@@ -628,10 +628,20 @@ async function main() {
 
   const erased = inspectDatabase(pullDatabase('after-erase'));
   console.log(`База после стирания: ${JSON.stringify(erased)}`);
-  if (erased.tasks !== 0 || erased.tombstones !== 0 || erased.outbox !== 0) {
+  // M52-регресс (найден этим же прогоном ранее): eraseAllLocalData падала
+  // FOREIGN KEY constraint failed на DELETE FROM "tasks", и НИ ОДНА из этих
+  // таблиц не очищалась — проверяем весь FK-граф, не только tasks/outbox.
+  const dirty = Object.entries({
+    tasks: erased.tasks,
+    tombstones: erased.tombstones,
+    labels: erased.labels,
+    taskLabels: erased.taskLabels,
+    recurrenceSeries: erased.recurrenceSeries,
+    outbox: erased.outbox,
+  }).filter(([, count]) => count !== 0);
+  if (dirty.length > 0) {
     fail(
-      `eraseAllLocalData не очистил нативную базу: задач ${erased.tasks}, ` +
-        `tombstone ${erased.tombstones}, очередь ${erased.outbox}`,
+      `eraseAllLocalData не очистила нативную базу: ${dirty.map(([k, v]) => `${k}=${v}`).join(', ')}`,
     );
   }
   if (!erased.tables.includes('tasks')) {
