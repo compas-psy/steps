@@ -18,6 +18,7 @@ mod sqlite;
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_deep_link::init())
+        .plugin(tauri_plugin_notification::init())
         .manage(sqlite::SqliteState::default())
         .invoke_handler(tauri::generate_handler![
             sqlite::sqlite_open,

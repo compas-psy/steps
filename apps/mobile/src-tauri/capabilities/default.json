@@ -4,5 +4,5 @@
   "description": "Права главного окна Android-оболочки. Единственный подключённый плагин — deep-link (SPEC §4, DeepLinkPort); haptics/networkStatus идут через Web API прямо из WebView и прав плагина не требуют (см. src/platform.ts).",
   "platforms": ["android"],
   "windows": ["main"],
-  "permissions": ["core:default", "core:event:default", "deep-link:default"]
+  "permissions": ["core:default", "core:event:default", "deep-link:default", "notification:default"]
 }
