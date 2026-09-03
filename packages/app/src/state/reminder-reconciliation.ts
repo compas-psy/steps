@@ -1,6 +1,6 @@
 import { Temporal } from '@js-temporal/polyfill';
-import type { Reminder, Task, Uuid } from '@shagi/core';
-import type { NotificationSchedulerPort } from '@shagi/platform';
+import { toZonedDateTime, type Reminder, type Task, type Uuid } from '@shagi/core';
+import type { NotificationSchedulerPort, ScheduledNotificationSnapshot } from '@shagi/platform';
 import type { StoragePort } from '@shagi/storage';
 
 /**
@@ -74,6 +74,49 @@ function readFiresAt(reminder: Reminder): Temporal.PlainDateTime | null {
 }
 
 /**
+ * Сравнение двух `Temporal.Instant` для дименсии 2 (`applyReconciliation`
+ * ниже) — округлено до секунды, не точное `Instant.equals()` (Task A6, Шаг
+ * 1 брифа — решение зафиксировано здесь, не угадано втихую).
+ *
+ * Почему не точное равенство: обе стороны сравнения В ЭТОМ пакете работ
+ * ДЕЙСТВИТЕЛЬНО совпадают побитово при одинаковых date/time/timezone —
+ * `desiredInstant` здесь и `scheduledAt` веб-адаптера
+ * (`apps/web/src/platform.ts`) оба получены одним и тем же путём,
+ * `PlainDate.toZonedDateTime(...).toInstant()`, целочисленная арифметика
+ * Temporal без плавающей точки. Округление тем не менее нужно, потому что
+ * этот компаратор не привязан к одному-единственному адаптеру: снимок
+ * `listScheduled()` по контракту порта (`packages/platform`) может прийти
+ * от ЛЮБОЙ платформы, а Android-адаптер (Task B4, вне этого пакета работ)
+ * получит `scheduledAt` из Kotlin/JNI `PendingNotification`, конвертация
+ * через который не гарантированно бесшовна с Temporal (лишний проход через
+ * `Date`/epoch-millis на границе рантаймов — источник ровно того шума,
+ * которого здесь нет сегодня, но который эта функция обязана пережить не
+ * ломаясь). Секунда — тот же порядок, что минимальный шаг пользовательского
+ * времени в этом продукте (целые минуты, CLAUDE.md, «Время») — 60-кратный
+ * запас над реальным шумом округления и всё ещё многократно меньше любого
+ * ЗНАЧИМОГО дрейфа (смена таймзоны сдвигает момент на десятки минут-часы,
+ * правка времени пользователем — минимум на минуту), так что настоящий
+ * дрейф эта функция не замаскирует. Реальная точность Android-адаптера —
+ * задача Task B8 (эмпирическая проверка на устройстве), не этой.
+ */
+function instantsMatch(a: Temporal.Instant, b: Temporal.Instant): boolean {
+  return a.round({ smallestUnit: 'second' }).equals(b.round({ smallestUnit: 'second' }));
+}
+
+/**
+ * Момент срабатывания напоминания, разрешённый в АБСОЛЮТНЫЙ `Instant` в
+ * ТЕКУЩЕЙ таймзоне устройства (`01§19`) — дименсия 2 сравнения ниже.
+ * `toZonedDateTime` (`@shagi/core`, `temporal/timezone.ts`) — тот же
+ * единственный в кодовой базе конвертер `PlainDate+PlainTime|null+IANA →
+ * ZonedDateTime`, что уже использует веб-адаптер (`apps/web/src/
+ * platform.ts`) для вычисления `delayMs`; переиспользован, не продублирован
+ * (Шаг 1 брифа этой задачи).
+ */
+function resolveDesiredInstant(target: Temporal.PlainDateTime, timezone: string): Temporal.Instant {
+  return toZonedDateTime(target.toPlainDate(), target.toPlainTime(), timezone).toInstant();
+}
+
+/**
  * Полный список желаемых напоминаний рабочего пространства (полный скан).
  * `ReminderRepository.listAllEnabled()` (Task A3 Шаг 2, `@shagi/storage`)
  * даёт только `enabled=true` строки — дальше N+1 по `findById` задачи/
@@ -129,18 +172,28 @@ async function desiredRemindersForTask(
  * делает, `apps/web/src/platform.ts` `delayMs <= 0 return`; Android-адаптер
  * из Phase B обязан вести себя так же — проверяется в Task B-тесте).
  *
- * Идемпотентность (см. PRE-FLIGHT RULING в брифе Task A3): желаемое
- * напоминание, чей `id` уже есть в `listScheduled()`, НЕ перепланируется —
- * функция сознательно не читает и не пишет `Reminder.scheduledFingerprint`.
- * Это безопасно ровно потому, что ни один путь текущего командного слоя не
- * мутирует `localRuleJson`/`enabled` на месте у РАЗРЕШЁННОЙ (тот же id,
- * остаётся `enabled`) строки: `cancelReminderCommand` гасит `enabled` на
- * той же строке (что уводит её из `desired` целиком — не "пропуск", а
- * настоящая отмена ниже), а "редактирование" (`TaskDetail.tsx`
- * `handleSubmitReminder`) — это `cancelReminderCommand` + свежий
- * `createExplicitReminderCommand` с НОВЫМ `generateId()`, то есть новый id.
- * Если будущая команда когда-нибудь начнёт мутировать `firesAt` на месте
- * того же id, это допущение нужно пересмотреть — не переоткрывать молча.
+ * Идемпотентность БЕЗ персистентного состояния (Task A6 — третья и
+ * финальная редакция дизайна, заменяет PRE-FLIGHT RULING брифа Task A3):
+ * желаемое напоминание, чей `id` уже есть в `listScheduled()` И чьи
+ * содержимое (`title`) и разрешённый момент (`scheduledAt`) СОВПАДАЮТ с
+ * заново вычисленным желаемым состоянием — настоящий no-op, платформа не
+ * дёргается. Функция сознательно не читает и не пишет
+ * `Reminder.scheduledFingerprint` (подробный разбор — `commands/
+ * reminder-fingerprint.ts` в `@shagi/core`): персистентный снимок желаемого
+ * сам может устареть (переименование задачи ничего в нём не пересчитывает
+ * задним числом) точно так же, как устаревало старое чистое id-присутствие
+ * — единственный надёжный источник "актуально ли содержимое" это ЖИВОЙ
+ * пересчёт обеих сторон на каждый прогон, `applyReconciliation` ниже.
+ *
+ * Раньше (Task A3) "редактирование" (`TaskDetail.tsx`
+ * `handleSubmitReminder`: `cancelReminderCommand` + свежий
+ * `createExplicitReminderCommand` с НОВЫМ `id`) было ЕДИНСТВЕННЫМ способом
+ * увидеть смену `firesAt` у reconciliation — само по себе чистое
+ * id-присутствие не заметило бы мутацию на месте того же id. Это
+ * допущение реконсиляции больше не требуется для корректности (дименсия 2
+ * ловит и такую мутацию тоже), но остаётся верным описанием реального
+ * командного слоя сегодня — эта функция не проверяет мутацию `firesAt` на
+ * месте отдельно, потому что её сегодня ничто не производит.
  */
 export async function reconcileReminderSchedule(
   storage: StoragePort,
@@ -149,8 +202,8 @@ export async function reconcileReminderSchedule(
   timezone: string,
 ): Promise<ReconciliationSummary> {
   const desired = await desiredReminders(storage);
-  const currentlyScheduled = new Set(await scheduler.listScheduled());
-  return applyReconciliation(scheduler, desired, currentlyScheduled, nowLocal, timezone);
+  const actual = await scheduler.listScheduled();
+  return applyReconciliation(scheduler, desired, actual, nowLocal, timezone);
 }
 
 /**
@@ -158,15 +211,15 @@ export async function reconcileReminderSchedule(
  * после команд, меняющих расписание (Task A4, следующий пакет работ), без
  * полного скана хранилища (`desiredRemindersForTask`, не `listAllEnabled`).
  *
- * `currentlyScheduled` здесь — НЕ строки хранилища этой задачи (черновик
- * брифа предлагал именно так, но это ошибочно: свежесозданное, ещё ни разу
- * не запланированное напоминание тоже лежит в `listByTask`, и тогда
+ * `actual` здесь — НЕ строки хранилища этой задачи (черновик брифа Task A3
+ * предлагал именно так, но это ошибочно: свежесозданное, ещё ни разу не
+ * запланированное напоминание тоже лежит в `listByTask`, и тогда
  * `applyReconciliation` решил бы, что оно "уже согласовано", и НИКОГДА не
  * вызвал бы `schedule` — см. отчёт Task A3). Правильный источник истины тот
  * же, что у полного скана — реальный `scheduler.listScheduled()` — просто
- * пересечённый с id напоминаний ЭТОЙ задачи, чтобы не отменить чужие
- * (иначе `applyReconciliation` отменил бы любой чужой id платформы, которого
- * нет среди `desired` этой единственной задачи).
+ * отфильтрованный по id напоминаний ЭТОЙ задачи, чтобы не отменить чужие
+ * (иначе `applyReconciliation` отменил бы любой чужой снимок платформы,
+ * которого нет среди `desired` этой единственной задачи).
  */
 export async function reconcileReminderScheduleForTask(
   storage: StoragePort,
@@ -179,43 +232,73 @@ export async function reconcileReminderScheduleForTask(
   const taskReminderIds = new Set<string>(
     (await storage.reminders.listByTask(taskId)).map((r) => r.id),
   );
-  const scheduledIds = await scheduler.listScheduled();
-  const currentlyScheduled = new Set(scheduledIds.filter((id) => taskReminderIds.has(id)));
-  return applyReconciliation(scheduler, desired, currentlyScheduled, nowLocal, timezone);
+  const actualAll = await scheduler.listScheduled();
+  const actual = actualAll.filter((snapshot) => taskReminderIds.has(snapshot.reminderId));
+  return applyReconciliation(scheduler, desired, actual, nowLocal, timezone);
 }
 
 /**
  * Общее ядро обоих путей выше: отменить лишнее (запланировано, но больше не
- * желаемо), доспланировать недостающее (желаемо, но ещё не на платформе и
- * не просрочено). Последовательно (`for`, не `Promise.all`) — тот же
- * компромисс, что уже документирует `archiveProjectCommand`
- * (`project-archive.ts`, `@shagi/core`): нет batch-примитива у
- * `NotificationSchedulerPort`, а реминдеров на реконсиляцию мало.
+ * желаемо), доспланировать недостающее ИЛИ УСТАРЕВШЕЕ (желаемо, но либо ещё
+ * не на платформе, либо на платформе под другим содержимым — не просрочено).
+ * Последовательно (`for`, не `Promise.all`) — тот же компромисс, что уже
+ * документирует `archiveProjectCommand` (`project-archive.ts`,
+ * `@shagi/core`): нет batch-примитива у `NotificationSchedulerPort`, а
+ * реминдеров на реконсиляцию мало.
+ *
+ * Две независимые дименсии свежести (Task A6, владелец, финальная редакция
+ * — заголовок брифа этой задачи буквально называет их "two independent
+ * dimensions"):
+ *   1. payload — `actual.title` (реально осевший в системном уведомлении)
+ *      против `entry.title` (ЖИВОЙ заголовок задачи, тот же `findById`, что
+ *      уже сделан ради проверки её активности выше по стеку,
+ *      `desiredReminders`/`desiredRemindersForTask`).
+ *   2. разрешённый момент — `actual.scheduledAt` против `desiredInstant`,
+ *      вычисленного ЖИВЬЁМ из `firesAt` в ТЕКУЩЕЙ `timezone` этого прогона
+ *      (`resolveDesiredInstant`) — ловит дрейф после смены часового пояса
+ *      устройства без единой мутации `Reminder`/`Task` (`01§19`).
+ * Устарело (→ `schedule()`, замена), если id вообще отсутствует в `actual`
+ * ИЛИ различается ХОТЯ БЫ одна дименсия. Обе совпадают → настоящий no-op.
+ * `precision` снимка сюда намеренно НЕ входит третьей дименсией — заголовок
+ * задачи этой задачи говорит буквально о ДВУХ дименсиях, а не о трёх;
+ * поле в `ScheduledNotificationSnapshot` существует ради честного будущего
+ * применения (Android/Task B4), не декорация, но эта функция его не читает.
  */
 async function applyReconciliation(
   scheduler: NotificationSchedulerPort,
   desired: readonly DesiredEntry[],
-  currentlyScheduled: ReadonlySet<string>,
+  actual: readonly ScheduledNotificationSnapshot[],
   nowLocal: Temporal.PlainDateTime,
   timezone: string,
 ): Promise<ReconciliationSummary> {
   const scheduled: string[] = [];
   const cancelled: string[] = [];
   const desiredIds = new Set<string>(desired.map((entry) => entry.reminder.id));
+  const actualById = new Map<string, ScheduledNotificationSnapshot>(
+    actual.map((snapshot) => [snapshot.reminderId, snapshot]),
+  );
 
-  for (const id of currentlyScheduled) {
-    if (!desiredIds.has(id)) {
+  for (const snapshot of actualById.values()) {
+    if (!desiredIds.has(snapshot.reminderId)) {
       // eslint-disable-next-line no-await-in-loop -- см. комментарий выше функции
-      await scheduler.cancel(id);
-      cancelled.push(id);
+      await scheduler.cancel(snapshot.reminderId);
+      cancelled.push(snapshot.reminderId);
     }
   }
 
   for (const entry of desired) {
-    if (currentlyScheduled.has(entry.reminder.id)) continue; // уже запланировано под этим id — идемпотентность, не дёргаем платформу повторно
     const target = readFiresAt(entry.reminder);
     if (target === null) continue;
     if (Temporal.PlainDateTime.compare(target, nowLocal) <= 0) continue; // не реплеим просроченное
+
+    const existing = actualById.get(entry.reminder.id);
+    if (existing !== undefined) {
+      const desiredInstant = resolveDesiredInstant(target, timezone);
+      const titleMatches = existing.title === entry.title;
+      const instantMatches = instantsMatch(desiredInstant, existing.scheduledAt);
+      if (titleMatches && instantMatches) continue; // обе дименсии совпадают — настоящий no-op, платформу не дёргаем
+    }
+
     // eslint-disable-next-line no-await-in-loop -- см. комментарий выше функции
     await scheduler.schedule(
       entry.reminder.id,

@@ -7,6 +7,7 @@ import {
   type LocalPreferencesPort,
   type NotificationPrecision,
   type NotificationSchedulerPort,
+  type ScheduledNotificationSnapshot,
 } from '@shagi/platform';
 import { t } from '@shagi/i18n';
 
@@ -19,16 +20,28 @@ function testHost(): AppHost {
 /** Тот же фейк, что `test/state/reminder-reconciliation.test.ts` (Task A3,
  * бриф Task A4 указывает переиспользовать эту же форму) — платформа
  * целиком в памяти, считает вызовы для проверки «реконсиляция реально
- * прошла», не только «не упало». */
+ * прошла», не только «не упало». Снимок несёт реальные `title`/`scheduledAt`
+ * (Task A6) — тем же расчётом, что настоящий веб-адаптер
+ * (`apps/web/src/platform.ts`), иначе повторный прогон реконсиляции внутри
+ * теста видел бы "устаревшее содержимое" там, где раньше проверялось только
+ * присутствие id. */
 function fakeScheduler(): NotificationSchedulerPort & {
   calls: { scheduled: string[]; cancelled: string[]; listScheduled: number };
 } {
-  const scheduled = new Set<string>();
+  const scheduled = new Map<string, ScheduledNotificationSnapshot>();
   const calls = { scheduled: [] as string[], cancelled: [] as string[], listScheduled: 0 };
   return {
     calls,
-    async schedule(id) {
-      scheduled.add(id);
+    async schedule(id, title, date, time, timezone, precision) {
+      const target =
+        time === null
+          ? date.toZonedDateTime(timezone)
+          : date.toZonedDateTime({ timeZone: timezone, plainTime: time });
+      const snapshot: ScheduledNotificationSnapshot =
+        precision === undefined
+          ? { reminderId: id, title, scheduledAt: target.toInstant() }
+          : { reminderId: id, title, scheduledAt: target.toInstant(), precision };
+      scheduled.set(id, snapshot);
       calls.scheduled.push(id);
     },
     async cancel(id) {
@@ -37,7 +50,7 @@ function fakeScheduler(): NotificationSchedulerPort & {
     },
     async listScheduled() {
       calls.listScheduled += 1;
-      return Array.from(scheduled);
+      return Array.from(scheduled.values());
     },
     async getSchedulingCapability(): Promise<NotificationPrecision> {
       return 'exact';

@@ -7,6 +7,7 @@ import {
   createUnavailablePlatform,
   type NotificationPrecision,
   type NotificationSchedulerPort,
+  type ScheduledNotificationSnapshot,
 } from '@shagi/platform';
 import { t } from '@shagi/i18n';
 import { makeExplicitReminder, makeOutboxEntry, makeTask } from '@shagi/storage/contract';
@@ -28,12 +29,30 @@ function testHost(): AppHost {
 function fakeScheduler(initialScheduled: readonly string[] = []): NotificationSchedulerPort & {
   calls: { scheduled: string[]; cancelled: string[] };
 } {
-  const scheduled = new Set<string>(initialScheduled);
+  const scheduled = new Map<string, ScheduledNotificationSnapshot>(
+    initialScheduled.map((id) => [
+      id,
+      // Плейсхолдер: тесты, что сеют этим массивом, всегда делают задачу
+      // неактивной ДО проверки — сработавшая ветка реконсиляции здесь
+      // всегда `cancel` (сравнение только по присутствию id в desired,
+      // содержимое не участвует), поэтому title/scheduledAt плейсхолдера не
+      // влияют на исход ни одного теста этого файла (Task A6).
+      { reminderId: id, title: '', scheduledAt: Temporal.Instant.fromEpochMilliseconds(0) },
+    ]),
+  );
   const calls = { scheduled: [] as string[], cancelled: [] as string[] };
   return {
     calls,
-    async schedule(id) {
-      scheduled.add(id);
+    async schedule(id, title, date, time, timezone, precision) {
+      const target =
+        time === null
+          ? date.toZonedDateTime(timezone)
+          : date.toZonedDateTime({ timeZone: timezone, plainTime: time });
+      const snapshot: ScheduledNotificationSnapshot =
+        precision === undefined
+          ? { reminderId: id, title, scheduledAt: target.toInstant() }
+          : { reminderId: id, title, scheduledAt: target.toInstant(), precision };
+      scheduled.set(id, snapshot);
       calls.scheduled.push(id);
     },
     async cancel(id) {
@@ -41,7 +60,7 @@ function fakeScheduler(initialScheduled: readonly string[] = []): NotificationSc
       calls.cancelled.push(id);
     },
     async listScheduled() {
-      return Array.from(scheduled);
+      return Array.from(scheduled.values());
     },
     async getSchedulingCapability(): Promise<NotificationPrecision> {
       return 'exact';
