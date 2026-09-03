@@ -18,6 +18,18 @@ use mobile::AlarmCapability;
 pub enum Error {
     #[error(transparent)]
     Tauri(#[from] tauri::Error),
+    // `mobile.rs`'s `register_android_plugin()?`/`run_mobile_plugin()?` возвращают
+    // `Result<_, PluginInvokeError>`, не `tauri::Error` — без этого варианта `?`
+    // там не собирается (`E0277`, поймано только реальной Android-сборкой CI:
+    // этот cfg(mobile)-путь не компилируется на голом `cargo check` в песочнице
+    // без Android-таргета). `#[cfg(mobile)]` обязателен и на самом варианте —
+    // `tauri::plugin::mobile` — это модуль, САМ `#[cfg(mobile)]`-огороженный в
+    // `tauri`, его не существует под `cfg(desktop)` (это и уронило desktop-сборку
+    // при первой попытке без `cfg`). Тот же вариант и то же `cfg`, что и в
+    // `tauri-plugin-notification`'s собственном `src/error.rs`.
+    #[cfg(mobile)]
+    #[error(transparent)]
+    PluginInvoke(#[from] tauri::plugin::mobile::PluginInvokeError),
     #[error("SCHEDULE_EXACT_ALARM capability не поддержана на этой платформе")]
     UnsupportedPlatform,
 }
