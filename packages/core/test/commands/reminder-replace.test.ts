@@ -210,6 +210,71 @@ describe('replaceExplicitReminderCommand — Задача 3.2 (atomic rollback, 
   });
 });
 
+describe('replaceExplicitReminderCommand — hardening: canonical `old` по id, не слепое доверие input (владелец)', () => {
+  // Из `input.old` читается ТОЛЬКО `.id` — канонический reminder ищется в
+  // уже прочитанном `listByTask(input.taskId)`. Если он не найден, не
+  // `kind==='explicit'` или не `enabled` — `status:'stale'`, БЕЗ единой
+  // мутации storage. Не `rejected` (не про правило 19/34 — про то, что
+  // ссылка вызывающего кода устарела) и не throw (вызывающий код —
+  // обычный async React-обработчик, непойманный throw был бы ровно тем
+  // unhandled-rejection риском, что нашла Задача 4/ST10-расследование).
+
+  it('input.old ссылается на reminder ДРУГОЙ задачи — canonical по id не находится в listByTask(input.taskId), status:"stale", без мутации', async () => {
+    const storage = new InMemoryReminderStoragePort();
+    const otherTaskId = uuid('2');
+    const foreignReminder = existingExplicitReminder({ id: uuid('f'), taskId: otherTaskId });
+    storage.seedReminder(foreignReminder);
+
+    const result = await replaceExplicitReminderCommand(baseInput(foreignReminder), deps(storage));
+
+    expect(result.status).toBe('stale');
+    expect(storage.reminderById(foreignReminder.id)?.enabled).toBe(true);
+    expect(storage.allReminders()).toHaveLength(1);
+  });
+
+  it('canonical reminder с тем же id — НЕ explicit (kind разошёлся с input.old) — status:"stale", без мутации', async () => {
+    const storage = new InMemoryReminderStoragePort();
+    const notExplicit = existingExplicitReminder({ kind: 'deadline_approaching' });
+    storage.seedReminder(notExplicit);
+
+    const result = await replaceExplicitReminderCommand(baseInput(notExplicit), deps(storage));
+
+    expect(result.status).toBe('stale');
+    expect(storage.allReminders()).toHaveLength(1);
+    expect(storage.reminderById(notExplicit.id)).toEqual(notExplicit);
+  });
+
+  it('canonical reminder с тем же id уже disabled (гонка — уже отменён/заменён где-то ещё) — status:"stale", без мутации', async () => {
+    const storage = new InMemoryReminderStoragePort();
+    const alreadyDisabled = existingExplicitReminder({ enabled: false });
+    storage.seedReminder(alreadyDisabled);
+
+    const result = await replaceExplicitReminderCommand(baseInput(alreadyDisabled), deps(storage));
+
+    expect(result.status).toBe('stale');
+    expect(storage.allReminders()).toHaveLength(1);
+    expect(storage.reminderById(alreadyDisabled.id)?.enabled).toBe(false);
+  });
+
+  it('canonical reminder реально используется для мутации, даже если поля input.old устарели (только id имеет значение)', async () => {
+    const storage = new InMemoryReminderStoragePort();
+    const canonical = existingExplicitReminder({ scheduledFingerprint: 'canonical-fingerprint' });
+    storage.seedReminder(canonical);
+    // `input.old` — устаревшая копия с ДРУГИМ fingerprint (представляет
+    // React-состояние, отставшее от реальной записи в хранилище).
+    const staleCopy: Reminder = { ...canonical, scheduledFingerprint: 'stale-copy-fingerprint' };
+
+    const result = await replaceExplicitReminderCommand(baseInput(staleCopy), deps(storage));
+
+    expect(result.status).toBe('ok');
+    const storedOld = storage.reminderById(canonical.id);
+    // Отключённая запись — построена из CANONICAL (её реальный fingerprint
+    // на момент отключения), не из устаревшей копии caller'а.
+    expect(storedOld?.scheduledFingerprint).toBe('canonical-fingerprint');
+    expect(storedOld?.enabled).toBe(false);
+  });
+});
+
 describe('replaceExplicitReminderCommand — Задача 3.3 (правило 19 не ослаблено)', () => {
   it('замена себя самой разрешена (не считается "ещё одним" reminder)', async () => {
     const storage = new InMemoryReminderStoragePort();

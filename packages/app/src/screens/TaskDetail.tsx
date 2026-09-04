@@ -1469,7 +1469,17 @@ export function TaskDetail(): ReactElement | null {
       await reconcileTaskReminders(task.id);
       return;
     }
-    setReminderError(t('taskDetail', 'planning.reminder.limitError'));
+    // `stale` (владелец, hardening после Задачи 3) — `explicitReminder` в
+    // React-состоянии уже не указывает на текущий active explicit reminder
+    // (гонка), не про лимит правила 19 — общее сообщение об ошибке
+    // (`errors.actionFailed`, тот же ключ, что уже использует `showError()`
+    // ниже для прочих сбоёв этого экрана), не выдумываем новый текст ради
+    // этого одного, редкого случая.
+    setReminderError(
+      result.status === 'stale'
+        ? t('taskDetail', 'errors.actionFailed')
+        : t('taskDetail', 'planning.reminder.limitError'),
+    );
     // Task B8 (ST10-расследование, владелец, Задача 4 — фикс сохранён и
     // после перехода на атомарную замену, Задача 3): отказ не имеет права
     // оставить экран показывать устаревший `explicitReminder` —

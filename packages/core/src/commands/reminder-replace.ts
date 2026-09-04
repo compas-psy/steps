@@ -43,27 +43,54 @@ export interface ReplaceExplicitReminderInput {
  * `ok` — с результатом валидации правила 34), тот же смысл каждого поля.
  * Замена САМОЙ СЕБЯ не в счёт «уже есть explicit reminder» (см. функцию
  * ниже) — блокирует только ДРУГОЙ, независимый active explicit reminder.
+ *
+ * `stale` (владелец, hardening после Задачи 3) — `input.old.id` не
+ * указывает на текущий active explicit reminder этой задачи (гонка:
+ * пока экран держал устаревший `explicitReminder`, реальная запись уже
+ * успела исчезнуть/смениться — тот же класс риска, ради которого вообще
+ * затевалось это расследование). НЕ business-правило (не `ValidationResult`
+ * — это не про то, что человек ввёл, а про то, что вызывающий код держит
+ * устаревшую ссылку) и не исключение (вызывающий код — обычный async
+ * React-обработчик, непойманный throw был бы ровно тем unhandled-rejection
+ * риском, что уже нашла Задача 4/ST10-расследование) — отдельный именованный
+ * статус, тот же приём, что уже `cancelReminderCommand`'s `already_cancelled`.
  */
 export type ReplaceExplicitReminderResult =
   | { readonly status: 'ok'; readonly reminder: Reminder; readonly validation: ValidationResult }
-  | { readonly status: 'rejected'; readonly validation: ValidationResult };
+  | { readonly status: 'rejected'; readonly validation: ValidationResult }
+  | { readonly status: 'stale' };
 
 export async function replaceExplicitReminderCommand(
   input: ReplaceExplicitReminderInput,
   deps: ReminderCommandDeps,
 ): Promise<ReplaceExplicitReminderResult> {
-  // Правило 19 (`02§2`): замена `old` собой не считается «ещё одним»
-  // reminder'ом — блокирует только ЧУЖОЙ active explicit reminder на той
-  // же задаче (реальный сценарий: конкурентная запись между тем, как
-  // экран прочитал `old`, и этим вызовом — например, другое устройство
-  // через sync). `countExplicitByTask` (даже после фикса
-  // `enabled`-фильтра, коммит `8df2dc7`) не различает «единственная
-  // enabled-запись — это `old`» от «единственная enabled-запись —
-  // ДРУГАЯ» без хрупкого `-1`; `listByTask` + явное исключение `old.id`
-  // даёт точный ответ.
   const existing = await deps.storage.reminders.listByTask(input.taskId);
+
+  // Canonical wins (владелец): из `input.old` читается ТОЛЬКО `.id` —
+  // остальные поля вызывающего кода (`TaskDetail.tsx`'s React-состояние)
+  // могут быть устаревшими, реальная запись, с которой сравниваются
+  // `kind`/`enabled`, берётся из `existing` (только что прочитанного
+  // `listByTask`), а не слепо из переданного объекта. `listByTask(input.
+  // taskId)` уже гарантирует `taskId === input.taskId` для каждого
+  // найденного элемента (её собственный контракт) — отдельная проверка
+  // здесь была бы недостижимым кодом.
+  const canonicalOld = existing.find((reminder) => reminder.id === input.old.id);
+  if (canonicalOld === undefined || canonicalOld.kind !== 'explicit' || !canonicalOld.enabled) {
+    return { status: 'stale' };
+  }
+
+  // Правило 19 (`02§2`): замена `canonicalOld` собой не считается «ещё
+  // одним» reminder'ом — блокирует только ЧУЖОЙ active explicit reminder
+  // на той же задаче (реальный сценарий: конкурентная запись между тем,
+  // как экран прочитал `old`, и этим вызовом — например, другое
+  // устройство через sync). `countExplicitByTask` (даже после фикса
+  // `enabled`-фильтра, коммит `8df2dc7`) не различает «единственная
+  // enabled-запись — это `canonicalOld`» от «единственная enabled-запись —
+  // ДРУГАЯ» без хрупкого `-1`; `listByTask` + явное исключение
+  // `canonicalOld.id` даёт точный ответ.
   const otherActiveExplicit = existing.filter(
-    (reminder) => reminder.id !== input.old.id && reminder.kind === 'explicit' && reminder.enabled,
+    (reminder) =>
+      reminder.id !== canonicalOld.id && reminder.kind === 'explicit' && reminder.enabled,
   );
   if (otherActiveExplicit.length >= 1) {
     return {
@@ -101,7 +128,7 @@ export async function replaceExplicitReminderCommand(
       title,
     ),
   };
-  const disabledOld: Reminder = { ...input.old, enabled: false };
+  const disabledOld: Reminder = { ...canonicalOld, enabled: false };
 
   // ОДНА атомарная мутация — `disabledOld`+`newReminder` попадают в один
   // `applyMutation`/`runTransaction` (`writeReminders`, `reminder-write.ts`):
