@@ -377,7 +377,6 @@ function summarizeOwnProperties(propertyDescriptors) {
  * который наполняется по мере событий уже ПОСЛЕ вызова (ссылка, не
  * снимок) — вызывающий код читает его после нужного действия.
  *
- * Диагностический раунд P0 CONFIRMED (владелец, прогон `33872888416`):
  * `exceptionDetails` разворачивается ПОЛНОСТЬЮ (text/url/lineNumber/
  * columnNumber/stackTrace/exception.type/subtype/className/description/
  * preview/objectId — прежде читались только text/description/url/line), и
@@ -385,10 +384,12 @@ function summarizeOwnProperties(propertyDescriptors) {
  * запушенную запись — `events` читается вызывающим кодом ПОЗЖЕ, после
  * собственных ожиданий, к тому моменту ответ `Runtime.getProperties` уже
  * приходит) запрашиваются own-properties через CDP `Runtime.getProperties`.
- * `console.log` теперь тоже перехватывается (раньше только error/warning)
- * — этим же путём в отчёт попадают новые `BOOT_RECONCILE_*`/`RECONCILE_*`
- * маркеры production-кода (см. `App.tsx`/`reminder-reconciliation.ts`/
- * `notification-bridge.ts`).
+ * Именно это раскрытие и назвало настоящую причину P0 (прогон
+ * `33900673629`): `description: "Object"` прятал за `objectId` реальное
+ * сообщение — NPE `Notification.getId()` внутри апстримного `get_pending`
+ * (закрыт патчем, `src-tauri/vendor/.../PATCH.md`). Оставлено как
+ * постоянная оснастка: любое будущее необработанное исключение в WebView
+ * теперь читается сразу, без отдельного диагностического прогона.
  */
 async function attachConsoleCapture(cdp) {
   const events = [];
@@ -1423,9 +1424,126 @@ async function main() {
       );
     }
 
+    // ─── (d) «BOOT reconciliation проходит без throw» (владелец, п.5d) ──
+    // Прямая проверка того самого дефекта, ради которого делался патч
+    // `tauri-plugin-notification` (`vendor/.../PATCH.md`): до патча
+    // `get_pending` падал NPE внутри `listScheduled()` — первого шага
+    // реконсиляции, — и это исключение долетало сюда необработанным
+    // rejection'ом из `void reconcileReminderSchedule(...)` (`App.tsx`).
+    // Ни одного `kind: 'exception'` за весь cold launch — значит проход
+    // реконсиляции завершился без throw.
+    const exceptionsDuringP0C = consoleEventsDuringP0C.filter(
+      (event) => event.kind === 'exception',
+    );
+    if (exceptionsDuringP0C.length > 0) {
+      fail(
+        `(п.5d) BOOT reconciliation бросила исключение во время cold launch — ` +
+          `необработанных исключений: ${exceptionsDuringP0C.length}. Если это снова ` +
+          'NPE `Notification.getId()` — патч `src-tauri/vendor/tauri-plugin-notification-2.4.0` ' +
+          `не доехал до APK либо не закрыл дефект. События: ${JSON.stringify(consoleEventsDuringP0C)}.`,
+      );
+    }
+    console.log('(п.5d) BOOT reconciliation прошла без единого необработанного исключения.');
+
+    // ─── (g) + регрессионный тест класса дефекта (владелец, п.4) ────────
+    // «persisted scheduled entry существует, соответствующего живого
+    // Notification/alarm больше нет → get_pending не падает и stale entry
+    // не возвращается как pending». Ровно это состояние и было на P0-B
+    // (запись в NotificationStorage жива — `p0B.notificationStorageHasEntry`,
+    // OS alarm снесён force-stop'ом), и именно на нём апстрим падал.
+    // Сырой invoke возвращён сюда УЗКО и намеренно: не как диагностический
+    // зонд (та фаза закрыта), а как acceptance самого патча — тот же вызов,
+    // что делает production-мост (`notification-bridge.ts` `listScheduled()`),
+    // включая второй аргумент `{}` (реальный guest-js всегда его передаёт).
+    let pendingAfterColdLaunch;
+    try {
+      pendingAfterColdLaunch = await first.cdp.evaluate(
+        "window.__TAURI_INTERNALS__.invoke('plugin:notification|get_pending', {})",
+      );
+    } catch (error) {
+      fail(
+        `(п.4/п.5g) РЕГРЕССИЯ: \`get_pending\` упал на состоянии «persisted запись есть, ` +
+          `живого alarm не было» — ровно тот класс дефекта, который закрывает патч ` +
+          `(NPE \`Notification.getId()\` на null-элементе списка). Ошибка: ${error.message}. ` +
+          `P0-B: ${JSON.stringify(p0B)}. P0-C: ${JSON.stringify(p0C)}.`,
+      );
+    }
+    if (!Array.isArray(pendingAfterColdLaunch)) {
+      fail(
+        `(п.4/п.5g) \`get_pending\` вернул не массив: ${JSON.stringify(pendingAfterColdLaunch)} — ` +
+          'ожидался список pending-уведомлений (возможно пустой).',
+      );
+    }
+    console.log(
+      `(п.4/п.5g) get_pending успешно вернулся: массив из ${pendingAfterColdLaunch.length} ` +
+        `записей, stale-запись как pending не отдана.`,
+    );
+
+    first.cdp.close();
+
+    // ─── (f) «повторный relaunch → всё ещё ровно один alarm» (п.5f) ────
+    // Второй холодный запуск подряд: реконсиляция обязана быть
+    // идемпотентной — `schedule()` делает cancel-перед-batch по
+    // детерминированному native id (ADR-0008, инвариант 6/7), поэтому
+    // второй проход не смеет добавить второй живой alarm.
+    adb(['shell', 'am', 'force-stop', APPLICATION_ID], { stdio: 'inherit' });
+    const pidGoneBeforeSecondRelaunch = await waitFor(
+      'процесс остановлен перед вторым relaunch (п.5f)',
+      20,
+      500,
+      () => (adbSoft(['shell', 'pidof', APPLICATION_ID]).trim() === '' ? true : null),
+    );
+    if (pidGoneBeforeSecondRelaunch === null) {
+      fail(
+        `(п.5f) процесс НЕ остановился перед вторым relaunch. ` +
+          `pidof: ${JSON.stringify(adbSoft(['shell', 'pidof', APPLICATION_ID]))}.`,
+      );
+    }
+    first = await launchAndAttach('второй cold launch подряд (п.5f — идемпотентность)');
+    const consoleEventsSecondRelaunch = await attachConsoleCapture(first.cdp);
+    await waitFor(
+      'окно bootstrap-реконсиляции на втором запуске (dumpsys alarm непуст ИЛИ таймаут)',
+      20,
+      700,
+      () => (listSystemAlarmBlocks().length > 0 ? true : null),
+    );
+    const p0D = await captureReminderSnapshot('п.5f — после ВТОРОГО cold launch', taskTitle);
+    const alarmBlocksAfterSecondRelaunch = p0D.alarms.filter((a) => a.window !== null);
+    if (alarmBlocksAfterSecondRelaunch.length !== 1) {
+      fail(
+        `(п.5f) после второго cold launch AlarmManager содержит ` +
+          `${alarmBlocksAfterSecondRelaunch.length} alarm-блок(ов) вместо ровно одного — ` +
+          `реконсиляция не идемпотентна. Снимок: ${JSON.stringify(p0D)}.`,
+      );
+    }
+    const dbPathAfterSecondRelaunch = pullDatabase('step2c-p0-d');
+    const enabledCountAfterSecondRelaunch = countEnabledExplicitReminders(
+      dbPathAfterSecondRelaunch,
+      taskTitle,
+    );
+    if (enabledCountAfterSecondRelaunch !== 1) {
+      fail(
+        `(п.5f) после второго cold launch в SQLite ${enabledCountAfterSecondRelaunch} enabled ` +
+          `explicit-записей вместо ровно одной. Снимок: ${JSON.stringify(p0D)}.`,
+      );
+    }
+    const exceptionsSecondRelaunch = consoleEventsSecondRelaunch.filter(
+      (event) => event.kind === 'exception',
+    );
+    if (exceptionsSecondRelaunch.length > 0) {
+      fail(
+        `(п.5f) второй cold launch дал ${exceptionsSecondRelaunch.length} необработанных ` +
+          `исключений: ${JSON.stringify(consoleEventsSecondRelaunch)}.`,
+      );
+    }
+    console.log(
+      '(п.5f) Повторный relaunch идемпотентен: ровно 1 alarm, ровно 1 enabled explicit reminder, ' +
+        'без исключений.',
+    );
+
     // cdp закрывается здесь явно: Step 2d ниже начинается с полного
     // uninstall/reinstall (test isolation boundary, владелец) и не
-    // рассчитывает на живую сессию P0-C.
+    // рассчитывает на живую сессию.
     first.cdp.close();
   }
 

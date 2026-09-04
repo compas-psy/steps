@@ -446,3 +446,113 @@ $ pnpm --filter @shagi/web build
 ✓ 387 modules transformed, ✓ built in 954ms
 (предупреждение о размере чанка — существующее, не связано с этой задачей)
 ```
+
+---
+
+## Дополнение: Task B8 — production-дефект `tauri-plugin-notification` 2.4.0 (`getPending()` NPE) и локальный патч (2026-09-04)
+
+- Статус дополнения: принято
+- Отклонение от стека: **да** — впервые в этом продукте зависимость с
+  crates.io подключается не как есть, а через `[patch.crates-io]` с локальной
+  копией. Поэтому это дополнение, а не просто запись в ledger (CLAUDE.md:
+  «Любое отклонение от стека или архитектуры ТЗ фиксируется ADR… в том же
+  изменении, что и реализация»).
+
+### Что доказано живьём (не прочитано, не предположено)
+
+Три последовательных Android CI-прогона на эмуляторе:
+
+| Прогон        | Что показал                                                                                                                                            |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `33872888416` | P0 CONFIRMED: SQLite = reminder есть, NotificationStorage = запись есть, **AlarmManager пуст** и после полного окна bootstrap-реконсиляции.            |
+| `33900673629` | Диагностический раунд: исключение раскрыто через CDP `Runtime.getProperties` — за `description: "Object"` пряталось настоящее сообщение (ниже).        |
+| —             | Маркеры границ показали: `desired` загружены (1 шт.), `pending requested` был, `pending returned` **не наступил** — падение внутри самого `pending()`. |
+
+Полный текст исключения (`ownProperties.message`):
+
+```
+Attempt to invoke virtual method 'int app.tauri.notification.Notification.getId()'
+on a null object reference
+```
+
+### Механизм дефекта (по коду апстрима)
+
+1. `NotificationStorage.appendNotifications()` пишет
+   `request.sourceJson.toString()`.
+2. Поле `Notification.sourceJson` (`Notification.kt:38`) **никем и никогда**
+   в крейте не заполняется (`grep` по всему крейту: единственные упоминания —
+   объявление, эта запись и чтение в `putExtra`); Rust-сторона `batch` не
+   трогает вовсе (команда mobile-only, идёт из JS прямо в Kotlin), а
+   `Invoke.parseArgs` — обычный `jsonMapper.readValue(argsJson, cls)`, ничего
+   не инжектит. Для наших записей (планирование только через `batch`,
+   инвариант 1) `sourceJson` всегда `null`.
+3. Kotlin'овский `Any?.toString()` на null-приёмнике даёт **строку** `"null"`
+   — в `SharedPreferences` ложится литерал.
+4. `getSavedNotifications()` читает обратно: Jackson **без исключения**
+   десериализует JSON-литерал `null` в Kotlin `null` — существующий
+   `catch (_: Exception)` тут бессилен, ловить нечего.
+5. `null` попадал в `ArrayList<Notification>`;
+   `Notification.buildNotificationPendingList()` разыменовывал его на
+   `notification.id` → NPE, и падала вся команда `get_pending`.
+
+Продуктовое следствие: `NotificationSchedulerPort.listScheduled()` — первый
+шаг startup-реконсиляции — бросал исключение, `void
+reconcileReminderSchedule(...)` (`App.tsx`) превращался в unhandled rejection,
+и напоминание, чей OS-alarm снесён Force Stop'ом, **не восстанавливалось
+никогда**. Это и был P0.
+
+### Решение
+
+`[patch.crates-io]` в `apps/mobile/src-tauri/Cargo.toml` →
+`vendor/tauri-plugin-notification-2.4.0/` — дословная копия крейта 2.4.0 с
+**одним** изменением в `android/src/main/java/NotificationStorage.kt`
+(`getSavedNotifications()`): null-результат разбора не попадает в список
+(stale-запись не считается pending) и удаляется штатным внутренним
+`deleteNotification()`. Разбор и семантика валидных записей не меняются, broad
+`catch (Throwable)` не добавлялся, публичных IPC-команд ШАГОВ не прибавилось.
+Полное обоснование и путь обновления — `vendor/.../PATCH.md`.
+
+Почему `[patch]`, а не форк и не свой мост: версия и Rust-API крейта не
+меняются, diff — одна функция; `tauri android init` берёт Kotlin-исходники по
+`CARGO_MANIFEST_DIR` крейта (его `build.rs`: `.android_path("android")`),
+поэтому подмена источника доезжает до APK без единой правки Gradle.
+
+### Честное следствие патча (не замалчивается)
+
+Раз `sourceJson` не заполняется никогда, «stale» оказывается **каждая**
+запись, созданная `batch`. После патча `get_pending` стабильно возвращает
+**пустой** список, а persisted-слой плагина не несёт полезной нагрузки для
+ШАГОВ — включая `LocalNotificationRestoreReceiver` (он и ДО патча ничего не
+восстанавливал: читает те же записи через `getSavedNotification()`, получает
+`null`, пропускает — `?: continue`). Это **корректирует инвариант 2** этого
+ADR («`batch()` — единственный путь одновременно к трём вещам»): к
+`pending()`-снимку и к boot-restore он ведёт лишь номинально, пока апстрим не
+заполняет `sourceJson`.
+
+Что от этого НЕ ломается:
+
+- **доставка** не зависит от хранилища — сработавший alarm воспроизводит
+  `android.app.Notification`, лежащий Parcelable'ом в extras `PendingIntent`
+  (см. «Что скорректировано», п.2 выше);
+- **восстановление** делает наша startup-реконсиляция из SQLite: пустой
+  `listScheduled()` → «ничего не запланировано» → планируем заново; дублей нет,
+  потому что `schedule()` безусловно делает `cancel` по детерминированному
+  native id ПЕРЕД `batch` (инварианты 6 и 7 — теперь они не «страховка на
+  всякий случай», а несущая конструкция).
+
+Решение о том, опираться ли вообще на pending/storage-слой официального
+плагина (например, писать `sourceJson` самим на стороне моста), владелец
+принимает отдельно — здесь не предвосхищается.
+
+### Регрессионное покрытие
+
+Kotlin/JVM-тестового контура в этом репозитории нет ни у одного плагина (ни у
+своего `alarm-capability`, ни у вендоренного) — `kotlinc` отсутствует и в
+песочнице, а B7 покрывает `cargo test`-ом только Rust-часть. Единственный
+механизм, реально исполняющий этот Kotlin, — эмулятор-смоук; регрессия на
+класс дефекта добавлена туда (`apps/mobile/scripts/android-smoke.mjs`, Step
+2c): на состоянии «persisted запись жива, OS-alarm снесён force-stop'ом»
+проверяется, что (а) реконсиляция прошла без единого необработанного
+исключения, (б) сырой `get_pending` резолвится и возвращает массив, не отдавая
+stale-запись как pending, (в) повторный cold launch оставляет ровно один alarm
+и ровно одну enabled explicit-запись.

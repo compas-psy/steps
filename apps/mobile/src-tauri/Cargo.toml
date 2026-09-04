@@ -32,5 +32,19 @@ rusqlite = { version = "0.40.2", features = ["bundled"] }
 default = ["custom-protocol"]
 custom-protocol = ["tauri/custom-protocol"]
 
+# Локальный патч `tauri-plugin-notification` 2.4.0 — дословная копия крейта с
+# crates.io с ОДНИМ изменением в `android/src/main/java/NotificationStorage.kt`
+# (`vendor/.../PATCH.md`, ADR-0008 дополнение от 2026-09-04). Апстрим падал с
+# NPE в `getPending()` на записи, чей `sourceJson` был `null` (то есть на любой
+# записи, созданной командой `batch` — единственным путём планирования у
+# ШАГОВ), из-за чего ломался первый шаг startup-реконсиляции и напоминание не
+# восстанавливалось после Force Stop. Версия и API крейта не менялись —
+# `[patch]`, а не форк: путь обновления при новой версии апстрима описан в
+# `PATCH.md`. `tauri android init` берёт Kotlin-исходники по
+# `CARGO_MANIFEST_DIR` крейта (его `build.rs`: `.android_path("android")`),
+# поэтому патч доезжает до APK именно через эту подмену источника.
+[patch.crates-io]
+tauri-plugin-notification = { path = "vendor/tauri-plugin-notification-2.4.0" }
+
 [dev-dependencies]
 tempfile = "3.27.0"
