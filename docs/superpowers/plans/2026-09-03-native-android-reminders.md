@@ -1696,7 +1696,7 @@ git commit -m "test(mobile): юнит-тест desktop-заглушки alarm-ca
 | 8   | Notification/alarm IDs are stable across runs (dedupe holds)                                                                                                                                                                                                                                                    | New Step 6b below (repeat-restart variant) |
 | 9   | The plugin creates no constraint that conflicts with our timezone/reconciliation semantics                                                                                                                                                                                                                      | New Step 9b below                          |
 
-- [ ] **Step 1: Add a `dumpsys alarm` helper**
+- [x] **Step 1: Add a `dumpsys alarm` helper**
 
 In `android-smoke.mjs`, add a function analogous to the existing `pullDatabase`/`inspectDatabase` pair:
 
@@ -1708,27 +1708,27 @@ function listSystemAlarms() {
 }
 ```
 
-- [ ] **Step 2: Extend the scenario — reminder scheduled**
+- [x] **Step 2: Extend the scenario — reminder scheduled**
 
 After the existing "Проверка сборки" task creation step, add: open the task, set an explicit reminder for a near-future time via the UI (reuse `typeIntoLabeled`/`clickByText` per the established page-action pattern), assert via `inspectDatabase` (extend it, per the existing `count('reminders')` pattern already used for other tables) that a `reminders` row exists with `enabled=1`, THEN assert `listSystemAlarms().length > 0` — a real OS alarm, not just a DB row.
 
-- [ ] **Step 2b: Verify `setExactAndAllowWhileIdle` (or the plugin's exact path) is genuinely used (claim #1)**
+- [x] **Step 2b: Verify `setExactAndAllowWhileIdle` (or the plugin's exact path) is genuinely used (claim #1)**
 
 Capture the raw matching line(s) from `listSystemAlarms()` right after Step 2's schedule and log them (add a `log()`/diagnostic print, matching whatever the script already uses for other diagnostics) BEFORE writing any assertion on their exact text — Android's `dumpsys alarm` prints no literal "exact"/"inexact" word; it prints a `type` (`RTC_WAKEUP`) and, distinguishing exact from inexact, whether the alarm is standalone/unbatched: alarms scheduled via `setExactAndAllowWhileIdle` are never coalesced into a delivery window, while inexact ones are batched and printed with a nonzero window. Run the smoke once for real (Step 11) to observe the actual line format for this Tauri/Android version, then hardcode the assertion against the observed marker and add a one-line comment recording the literal substring seen, exactly the same discipline Step 3 already requires for the trigger-time regex — do not guess either blind.
 
-- [ ] **Step 2c: Verify the Android 12+ capability-denied degrade path (claim #2)**
+- [x] **Step 2c: Verify the Android 12+ capability-denied degrade path (claim #2)**
 
 Before scheduling, revoke the exact-alarm app op: `adb shell cmd appops set ru.cmpas.shagi SCHEDULE_EXACT_ALARM deny` (this is the standard, documented way to flip what `canScheduleExactAlarms()` reports without touching system settings UI). Reopen/relaunch the app so Task B6's just-in-time capability check re-reads it, then schedule a reminder via the UI same as Step 2. Assert two things together, not separately, so #1 and #2 verify each other: (a) at the UI level, the Task B6 capability notice is shown — read via `READ_APP_TEXT` — proving the app does not silently claim "exact" (Global Constraints: never present inexact as exact silently); (b) at the OS level, `listSystemAlarms()` still contains an entry (the plugin's own `setExactIfPossible` degrade schedules inexact rather than refusing, per Task B1's ADR research) whose line does NOT carry the "standalone/unbatched" marker established in Step 2b. Restore the app op afterward — `adb shell cmd appops set ru.cmpas.shagi SCHEDULE_EXACT_ALARM allow` — so later steps in the same smoke run see the normal exact-capable state.
 
-- [ ] **Step 3: Extend the scenario — update replaces the old alarm**
+- [x] **Step 3: Extend the scenario — update replaces the old alarm**
 
 Change the reminder's time via the UI, capture `listSystemAlarms()` before/after, assert the trigger time in the dump changed (parse the printed trigger timestamp from the `dumpsys alarm` line — its exact text format must be read from a real run's output first, do not guess the regex blind) and the count of matching alarms for `ru.cmpas.shagi` did NOT grow (proving replace, not accumulate).
 
-- [ ] **Step 4: Extend the scenario — delete cancels the alarm**
+- [x] **Step 4: Extend the scenario — delete cancels the alarm**
 
 Cancel/delete the reminder via UI, assert `listSystemAlarms()` no longer contains it.
 
-- [ ] **Step 5: Extend the scenario — three-scenario force-stop model (ADR-0008, corrected — do NOT test "alarm survives force-stop", that claim is platform-inaccurate)**
+- [x] **Step 5: Extend the scenario — three-scenario force-stop model (ADR-0008, corrected — do NOT test "alarm survives force-stop", that claim is platform-inaccurate)**
 
 Real Android semantics (verified against platform documentation and `ApplicationStartInfo.wasForceStopped()`'s own existence, ADR-0008): an explicit `am force-stop`/user Force Stop puts the app in package **stopped state** and the OS explicitly clears its pending alarms — this is intentional platform behavior, not a bug to work around with a hidden receiver/foreground service. Test all three scenarios this ADR distinguishes, not one conflated claim:
 
@@ -1736,7 +1736,7 @@ Real Android semantics (verified against platform documentation and `Application
 2. **Explicit Force Stop — alarm is expected to be GONE, and that is a PASS, not a failure.** Run the existing `am force-stop` (reusing the step already later in the script for the persistence-across-restart test). Assert `listSystemAlarms()` no longer contains the alarm. Do NOT `fail()` on this — write the assertion the other direction from every other step in this file (assert absence is the expected, correct outcome here).
 3. **Relaunch after Force Stop — app-startup reconciliation restores it, without duplication.** Relaunch the app (same `launchAndAttach` pattern used elsewhere in this script). Assert `listSystemAlarms()` shows the alarm again (Task A4's unconditional boot-scan reconciliation found it missing from `listScheduled()` and rescheduled it), AND assert there is still exactly ONE matching alarm entry for this reminder's native id (not two) — the same "count doesn't grow" check Step 3 already established for the update-replace case, reused here for the recovery-after-Force-Stop case, since both are really the same underlying claim: `schedule()` never leaves a duplicate behind.
 
-- [ ] **Step 6: Extend the scenario — reboot reconciliation**
+- [x] **Step 6: Extend the scenario — reboot reconciliation**
 
 `adb reboot` is too slow/flaky for a CI smoke test (full device reboot can take minutes and the existing smoke budget is ~10 minutes total) — instead, simulate the boot-completed broadcast directly, which is the actual mechanism both `tauri-plugin-notification`'s own restore receiver AND this app's reconciliation startup call (Task A4 Step 7) respond to:
 
@@ -1754,45 +1754,175 @@ adb([
 
 Then relaunch the app (already an existing step later in the script) and assert `listSystemAlarms()` still/again shows the expected alarm, and `inspectDatabase()`'s reminder count is unchanged (reconciliation restored state, didn't duplicate or lose it).
 
-- [ ] **Step 6b: The plugin's own boot-restore doesn't fight our reconciliation, and native ids stay stable across restarts (claims #5, #8)**
+- [x] **Step 6b: The plugin's own boot-restore doesn't fight our reconciliation, and native ids stay stable across restarts (claims #5, #8)**
 
 Repeat the Step 6 cycle (`BOOT_COMPLETED` broadcast + relaunch) a second and third time, capturing `listSystemAlarms()` after each cycle. Assert the count of alarm entries matching the reminder's native id does NOT grow between cycles — this is the concrete check for claim #5: the plugin's own `LocalNotificationRestoreReceiver`/`NotificationStorage.kt` persistence and this app's own startup reconciliation (Task A4 Step 7) both react to the same broadcast, and neither may double-schedule because the other already restored it. Also assert `inspectDatabase()`'s reminder row is unchanged across all three cycles, and that `listSystemAlarms()`'s matching entry keeps the SAME native id across cycles (parse it out of the dumpsys line using Step 2b's established format) — claim #8. This guards the actual failure mode behind it: `notification-bridge.ts` (Task B4) keeps its string-id↔native-id mapping in an in-memory `Map`, which starts empty on every fresh process; if a post-restart reconciliation pass can't correctly recover a reminder's native id from `listScheduled()` (which itself depends on `pending()`'s returned ids matching what was actually persisted natively), it would look "missing" and get rescheduled under a freshly-hashed id, leaving the old alarm orphaned — this step is what would catch that.
 
-- [ ] **Step 7: Extend the scenario — overdue reminder does not storm**
+- [x] **Step 7: Extend the scenario — overdue reminder does not storm**
 
 Create a reminder with a time already in the past relative to device time (or force-advance device time via `adb shell date` if the emulator image allows it — check feasibility first; if not settable, seed a reminder whose `firesAt` is in the past directly via a debug-only path is NOT available in production code, so instead: rely on Task A3's own unit test for this exact case — full storm-prevention coverage lives in `reminder-reconciliation.test.ts`, Step 3's third test case — and on the emulator only assert that triggering `BOOT_COMPLETED`/app-restart reconciliation does NOT create a burst of `listSystemAlarms()` entries beyond what's expected from the smoke's own seeded reminders). Document in a comment why this step is narrower than the unit test coverage, not a gap — the unit test is the actual proof, the emulator step is a sanity check that the wiring doesn't visibly misbehave.
 
-- [ ] **Step 8: Extend the M52 section**
+- [x] **Step 8: Extend the M52 section**
 
 After the existing M52 wipe assertions (Task from the ADR-0005 work — `tasks:0, tombstones:0, labels:0, taskLabels:0, recurrenceSeries:0, outbox:0`), add `reminders:0` to the same zero-count assertion list (extend `inspectDatabase`'s returned object with a `reminders: count('reminders')` field first, mirroring the existing `labels`/`taskLabels` pattern), AND assert `listSystemAlarms()` is empty for `ru.cmpas.shagi` after the wipe — this is the "M52 удаляет alarms" requirement.
 
 **STALE PARAGRAPH REMOVED, READ THIS INSTEAD (found and fixed before dispatch):** this step originally told the implementer to add the M52-cancels-reminders UI fix themselves, in this task. That work is **already done** — Task B5 (see its ADR-0008 addendum, "path #6") already found this exact gap (`DataPrivacy.tsx`'s `erase()` wasn't calling reconciliation at all) and closed it with a full-workspace `reconcileReminderSchedule(...)` scan after `eraseAllLocalData()`, with its own unit test (`DataPrivacy.test.tsx`, fake-scheduler asserting all scheduled reminders are cancelled). Do NOT re-implement or duplicate that fix. This task's M52 work is exactly what B5's own addendum said it would be: the empirical, on-device confirmation (`listSystemAlarms()` really is empty after a real wipe on a real emulator) — a sanity check on already-shipped code, not new application logic. If you find the wipe path does NOT actually clear system alarms on the real device despite B5's fix, that is a genuine regression/gap to report clearly (with the real `dumpsys alarm` output) rather than silently re-patch — flag it prominently in your report rather than guessing at a fix under smoke-test time pressure.
 
-- [ ] **Step 9: Extend the "usable after wipe" scenario**
+- [x] **Step 9: Extend the "usable after wipe" scenario**
 
 After M52, create a NEW reminder via the UI (same pattern as the existing "creates a new task after wipe" check), assert it produces both a new `reminders` row AND a new `listSystemAlarms()` entry — "scheduler снова пригоден для работы" made concrete.
 
-- [ ] **Step 9b: The plugin creates no constraint conflicting with our timezone/reconciliation semantics (claim #9)**
+- [x] **Step 9b: The plugin creates no constraint conflicting with our timezone/reconciliation semantics (claim #9)**
 
 Why this is a real risk, not a formality: `tauri-plugin-notification`'s `Schedule.at(date, ...)` takes a JS `Date` — an absolute instant, with no timezone awareness of its own. If the device timezone changes after a reminder is scheduled, the native alarm stays fixed to that same absolute instant unless something explicitly recomputes and re-sends it; the plugin has no mechanism to do that itself, which is exactly why Task A5's timezone-change detection exists. This step is where that gets checked against what `AlarmManager` actually holds, not just what `reconcileReminderSchedule` computed in JS.
 
 Create a reminder for a specific local wall-clock time in the emulator's default timezone, capture its trigger time from `listSystemAlarms()` using Step 3's established parsing. Change the device timezone: `adb shell settings put global time_zone <a different IANA zone, e.g. Asia/Tokyo>`. Relaunch the app (Task A5's detection is startup-only, per its own documented limitation — no foreground listener in this plan's scope) and let the startup reconciliation run. Assert: (a) `listSystemAlarms()`'s matching entry now shows a DIFFERENT trigger time, one that preserves the same LOCAL wall-clock value in the new zone (compute the expected instant from the reminder's stored local date/time interpreted in the new zone, not the old absolute instant) — this is the on-device proof of SPEC §19, checked against the real OS alarm rather than only against `reconcileReminderSchedule`'s JS-side output; (b) no duplicate alarm was left behind (count for this reminder's native id is still exactly one, same check as Step 3). Restore the original timezone afterward (`adb shell settings put global time_zone <original>`) so it doesn't affect any step that runs after this one.
 
-- [ ] **Step 10: Run `verify-page-actions.mjs` against the web build first**
+- [x] **Step 10: Run `verify-page-actions.mjs` against the web build first**
 
 Run: `export PATH=/usr/local/bin:$PATH && pnpm --filter @shagi/web build && (pnpm --filter @shagi/web preview --host 127.0.0.1 --port 4320 &) && sleep 2 && node apps/mobile/scripts/verify-page-actions.mjs http://127.0.0.1:4320/`
 Expected: every new page-action expression this task added passes on the web build, catching selector bugs before spending an emulator cycle — note that `dumpsys alarm`/system-alarm assertions have NO web equivalent (only exercised on the real emulator step, not this script) — that's expected, not a gap.
 
-- [ ] **Step 11: Trigger the real Android workflow and read the results**
+- [~] **Step 11: Trigger the real Android workflow and read the results** (в процессе — см. амендмент 2026-09-04 ниже)
 
 This step cannot run in this sandbox (no Android SDK/emulator, per `?22`) — push the branch and read the `Сборка Android` workflow run's `Дымовой тест на эмуляторе` job logs via the GitHub MCP tools, the same way every prior Android verification in this session was done. Do not claim success without reading the actual run's log output.
 
-- [ ] **Step 12: Commit**
+- [x] **Step 12: Commit**
 
 ```bash
 git add apps/mobile/scripts/android-smoke.mjs apps/mobile/scripts/page-actions.mjs apps/mobile/scripts/verify-page-actions.mjs packages/app/src
 git commit -m "test(mobile): emulator smoke — реальный dumpsys alarm на каждом сценарии напоминаний, M52 отменяет alarms"
 ```
+
+---
+
+## Амендмент Task B8 (2026-09-04): что реально произошло на живых прогонах
+
+Шаги 1–10 и 12 выше реализованы, Step 11 (живой прогон) вскрыл цепочку
+находок, которых плановый текст предвидеть не мог. Ниже — фактическое
+состояние; там, где плановый текст разошёлся с реальностью, верен этот
+раздел, а не он.
+
+### Что заменено в самом сценарии
+
+**Step 2c переписан дважды и теперь называется иначе.** Плановый текст
+описывал его как «revoke exact-alarm через `appops deny` → проверить
+деградацию». По ходу выяснилось, что это две РАЗНЫЕ проверки, и их
+разделили:
+
+- **Step 2c — P0-эксперимент (архитектурный риск A6):** `P0-A` (до) →
+  `am force-stop` → `P0-B` (после, только внешние средства: adb/файлы, процесс
+  мёртв) → cold launch → `P0-C` (после bootstrap-реконсиляции). Отвечает на
+  вопрос «восстанавливает ли startup-реконсиляция OS-alarm, снесённый
+  системой». Плюс проверки, добавленные владельцем после диагностики:
+  реконсиляция без единого необработанного исключения, сырой `get_pending`
+  резолвится и не отдаёт stale-запись, повторный cold launch оставляет ровно
+  один alarm.
+- **Step 2d — деградация B6/ST10 (то, чем Step 2c был по плану):** вынесен в
+  ПОЛНОСТЬЮ независимый прогон — `adb uninstall` + переустановка того же APK +
+  повторный `pm grant POST_NOTIFICATIONS` + `appops set … deny`, с
+  доказательством чистого состояния до начала (dumpsys пуст, appops=deny).
+  Это намеренная test isolation boundary (владелец), а не workaround: остаток
+  состояния от P0 загрязнял бы проверку inexact-деградации. Дальше —
+  независимый онбординг → первый reminder (SQLite ровно 1, AlarmManager ровно
+  1 alarm, `window>0`, ST10 виден, UI показывает выбранное `HH:MM`) →
+  изменение времени → acceptance atomic replace на реальном Android (ровно 1
+  enabled explicit с НОВЫМ id, ровно 1 alarm, не exact, ST10 остаётся).
+
+**`appops` понижен до тестовой инъекции.** Настоящий пользовательский revoke
+через Settings UI (`REQUEST_SCHEDULE_EXACT_ALARM_PERMISSION` + uiautomator)
+был реализован и живьём оказался ненадёжен на CI emulator image —
+`uiautomator dump` не находит `android.widget.Switch` на системном экране.
+Решение владельца: **автоматизация пользовательского revoke через Settings UI
+нестабильна на CI emulator image и не является release blocker; реальный
+Settings-revoke остаётся manual RC check на устройстве перед релизом.** Код
+UI-автоматизации удалён целиком, `appops set … deny` используется
+ИСКЛЮЧИТЕЛЬНО как инъекция `capability=false`, не как proof revoke.
+
+**Сырые CDP-зонды `pending()`/`can_schedule_exact` убраны из blocking smoke** —
+они сами были источником нестабильности харнесса. `captureReminderSnapshot`
+собирает четыре факта только внешними средствами (SQLite / appops / dumpsys /
+физический `NOTIFICATION_STORE.xml`) и работает одинаково при живом и убитом
+процессе. Единственный оставшийся сырой invoke — узкая acceptance-проверка
+`get_pending` после патча плагина (ниже).
+
+**Смягчение P0-B (владелец).** Если после подтверждённого `force-stop`
+(`pidof` пуст) наш exact alarm остаётся — одна короткая контрольная проверка,
+и дальше `warning`, а не `fail`: **API34 CI emulator сохраняет AlarmManager
+exact alarm после `am force-stop`; поэтому сценарий «OS alarm исчез →
+cold-start reconciliation восстановила его» на этом образе автоматически не
+доказуем.** Это manual RC check на физическом устройстве и не blocker R1 CI.
+Наблюдалось нестабильно: прогон `33865954437` — alarm пережил force-stop,
+прогоны `33872888416`/`33900673629` — исчез штатно.
+
+### Найденный production-дефект (P0 CONFIRMED → закрыт патчем)
+
+Прогон `33872888416` дал P0 CONFIRMED: SQLite = reminder есть,
+NotificationStorage = запись есть, **AlarmManager пуст** и после полного окна
+bootstrap-реконсиляции. Диагностический раунд `33900673629` (раскрытие
+исключения через CDP `Runtime.getProperties` — за `description: "Object"`
+пряталось настоящее сообщение) назвал причину:
+
+```
+NullPointerException: Attempt to invoke virtual method
+'int app.tauri.notification.Notification.getId()' on a null object reference
+```
+
+внутри апстримного `get_pending`. Механизм: `sourceJson` не заполняется в
+крейте никем → Kotlin `Any?.toString()` пишет литерал «null» в
+SharedPreferences → Jackson штатно (БЕЗ исключения) десериализует его в `null`
+→ `null` попадает в `ArrayList<Notification>` → `buildNotificationPendingList`
+разыменовывает `notification.id`. Следствие: `listScheduled()` — первый шаг
+startup-реконсиляции — падал, и напоминание, чей OS-alarm снесён Force
+Stop'ом, не восстанавливалось никогда.
+
+**Закрыто локальным патчем** (`[patch.crates-io]` →
+`apps/mobile/src-tauri/vendor/tauri-plugin-notification-2.4.0/`, одно изменение
+в `NotificationStorage.getSavedNotifications()`), см. ADR-0008, дополнение от
+2026-09-04, и `vendor/.../PATCH.md`. Честное следствие там же: раз `sourceJson`
+всегда null, «stale» — каждая запись `batch`, поэтому `get_pending` теперь
+стабильно возвращает пустой список, а persisted-слой плагина не несёт
+нагрузки — включая boot-restore, который и ДО патча ничего не восстанавливал.
+Это **корректирует инвариант 2 ADR-0008** и означает, что claim #5 (Step 6b:
+«плагинов boot-restore не дерётся с нашей реконсиляцией») подтверждается
+тривиально: плагин там вообще не участвует, всё делает наша реконсиляция из
+SQLite, а дублей нет за счёт cancel-before-batch по детерминированному native
+id (инварианты 6 и 7 — теперь несущая конструкция, а не страховка).
+
+### Регрессионное покрытие класса дефекта
+
+Kotlin/JVM-тестового контура в репозитории нет ни у одного плагина (`kotlinc`
+нет и в песочнице; B7 покрывает `cargo test`-ом только Rust), поэтому
+единственный механизм, реально исполняющий этот Kotlin, — эмулятор-смоук.
+Регрессия добавлена в Step 2c: на состоянии «persisted запись жива, OS-alarm
+снесён force-stop'ом» проверяется, что реконсиляция прошла без единого
+необработанного исключения, `get_pending` резолвится и возвращает массив без
+stale-записи, а повторный cold launch оставляет ровно один alarm и ровно одну
+enabled explicit-запись.
+
+### Что осталось
+
+- [ ] **Step 11 (продолжение): ОДИН целевой смоук после патча** — прогон
+      `33920970729` на `8f41207` (в процессе на момент записи). PASS → сразу
+      полный B8 acceptance на том же SHA, без новых диагностических раундов.
+      Тот же NPE → STOP и отчёт с diff/фактом (решение об отказе от
+      pending/storage-слоя официального плагина принимает владелец отдельно).
+- [ ] **Полный B8 acceptance на exact SHA:** зелёный `Сборка Android` +
+      зелёный `Безопасность` на одном и том же коммите.
+- [ ] **Зафиксировать manual RC checks** (не автоматизируются на CI emulator
+      image, проверяются вручную на физическом устройстве перед RC):
+      настоящий Settings-revoke `SCHEDULE_EXACT_ALARM`; recovery после
+      OS-side уничтожения alarm.
+- [ ] **После полного B8 PASS:** reminders объявляются CLOSED/FROZEN, дальше —
+      Task #16 (финальное ревью всей ветки + `finishing-a-development-branch`)
+      и переход к Undo/ST §58.
+
+### Остаётся в R1 gap audit (не расширяется этим пакетом работ)
+
+Смена таймзоны, пока приложение живо в фоне (нет platform lifecycle hook);
+отсутствие UI архивации проекта; reminder не наследуется следующим occurrence
+повтора (`01§11.7` для reminder-части) — все три уже зафиксированы в
+ADR-0008/Task B5 и остаются открытыми пунктами аудита, а не этой задачи.
 
 ---
 
