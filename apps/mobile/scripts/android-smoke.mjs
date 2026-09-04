@@ -1736,30 +1736,50 @@ async function main() {
   }
   await sleep(2000);
 
+  const replacedTimeLabel = `${pad2(replacedReminderTime.hour)}:${pad2(replacedReminderTime.minute)}`;
+  // Ждём НОВОЕ состояние экрана, а не «уведомление ST10 вообще». Для первого
+  // создания (выше) ожидание текста «Точное время сейчас недоступно» —
+  // настоящий барьер: до сохранения этого текста на экране не было. Здесь,
+  // при ЗАМЕНЕ, он уже висит с первого напоминания, поэтому тот же предикат
+  // истинен на первой же попытке, барьер вырождается, и проверка нового
+  // времени опирается только на фиксированный `sleep` выше. Прогон
+  // `33923605802` на этом и упал: экран отдал ещё старое «22:45» при
+  // ожидаемом «23:05».
+  //
+  // Проверка не ослаблена, а усилена: новое время по-прежнему ОБЯЗАНО
+  // появиться на экране вместе с уведомлением ST10, просто теперь на это
+  // даётся тот же бюджет ожидания, что и всем остальным UI-проверкам этого
+  // файла. Если приложение действительно не применило замену, шаг падает
+  // здесь же — но уже после полного окна ожидания, а не после двух секунд,
+  // и это различает продуктовый дефект и гонку харнеса.
+  let lastReplaceScreenText = null;
   const replaceNoticeText = await waitFor(
-    'уведомление о неточном напоминании после atomic replace (ST10, Step 2d)',
+    'экран после atomic replace: уведомление ST10 и НОВОЕ время (Step 2d)',
     15,
     700,
     async () => {
       const text = await first.cdp.evaluate(READ_APP_TEXT);
-      return typeof text === 'string' && text.includes('Точное время сейчас недоступно')
+      if (typeof text !== 'string') return null;
+      lastReplaceScreenText = text;
+      return text.includes('Точное время сейчас недоступно') && text.includes(replacedTimeLabel)
         ? text
         : null;
     },
   );
-  if (replaceNoticeText === null) {
-    const last = await first.cdp.evaluate(READ_APP_TEXT);
+  if (
+    replaceNoticeText === null &&
+    !String(lastReplaceScreenText).includes('Точное время сейчас недоступно')
+  ) {
     fail(
       'Step 2d: после изменения времени с capability=false экран не показал уведомление ST10 — ' +
         `atomic replace должен сохранить деградацию, а не молчаливо вернуть точность. Экран: ` +
-        `${JSON.stringify(String(last).slice(0, 300))}.`,
+        `${JSON.stringify(String(lastReplaceScreenText).slice(0, 300))}.`,
     );
   }
-  const replacedTimeLabel = `${pad2(replacedReminderTime.hour)}:${pad2(replacedReminderTime.minute)}`;
-  if (!replaceNoticeText.includes(replacedTimeLabel)) {
+  if (replaceNoticeText === null) {
     fail(
-      `Step 2d: экран не показывает НОВОЕ выбранное время «${replacedTimeLabel}» после atomic replace. ` +
-        `Экран: ${JSON.stringify(replaceNoticeText.slice(0, 300))}.`,
+      `Step 2d: экран не показывает НОВОЕ выбранное время «${replacedTimeLabel}» после atomic replace ` +
+        `и полного окна ожидания. Экран: ${JSON.stringify(String(lastReplaceScreenText).slice(0, 400))}.`,
     );
   }
   console.log(
