@@ -181,6 +181,43 @@ export const selectTodayInDateGrid = `
 `;
 
 /**
+ * Кликает ячейку СЛЕДУЮЩЕГО дня после сегодняшнего в той же сетке дат.
+ *
+ * Нужна ровно для одного случая, пойманного живым прогоном `33928070475`
+ * (шёл в 23:5x): смоук выбирает время как «сейчас + N минут», и под конец
+ * суток это время оказывается уже завтрашним (`23:50` → `00:10`), а дата
+ * в сетке при этом остаётся сегодняшней. Приложение в таком случае ведёт
+ * себя правильно — напоминание в прошлом не планируется, — но проверка
+ * ждёт живой будильник и падает на пустом месте. Здесь дата сдвигается
+ * вслед за временем.
+ *
+ * Ячейки берутся в порядке DOM внутри той же сетки, что и `aria-current`:
+ * «следующая» — буквально следующая по счёту, без арифметики над датами,
+ * которую пришлось бы дублировать из компонента. Если сегодняшний день —
+ * последний в отрисованной сетке, возвращается `false`: перелистывание
+ * месяца этот помощник не делает и молча притворяться не должен.
+ */
+export const selectDayAfterTodayInDateGrid = `
+  (() => {
+    const grid = document.querySelector('.shagi-modal [role="grid"]');
+    if (!grid) return false;
+    const today = grid.querySelector('[aria-current="date"]');
+    if (!today) return false;
+    const cells = Array.from(grid.querySelectorAll('[role="gridcell"] button, [role="gridcell"]'));
+    const index = cells.indexOf(today) === -1
+      ? cells.findIndex((node) => node.contains(today))
+      : cells.indexOf(today);
+    if (index === -1) return false;
+    const next = cells[index + 1];
+    if (!next || next.hasAttribute('disabled') || next.getAttribute('aria-disabled') === 'true') {
+      return false;
+    }
+    next.click();
+    return true;
+  })()
+`;
+
+/**
  * Кликает пункт списка (`role="option"`) внутри циферблата `TimePicker`
  * (`packages/ui`, `Dial` — два независимых `role="listbox"`, часы и
  * минуты) по видимому имени ЕГО диска (`dialLabel` — `aria-label` самого

@@ -52,6 +52,7 @@ import {
   READ_STORAGE_STATE,
   READ_TASK_ROW_TITLES,
   selectDialOption,
+  selectDayAfterTodayInDateGrid,
   selectTodayInDateGrid,
   typeIntoFirstInput,
   typeIntoLabeled,
@@ -1016,6 +1017,26 @@ async function pickReminderTime(session, minutesAhead) {
   const hour = Math.floor(rounded / 60) % 24;
   const minute = rounded % 60;
   const pad = pad2;
+  // Под конец суток «сейчас + N минут» попадает уже в СЛЕДУЮЩИЙ день, и
+  // тогда сдвинуть надо не только циферблат, но и дату: иначе получается
+  // напоминание в прошлом (`23:50` → `00:10` сегодняшнего числа), которое
+  // приложение совершенно правильно не планирует — а шаг ждёт живой
+  // будильник и падает на пустом месте. Ровно это и произошло в прогоне
+  // `33928070475` (Step 2d, «0 alarm-блоков вместо ровно одного»).
+  //
+  // Дата выбирается ДО циферблатов — тот же порядок, что и в UI-потоке
+  // выше по коду. Проверки не меняются: они сверяют метку `ЧЧ:ММ`, а
+  // будильник просто оказывается на сутки дальше, оставаясь будущим.
+  if (rounded >= 24 * 60) {
+    if ((await session.cdp.evaluate(selectDayAfterTodayInDateGrid)) !== true) {
+      fail(
+        `выбранное время ${pad(hour)}:${pad(minute)} приходится на следующий день, но ячейка ` +
+          'следующего дня в сетке дат не найдена (сегодня — последний отрисованный день месяца? ' +
+          'перелистывание месяца этот смоук не делает).',
+      );
+    }
+    await sleep(300);
+  }
   if ((await session.cdp.evaluate(selectDialOption(REMINDER_HOUR_DIAL, pad(hour)))) !== true) {
     fail(`циферблат часов напоминания: значение «${pad(hour)}» не найдено`);
   }
