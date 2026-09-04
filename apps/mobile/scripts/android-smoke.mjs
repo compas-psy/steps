@@ -279,6 +279,209 @@ function readNotificationStorageFile() {
   }
 }
 
+/** Последние строки logcat (весь буфер устройства, не отфильтрованный по
+ * pid — процесс мог уже быть мёртв к моменту вызова) — нужен ИСКЛЮЧИТЕЛЬНО
+ * для отчёта при остановке P0-эксперимента (владелец: «STOP с отчётом:
+ * command; Kotlin/Rust side; logcat; время invoke; состояние capability»).
+ * Не парсится и не проверяется программно — сырой текст в `fail()`. */
+function recentLogcat(lines = 200) {
+  try {
+    return execFileSync('adb', ['logcat', '-d', '-t', String(lines)], {
+      encoding: 'utf8',
+      maxBuffer: 16 * 1024 * 1024,
+    });
+  } catch (error) {
+    return `logcat недоступен: ${error.message}`;
+  }
+}
+
+/**
+ * Настоящий системный экран «Будильники и напоминания» для этого
+ * приложения (владелец, P0-эксперимент: `cmd appops set` — только
+ * диагностический инструмент, НЕ proof настоящей revoke-семантики).
+ * `android.settings.REQUEST_SCHEDULE_EXACT_ALARM_PERMISSION` с
+ * package-URI — ТОТ ЖЕ системный intent, что реально открывает кнопка
+ * «Открыть настройки» в приложении (`exactAlarmSettings.openSettings()`
+ * → `plugin:alarm-capability|open_exact_alarm_settings`, Task B4/B6) —
+ * ведёт ПРЯМО на экран переключателя для этого приложения, не на общий
+ * список Special App Access.
+ */
+function requestExactAlarmSettingsScreen() {
+  adb(
+    [
+      'shell',
+      'am',
+      'start',
+      '-a',
+      'android.settings.REQUEST_SCHEDULE_EXACT_ALARM_PERMISSION',
+      '-d',
+      `package:${APPLICATION_ID}`,
+    ],
+    { stdio: 'inherit' },
+  );
+}
+
+/** Снимок иерархии текущего экрана — `uiautomator dump` пишет файл на
+ * устройстве, `cat` читает его обратно; тот же `run-as`-независимый
+ * adb-путь, что весь остальной файл (этот путь — системный, не app-private,
+ * `run-as` тут не нужен и не подходит). */
+function dumpUiHierarchy() {
+  adb(['shell', 'uiautomator', 'dump', '/sdcard/window_dump.xml']);
+  return adb(['shell', 'cat', '/sdcard/window_dump.xml']);
+}
+
+/** Единственный переключатель на экране «Будильники и напоминания» —
+ * ищем по КЛАССУ виджета (`android.widget.Switch`), не по `resource-id`:
+ * тот нестабилен между версиями AOSP/API уровнями, класс — нет. Возвращает
+ * весь XML-узел целиком (не разобранные поля) — `bounds`/`checked`
+ * читаются из него отдельными чистыми функциями ниже. */
+function findSwitchNode(xml) {
+  const match = /<node[^>]*class="android\.widget\.Switch"[^>]*\/>/u.exec(xml);
+  return match === null ? null : match[0];
+}
+
+function switchTapPoint(nodeXml) {
+  const match = /bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"/u.exec(nodeXml);
+  if (match === null) return null;
+  const [x1, y1, x2, y2] = [match[1], match[2], match[3], match[4]].map(Number);
+  return { x: Math.round((x1 + x2) / 2), y: Math.round((y1 + y2) / 2) };
+}
+
+function switchIsChecked(nodeXml) {
+  return /\bchecked="true"/u.test(nodeXml);
+}
+
+/**
+ * НАСТОЯЩИЙ revoke `SCHEDULE_EXACT_ALARM` — реальным пользовательским
+ * путём (владелец): Settings → Alarms & reminders → выключить, а не
+ * `cmd appops set … deny`. Официальный контракт AOSP (владелец): revoke
+ * → приложение останавливается, все future exact alarms отменяются,
+ * `AlarmManagerService` удаляет alarms с `windowLength==0` — именно ЭТО
+ * (а не `cmd appops`) должно быть источником истины для Step 2c's claim
+ * #2. Если системный экран/переключатель не находится или не реагирует —
+ * `fail()` (владелец: «остановись и доложи, не подменяй acceptance
+ * appops'ом») — НЕ откатывается на `appops set deny` как запасной путь.
+ */
+async function revokeExactAlarmViaRealSettingsUi() {
+  console.log('── Настоящий revoke: Settings → «Будильники и напоминания» → выключить ──');
+  requestExactAlarmSettingsScreen();
+  const xmlWithSwitch = await waitFor(
+    'системный экран «Будильники и напоминания» открылся (uiautomator видит переключатель)',
+    15,
+    700,
+    () => {
+      const xml = dumpUiHierarchy();
+      return xml.includes('android.widget.Switch') ? xml : null;
+    },
+  );
+  if (xmlWithSwitch === null) {
+    fail(
+      'Системный экран «Будильники и напоминания» не открылся, либо `uiautomator dump` не нашёл ' +
+        'android.widget.Switch на нём — UI-автоматизация настоящего revoke невозможна на этом ' +
+        'emulator image. Останавливаюсь, НЕ подменяю acceptance прямым `appops`.',
+    );
+  }
+  const nodeBefore = findSwitchNode(xmlWithSwitch);
+  if (nodeBefore === null) fail(`Переключатель не разобран из XML: ${xmlWithSwitch.slice(0, 500)}`);
+  const tapPoint = switchTapPoint(nodeBefore);
+  if (tapPoint === null) fail(`Bounds переключателя не распознаны: ${nodeBefore}`);
+  if (!switchIsChecked(nodeBefore)) {
+    fail(
+      `Переключатель уже выключен ДО начала эксперимента — неожиданное состояние: ${nodeBefore}`,
+    );
+  }
+  console.log(`Переключатель найден (${JSON.stringify(tapPoint)}), тапаю…`);
+  adb(['shell', 'input', 'tap', String(tapPoint.x), String(tapPoint.y)]);
+  const xmlAfterTap = await waitFor(
+    'переключатель сменил состояние на выключенный',
+    15,
+    500,
+    () => {
+      const xml = dumpUiHierarchy();
+      const node = findSwitchNode(xml);
+      return node !== null && !switchIsChecked(node) ? xml : null;
+    },
+  );
+  if (xmlAfterTap === null) {
+    fail(
+      `После тапа по переключателю (${JSON.stringify(tapPoint)}) он всё ещё checked="true" — тап не ` +
+        `сработал. Текущий XML: ${dumpUiHierarchy().slice(0, 1000)}`,
+    );
+  }
+  console.log(
+    'Настоящий revoke подтверждён UI: переключатель «Будильники и напоминания» реально выключен ' +
+      '(не appops-диагностика).',
+  );
+  adb(['shell', 'input', 'keyevent', 'KEYCODE_BACK'], { stdio: 'inherit' });
+}
+
+/**
+ * Оборачивает `cdp.evaluate()` явным таймаутом. Обычный `cdp.evaluate` не
+ * имеет своего — если DevTools-запрос не получит ответа, промис висит
+ * НАВСЕГДА (живой прогон `33841563125`: `can_schedule_exact` на свежей
+ * cold-launch cdp-сессии подвесил весь процесс скрипта — "Unsettled
+ * top-level await" вместо честного таймаута). Нужна ИМЕННО для readiness-
+ * барьера и для самого снимка Точки C ниже — не подменяет и не ослабляет
+ * НИ ОДНУ существующую проверку: раньше зависание вообще не диагностировалось
+ * (весь job просто убивался снаружи), теперь — явный, читаемый факт.
+ */
+async function evaluateWithTimeout(cdp, expression, timeoutMs) {
+  const TIMED_OUT = Symbol('timed-out');
+  const startedAt = Date.now();
+  const result = await Promise.race([
+    cdp.evaluate(expression).catch((error) => ({ evaluateError: error.message })),
+    sleep(timeoutMs).then(() => TIMED_OUT),
+  ]);
+  const elapsedMs = Date.now() - startedAt;
+  return result === TIMED_OUT
+    ? { timedOut: true, timeoutMs, elapsedMs }
+    : { value: result, elapsedMs };
+}
+
+/**
+ * Readiness-барьер (владелец, P0-эксперимент): различает «Tauri IPC вообще
+ * ещё не готов» от «конкретно `alarm-capability`/`can_schedule_exact`
+ * завис» — ДВЕ проверки ПЕРЕД Точкой C, каждая с явным таймаутом
+ * (`evaluateWithTimeout`), не тупым `sleep`:
+ * 1. Тривиальный синхронный JS (`1+1`) — жив ли CDP/WebView вообще, до
+ *    Tauri IPC ещё не дошли.
+ * 2. Уже доказанно надёжный нативный invoke — `plugin:notification|
+ *    is_permission_granted` (НЕ guest-js `isPermissionGranted()`, та имеет
+ *    короткое замыкание через `window.Notification.permission`, если
+ *    разрешение уже не `'default'`, и тогда вообще не тронет нативный
+ *    мост — здесь нужен именно сырой invoke, чтобы гарантированно
+ *    прогнать IPC насквозь). Именно эта Kotlin-команда (не
+ *    `request_permission`) была отдельно найдена и подтверждена
+ *    надёжно резолвящейся ещё в исследовании Task B4/B8
+ *    (`notification-bridge.ts`'s комментарий про `isPermissionGranted()`
+ *    и реальный баг именно `requestPermissions()`).
+ * `can_schedule_exact` сюда намеренно НЕ включён — он сам под подозрением,
+ * использовать его для проверки самого себя ничего не доказало бы.
+ */
+async function waitForTauriIpcReady(cdp) {
+  console.log('── Readiness-барьер: CDP/WebView живой → Tauri IPC живой (P0-эксперимент) ──');
+  const trivial = await evaluateWithTimeout(cdp, '1 + 1', 5000);
+  if (trivial.timedOut === true || trivial.value !== 2) {
+    return { ready: false, stage: 'cdp', probe: '1 + 1', result: trivial };
+  }
+  console.log(`  CDP/WebView живой (1+1 за ${trivial.elapsedMs}мс).`);
+  const known = await evaluateWithTimeout(
+    cdp,
+    "window.__TAURI_INTERNALS__.invoke('plugin:notification|is_permission_granted', {})",
+    8000,
+  );
+  if (known.timedOut === true || typeof known.value !== 'boolean') {
+    return {
+      ready: false,
+      stage: 'tauri-ipc',
+      probe: 'plugin:notification|is_permission_granted',
+      result: known,
+    };
+  }
+  console.log(`  Tauri IPC живой (is_permission_granted за ${known.elapsedMs}мс, ${known.value}).`);
+  return { ready: true };
+}
+
 /**
  * Диагностический снимок (Task B8, ST10/P0-расследование — владелец прямо
  * запросил собрать факты «в одной временной точке», не гадать по одному).
@@ -320,14 +523,24 @@ async function captureReminderSnapshot(label, taskTitle, cdp) {
   console.log(`  appops: ${appops}`);
 
   let nativeCapability = null;
+  let nativeCapabilityProbe = null;
   if (cdp !== undefined) {
-    nativeCapability = await cdp
-      .evaluate(
-        "window.__TAURI_INTERNALS__.invoke('plugin:alarm-capability|can_schedule_exact', {})",
-      )
-      .catch((error) => `evaluate упал: ${error.message}`);
+    // `evaluateWithTimeout` (не голый `cdp.evaluate`) — живой прогон
+    // `33841563125` подвесил ИМЕННО этот вызов на свежей cold-launch
+    // сессии навсегда; таймаут делает зависание диагностируемым фактом,
+    // а не непрозрачным убийством всего job снаружи.
+    nativeCapabilityProbe = await evaluateWithTimeout(
+      cdp,
+      "window.__TAURI_INTERNALS__.invoke('plugin:alarm-capability|can_schedule_exact', {})",
+      8000,
+    );
+    nativeCapability =
+      nativeCapabilityProbe.timedOut === true ? 'TIMEOUT' : (nativeCapabilityProbe.value ?? null);
   }
-  console.log(`  Нативная capability (can_schedule_exact): ${JSON.stringify(nativeCapability)}`);
+  console.log(
+    `  Нативная capability (can_schedule_exact): ${JSON.stringify(nativeCapability)} ` +
+      `(${JSON.stringify(nativeCapabilityProbe)})`,
+  );
 
   const blocks = listSystemAlarmBlocks();
   const alarmSummaries = blocks.map((block) => {
@@ -341,9 +554,12 @@ async function captureReminderSnapshot(label, taskTitle, cdp) {
 
   let pluginPending = null;
   if (cdp !== undefined) {
-    pluginPending = await cdp
-      .evaluate("window.__TAURI_INTERNALS__.invoke('plugin:notification|get_pending', {})")
-      .catch((error) => `evaluate упал: ${error.message}`);
+    const pendingProbe = await evaluateWithTimeout(
+      cdp,
+      "window.__TAURI_INTERNALS__.invoke('plugin:notification|get_pending', {})",
+      8000,
+    );
+    pluginPending = pendingProbe.timedOut === true ? 'TIMEOUT' : (pendingProbe.value ?? null);
   }
   console.log(`  Plugin pending() (guest-js, через CDP): ${JSON.stringify(pluginPending)}`);
 
@@ -360,6 +576,7 @@ async function captureReminderSnapshot(label, taskTitle, cdp) {
     sqlite,
     appops,
     nativeCapability,
+    nativeCapabilityTimedOut: nativeCapabilityProbe?.timedOut === true,
     alarms: alarmSummaries,
     pluginPending,
     notificationStorageHasEntry,
@@ -1232,37 +1449,30 @@ async function main() {
     first.cdp,
   );
 
-  adb(['shell', 'cmd', 'appops', 'set', APPLICATION_ID, 'SCHEDULE_EXACT_ALARM', 'deny'], {
-    stdio: 'inherit',
-  });
+  await revokeExactAlarmViaRealSettingsUi();
 
-  // Живой прогон (33804459749) доказал: Android САМ убивает процесс на
-  // потерю `SCHEDULE_EXACT_ALARM` (logcat: "lost permission to set exact
-  // alarms" / "schedule_exact_alarm revoked", "Killing … ru.cmpas.shagi").
-  // Прежняя диагностика пыталась обратиться к CDP уже мёртвого WebView
-  // сразу после revoke — отсюда «Unsettled top-level await», не
-  // production-дефект. Здесь это ASSERTION (владелец), не неожиданность:
-  // закрываем `cdp`-соединение ДО проверки (сокет всё равно мёртв) и ждём
+  // Официальный контракт AOSP (владелец, отклонил прежнюю гипотезу «Android
+  // может не убивать процесс сразу»): revoke → приложение ОСТАНАВЛИВАЕТСЯ.
+  // Это ASSERTION, а не мягкое ожидание — `fail()`, не `console.warn`.
+  // Закрываем `cdp`-соединение ДО проверки (сокет всё равно мёртв) и ждём
   // исчезновения pid, вместо того чтобы снова дёргать WebView.
   first.cdp.close();
   const pidGone = await waitFor(
-    'процесс убит Android после revoke SCHEDULE_EXACT_ALARM',
+    'процесс убит Android после настоящего revoke (Settings UI) SCHEDULE_EXACT_ALARM',
     20,
     500,
     () => (adbSoft(['shell', 'pidof', APPLICATION_ID]).trim() === '' ? true : null),
   );
   if (pidGone === null) {
-    console.warn(
-      '::warning::процесс НЕ был убит Android после revoke SCHEDULE_EXACT_ALARM — на этой сборке/версии ' +
-        'системы revoke не убивает процесс (расходится с live-прогоном 33804459749). Не фатально: ' +
-        '`am force-stop` ниже всё равно гарантирует чистое состояние перед Точкой C, но это само по ' +
-        'себе диагностический факт — записан здесь, а не проигнорирован.',
-    );
-  } else {
-    console.log(
-      'Процесс подтверждённо убит Android после revoke — ровно то, что доказал live-прогон.',
+    fail(
+      'процесс НЕ был убит Android после настоящего (Settings UI) revoke SCHEDULE_EXACT_ALARM — ' +
+        'расходится с официальным контрактом AOSP (владелец): revoke обязан остановить приложение. ' +
+        `pidof: ${JSON.stringify(adbSoft(['shell', 'pidof', APPLICATION_ID]))}.`,
     );
   }
+  console.log(
+    'Процесс подтверждённо убит Android после настоящего revoke — контракт AOSP выполнен.',
+  );
 
   // ─── Точка B — приложение убито (или доведено до этого force-stop'ом ниже
   // на случай, если Android в этот раз не убил само), ДО relaunch — ТОЛЬКО
@@ -1272,25 +1482,42 @@ async function main() {
     taskTitle,
   );
   if (!pointB.appops.includes('deny')) {
-    console.warn(`::warning::Точка B: appops ожидался «deny», получено: ${pointB.appops}`);
-  }
-  if (pointB.sqlite === null) {
-    console.warn(
-      '::warning::Точка B: SQLite не показывает enabled explicit reminder — ожидался «есть».',
+    fail(
+      `Точка B: appops (диагностика, не механизм revoke) ожидался «deny» после настоящего Settings UI ` +
+        `revoke, получено: ${pointB.appops} — сам системный toggle не отразился в appops, это ` +
+        'расхождение с официальным контрактом AOSP.',
     );
   }
-  if (pointB.alarms.length > 0) {
+  if (pointB.sqlite === null) {
+    fail(
+      'Точка B: SQLite не показывает enabled explicit reminder — ожидался «есть» (revoke убивает ' +
+        `AlarmManager-alarm и процесс, но НЕ трогает SQLite). Снимок: ${JSON.stringify(pointB)}.`,
+    );
+  }
+  // Проверяем именно отсутствие exact-блока (`window===0`) — НЕ пустоту
+  // массива целиком: живые прогоны показывали посторонние non-exact блоки
+  // (window!==0, чужие/системные alarm) в том же `dumpsys alarm` вывода,
+  // и путать их с отслеживаемым exact-alarm было бы ложным факт-эффектом.
+  const hasExactBlock = () =>
+    listSystemAlarmBlocks().some((block) => alarmWindowMs(block.join('\n')) === 0);
+  if (hasExactBlock()) {
     // «Дать ОС коротко завершить обработку revoke и перепроверить» —
     // владелец: не раздувать таймаут произвольно, один короткий bounded
     // повтор тем же приёмом, что и весь остальной файл (`waitFor`).
-    console.log('Точка B: AlarmManager ещё не пуст сразу после revoke — короткая перепроверка…');
-    const settled = await waitFor('AlarmManager освобождается после revoke', 10, 500, () =>
-      listSystemAlarmBlocks().length === 0 ? true : null,
+    console.log(
+      'Точка B: exact (window=0) alarm ещё виден сразу после revoke — короткая перепроверка…',
+    );
+    const settled = await waitFor(
+      'exact (window=0) alarm пропадает из AlarmManager после revoke',
+      10,
+      500,
+      () => (!hasExactBlock() ? true : null),
     );
     if (settled === null) {
-      console.warn(
-        `::warning::Точка B: AlarmManager всё ещё не пуст после короткой перепроверки: ` +
-          `${JSON.stringify(listSystemAlarmBlocks())} — записано как факт, не игнорируется.`,
+      fail(
+        `Точка B: exact (window=0) alarm всё ещё виден в AlarmManager после короткой перепроверки — ` +
+          'расходится с официальным контрактом AOSP (revoke удаляет alarms с windowLength==0). Блоки: ' +
+          `${JSON.stringify(listSystemAlarmBlocks())}.`,
       );
     }
   }
@@ -1308,6 +1535,24 @@ async function main() {
   // `onClick={() => void handleSubmitReminder()}`.
   const consoleEventsDuringResave = await attachConsoleCapture(first.cdp);
 
+  // ─── Readiness-барьер (владелец): WebView живой → Tauri IPC живой —
+  // ПЕРЕД любым обращением к `can_schedule_exact`. Различает «Tauri IPC
+  // вообще не готов» (харнесс/WebView-race — чинить `launchAndAttach`, не
+  // production) от «конкретно `can_schedule_exact` завис» (см. отдельный
+  // разбор ниже, у самой Точки C). ─────────────────────────────────────────
+  const ipcReadiness = await waitForTauriIpcReady(first.cdp);
+  if (ipcReadiness.ready !== true) {
+    fail(
+      'Readiness-барьер НЕ пройден до Точки C — Tauri IPC не отвечает даже на уже доказанно надёжный ' +
+        `вызов (не \`can_schedule_exact\`). Это харнесс/WebView↔Tauri readiness race (владелец: чинить ` +
+        "`launchAndAttach`'s критерий готовности, не увеличивать sleep вслепую), а НЕ B3/production-дефект — " +
+        `у него ещё не было шанса проявиться. Стадия: ${ipcReadiness.stage}, зонд: ${ipcReadiness.probe}, ` +
+        `результат: ${JSON.stringify(ipcReadiness.result)}. ` +
+        `Точка A: ${JSON.stringify(pointA)}. Точка B: ${JSON.stringify(pointB)}. ` +
+        `logcat (последние 200 строк): ${recentLogcat(200)}`,
+    );
+  }
+
   // ─── Точка C — настоящий cold launch. Дожидаемся окна, в которое
   // bootstrap-реконсиляция (`App.tsx`) успевает сработать — bounded
   // `waitFor` на сам наблюдаемый эффект (dumpsys alarm непуст), а не
@@ -1323,6 +1568,59 @@ async function main() {
     'Точка C — после cold launch, bootstrap reconciliation',
     taskTitle,
     first.cdp,
+  );
+
+  // ─── Readiness-барьер пройден, но `can_schedule_exact` в самом снимке
+  // Точки C всё равно завис (`captureReminderSnapshot`'s `evaluateWithTimeout`)
+  // — это уже НЕ харнесс-race (readiness-барьер только что доказал, что
+  // IPC в целом отвечает), а подозрение на настоящий B3 production/plugin
+  // дефект именно в `plugin:alarm-capability|can_schedule_exact`. Владелец:
+  // не чинить это самовольно — STOP с максимально конкретным отчётом. ────
+  if (pointC.nativeCapabilityTimedOut === true) {
+    fail(
+      'Readiness-барьер пройден (Tauri IPC в целом жив), но именно `can_schedule_exact` завис на Точке C ' +
+        '— похоже на настоящий B3 production/plugin-дефект, не на харнесс-race. Не чиню самовольно ' +
+        '(владелец) — отчёт: ' +
+        "команда — window.__TAURI_INTERNALS__.invoke('plugin:alarm-capability|can_schedule_exact', {}); " +
+        'Kotlin-сторона — apps/mobile/src-tauri/alarm-capability/android/src/main/java/.../AlarmCapabilityPlugin.kt ' +
+        '(команда `can_schedule_exact` — Task B3); Rust-сторона — ' +
+        'apps/mobile/src-tauri/alarm-capability/src/lib.rs (та же команда). ' +
+        `Время invoke: ${JSON.stringify(pointC.nativeCapabilityTimedOut)} — таймаут 8000мс исчерпан. ` +
+        `Состояние capability до revoke (Точка A): ${JSON.stringify(pointA.nativeCapability)}, ` +
+        `appops на Точке C: ${JSON.stringify(pointC.appops)}. ` +
+        `logcat (последние 200 строк): ${recentLogcat(200)}`,
+    );
+  }
+
+  // ─── Требуемая владельцем таблица (P0-эксперимент): три момента —
+  // «до revoke», «после настоящего revoke (Settings UI)», «после cold
+  // launch» — по пяти фактам каждый. PID «после cold launch» читается
+  // ЖИВЬЁМ прямо здесь (а не из старого снимка): процесс на этот момент
+  // уже гарантированно поднят (`launchAndAttach` выше сам `fail()`-ит,
+  // если это не так) и это тот же процесс, что видела Точка C. ───────────
+  const pidAtPointC = adbSoft(['shell', 'pidof', APPLICATION_ID]).trim();
+  console.log(
+    '── P0-таблица (владелец): До revoke | После настоящего revoke | После cold launch ──',
+  );
+  console.log(
+    `  SQLite:               ${JSON.stringify(pointA.sqlite !== null)} | ` +
+      `${JSON.stringify(pointB.sqlite !== null)} | ${JSON.stringify(pointC.sqlite !== null)}`,
+  );
+  console.log(
+    `  NotificationStorage:   ${JSON.stringify(pointA.notificationStorageHasEntry)} | ` +
+      `${JSON.stringify(pointB.notificationStorageHasEntry)} | ${JSON.stringify(pointC.notificationStorageHasEntry)}`,
+  );
+  console.log(
+    `  AlarmManager (exact):  ${JSON.stringify(pointA.alarms.some((a) => a.window === 0))} | ` +
+      `${JSON.stringify(pointB.alarms.some((a) => a.window === 0))} | ` +
+      `${JSON.stringify(pointC.alarms.some((a) => a.window === 0))}`,
+  );
+  console.log(
+    `  process/PID:           жив | остановлен (доказано fail()-барьером выше) | ${pidAtPointC || 'НЕТ'}`,
+  );
+  console.log(
+    `  exact capability:      ${JSON.stringify(pointA.nativeCapability)} | (нет живого CDP) | ` +
+      `${JSON.stringify(pointC.nativeCapability)}`,
   );
 
   // ─── Интерпретация C1/C2/C3 (владелец) — главный P0 acceptance. ─────────
