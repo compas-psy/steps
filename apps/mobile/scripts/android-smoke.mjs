@@ -333,6 +333,37 @@ async function captureReminderSnapshot(label, taskTitle) {
 }
 
 /**
+ * Разворачивает own-properties `RemoteObject` из CDP `Runtime.getProperties`
+ * в безопасный плоский снимок «имя → значение» (владелец, диагностический
+ * раунд P0 CONFIRMED — `description: "Object"` у пойманного исключения сам
+ * по себе ничего не говорит, реальное содержимое спрятано за `objectId`).
+ * НЕ предполагает, что объект — экземпляр `Error`: примитивы/строки берутся
+ * как есть, составные вложенные значения (объекты/функции) — ТОЛЬКО их
+ * собственное CDP-описание (`description`), БЕЗ рекурсивного разворачивания
+ * — рекурсия могла бы утащить в лог произвольный вложенный контент за
+ * пределами явно запрошенных полей (владелец: «никакого содержимого Task/
+ * title/user text»).
+ */
+function summarizeOwnProperties(propertyDescriptors) {
+  const summary = {};
+  for (const descriptor of propertyDescriptors ?? []) {
+    if (descriptor.enumerable === false) continue;
+    const value = descriptor.value;
+    if (value === undefined) continue;
+    if (value.type === 'string' || value.type === 'number' || value.type === 'boolean') {
+      summary[descriptor.name] = value.value;
+    } else if (value.type === 'undefined') {
+      summary[descriptor.name] = 'undefined';
+    } else if (value.type === 'object' && value.subtype === 'null') {
+      summary[descriptor.name] = null;
+    } else {
+      summary[descriptor.name] = value.description ?? `[${value.type}]`;
+    }
+  }
+  return summary;
+}
+
+/**
  * Слушает `Runtime.exceptionThrown`/`Runtime.consoleAPICalled` БЕЗ
  * перезагрузки страницы (в отличие от `captureBlankScreenDiagnostics`,
  * которая намеренно перезагружает — здесь этого не нужно и это разрушило
@@ -345,21 +376,54 @@ async function captureReminderSnapshot(label, taskTitle) {
  * путём, что и любое необработанное исключение. Возвращает МАССИВ,
  * который наполняется по мере событий уже ПОСЛЕ вызова (ссылка, не
  * снимок) — вызывающий код читает его после нужного действия.
+ *
+ * Диагностический раунд P0 CONFIRMED (владелец, прогон `33872888416`):
+ * `exceptionDetails` разворачивается ПОЛНОСТЬЮ (text/url/lineNumber/
+ * columnNumber/stackTrace/exception.type/subtype/className/description/
+ * preview/objectId — прежде читались только text/description/url/line), и
+ * если есть `objectId`, сразу же (асинхронно, той же ссылкой на уже
+ * запушенную запись — `events` читается вызывающим кодом ПОЗЖЕ, после
+ * собственных ожиданий, к тому моменту ответ `Runtime.getProperties` уже
+ * приходит) запрашиваются own-properties через CDP `Runtime.getProperties`.
+ * `console.log` теперь тоже перехватывается (раньше только error/warning)
+ * — этим же путём в отчёт попадают новые `BOOT_RECONCILE_*`/`RECONCILE_*`
+ * маркеры production-кода (см. `App.tsx`/`reminder-reconciliation.ts`/
+ * `notification-bridge.ts`).
  */
 async function attachConsoleCapture(cdp) {
   const events = [];
   cdp.on('Runtime.exceptionThrown', (params) => {
     const ex = params.exceptionDetails;
-    events.push({
+    const exception = ex?.exception;
+    const record = {
       kind: 'exception',
       text: ex?.text,
-      description: ex?.exception?.description ?? ex?.exception?.value,
       url: ex?.url,
-      line: ex?.lineNumber,
-    });
+      lineNumber: ex?.lineNumber,
+      columnNumber: ex?.columnNumber,
+      stackTrace: ex?.stackTrace ?? null,
+      exceptionType: exception?.type,
+      exceptionSubtype: exception?.subtype,
+      exceptionClassName: exception?.className,
+      exceptionDescription: exception?.description ?? exception?.value,
+      exceptionPreview: exception?.preview ?? null,
+      exceptionObjectId: exception?.objectId ?? null,
+      ownProperties: exception?.objectId === undefined ? null : 'запрошено…',
+    };
+    events.push(record);
+    if (exception?.objectId !== undefined) {
+      cdp
+        .send('Runtime.getProperties', { objectId: exception.objectId, ownProperties: true })
+        .then((result) => {
+          record.ownProperties = summarizeOwnProperties(result?.result);
+        })
+        .catch((error) => {
+          record.ownProperties = `Runtime.getProperties не удался: ${error.message}`;
+        });
+    }
   });
   cdp.on('Runtime.consoleAPICalled', (params) => {
-    if (params.type !== 'error' && params.type !== 'warning') return;
+    if (params.type !== 'error' && params.type !== 'warning' && params.type !== 'log') return;
     events.push({
       kind: `console.${params.type}`,
       args: (params.args ?? []).map((a) => a.description ?? a.value ?? a.type),

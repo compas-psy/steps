@@ -167,7 +167,19 @@ export function createNotificationBridge(): NotificationSchedulerPort {
      * расписании, которое этот код не создавал.
      */
     async listScheduled(): Promise<readonly ScheduledNotificationSnapshot[]> {
+      // RECONCILE_PENDING_* — временная диагностика P0 CONFIRMED (Task B8,
+      // владелец, прогон `33872888416`): `pluginPending()` — сам guest-js
+      // `pending()` установленного `tauri-plugin-notification`, тот же
+      // вызов, что раньше через сырой CDP-invoke ловил "Uncaught (in
+      // promise) Object" в диагностике смоук-теста (до её удаления) — этот
+      // маркер проверяет, не бросает ли он то же самое и ВНУТРИ production-
+      // моста. Только имена этапов и количество, без содержимого записей.
+      // Удалить после диагностики A6.
+      // eslint-disable-next-line no-console -- временная диагностика P0-эксперимента (Task B8, владелец), без содержимого
+      console.log('RECONCILE_PENDING_REQUESTED');
       const scheduled = await pluginPending();
+      // eslint-disable-next-line no-console -- временная диагностика P0-эксперимента (Task B8, владелец), только count
+      console.log('RECONCILE_PENDING_RETURNED', scheduled.length);
       const result: ScheduledNotificationSnapshot[] = [];
       for (const entry of scheduled) {
         const reminderId = reminderIdById.get(entry.id);

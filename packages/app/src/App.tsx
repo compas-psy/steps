@@ -210,14 +210,55 @@ function useBootstrapReminderReconciliation(
   useEffect(() => {
     const scheduler = platform.notificationScheduler;
     if (!isAvailable(scheduler)) return;
+    // BOOT_RECONCILE_* — временная диагностика P0 CONFIRMED (Task B8,
+    // владелец, прогон `33872888416`): на Android cold-старте после
+    // `am force-stop` SQLite/NotificationStorage подтверждают reminder, но
+    // AlarmManager остаётся пуст даже после полного окна bootstrap-
+    // реконсиляции — этот блок ТОЛЬКО отмечает границы прохода (без
+    // содержимого задач/напоминаний) и раскрывает исключение, если
+    // `reconcileReminderSchedule` его бросит, НЕ меняя control flow — `catch`
+    // здесь обязательно заканчивается повторным `throw`, поведение
+    // приложения (необработанный reject) остаётся тем же, что и раньше.
+    // Удалить вместе с маркерами в `reminder-reconciliation.ts`/
+    // `notification-bridge.ts` после диагностики A6.
+    // eslint-disable-next-line no-console -- BOOT_RECONCILE_* временная диагностика P0-эксперимента (Task B8, владелец): только имена этапов, без пользовательского контента
+    console.log('BOOT_RECONCILE_START');
+    // eslint-disable-next-line no-console -- см. комментарий выше
+    console.log('BOOT_RECONCILE_STORAGE_READY');
+    // eslint-disable-next-line no-console -- см. комментарий выше
+    console.log('BOOT_RECONCILE_BEFORE_RECONCILE');
     void reconcileReminderSchedule(
       storage,
       scheduler,
       Temporal.Now.plainDateTimeISO(),
       Temporal.Now.timeZoneId(),
-    );
+    )
+      .then(() => {
+        // eslint-disable-next-line no-console -- см. комментарий выше
+        console.log('BOOT_RECONCILE_AFTER_RECONCILE');
+      })
+      .catch((error: unknown) => {
+        // eslint-disable-next-line no-console -- см. комментарий выше; сериализация БЕЗОПАСНА (`serializeDiagnosticError` — только name/message, не `error` целиком)
+        console.log('BOOT_RECONCILE_THROW', serializeDiagnosticError(error));
+        throw error; // владелец: catch допустим ТОЛЬКО с повторным throw — bootstrap не превращается в «успешный» молча
+      });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- один раз на монтирование хоста (00§7 шаг 5), не на каждый рендер; `storage`/`platform` стабильны на время жизни `AppProvider`, та же причина, что у `useBootstrapLocalDb`
   }, []);
+}
+
+/** Безопасная сериализация исключения ИСКЛЮЧИТЕЛЬНО для `BOOT_RECONCILE_THROW`
+ * выше (Task B8, диагностический раунд P0 CONFIRMED) — не предполагает, что
+ * `error` является `Error` (исключение из Tauri IPC моста может прийти любым
+ * значением), выводит только `name`/`message`, без стека и без произвольных
+ * полей: единственная цель здесь — узнать, ЧТО бросило (тип/сообщение), не
+ * куда — полный `stack`/`exceptionDetails` для этого уже собирает CDP на
+ * стороне смоук-теста (`android-smoke.mjs`'s `attachConsoleCapture`). */
+function serializeDiagnosticError(error: unknown): {
+  readonly name: string;
+  readonly message: string;
+} {
+  if (error instanceof Error) return { name: error.name, message: error.message };
+  return { name: typeof error, message: String(error) };
 }
 
 /** См. заголовок файла, блок «Смена таймзоны» (01§19, Task A5). Полный скан

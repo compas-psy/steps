@@ -202,6 +202,12 @@ export async function reconcileReminderSchedule(
   timezone: string,
 ): Promise<ReconciliationSummary> {
   const desired = await desiredReminders(storage);
+  // RECONCILE_DESIRED_LOADED — временная диагностика P0 CONFIRMED (Task B8,
+  // владелец): только количество, ни одного заголовка/содержимого задачи.
+  // Удалить после диагностики A6 вместе с BOOT_RECONCILE_*/RECONCILE_PENDING_*
+  // (`App.tsx`/`notification-bridge.ts`).
+  // eslint-disable-next-line no-console -- временная диагностика P0-эксперимента (Task B8, владелец), только count
+  console.log('RECONCILE_DESIRED_LOADED', desired.length);
   const actual = await scheduler.listScheduled();
   return applyReconciliation(scheduler, desired, actual, nowLocal, timezone);
 }
