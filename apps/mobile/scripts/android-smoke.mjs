@@ -218,6 +218,27 @@ function parseDurationToken(token) {
 }
 
 /**
+ * Только НАСТОЯЩИЕ будильники: блоки, в которых распарсился `window=`.
+ *
+ * Почему это, а не «строки, упоминающие пакет» (`listSystemAlarms()`):
+ * `dumpsys alarm` печатает имя пакета не только в записях планировщика.
+ * Прогон `33924852523` упал на Step 3 ровно из-за этого — «число строк
+ * 4 → 5, похоже на задвоение», хотя в дампе ПОСЛЕ обновления был ровно один
+ * заголовок живой записи (`RTC_WAKEUP #16: Alarm{… ru.cmpas.shagi}`) и ровно
+ * один `operation=PendingIntent`; выросло число служебных строк вида
+ * `          type=RTC_WAKEUP tag=*walarm*:…` в секции статистики, которая
+ * копит историю по пакету и меняется независимо от живых будильников.
+ *
+ * Поэтому «сколько будильников» во всём файле считается ЗДЕСЬ и одинаково —
+ * тем же правилом, что уже применялось в Step 2d и Step 6c. Построчные
+ * функции остаются для диагностики и для поиска нативного id, но не для
+ * счёта.
+ */
+function listRealSystemAlarms() {
+  return listSystemAlarmBlocks().filter((block) => alarmWindowMs(block.join('\n')) !== null);
+}
+
+/**
  * Различает «точный, не подлежащий батчингу» alarm (`setExactAndAllowWhileIdle`)
  * от «неточного» (обычный `set`/`setWindow`) ПО ТЕКСТУ блока дампа — то,
  * что бриф задачи (Step 2b) прямо описывает как единственный механический
@@ -1182,8 +1203,11 @@ async function main() {
     20,
     1000,
     () => {
-      const lines = listSystemAlarms();
-      return lines.length > 0 ? lines : null;
+      // Ждём НАСТОЯЩИЙ будильник, а не любую строку с именем пакета: в дампе
+      // есть служебная секция статистики, которая упоминает пакет и без
+      // единого запланированного alarm (см. `listRealSystemAlarms`).
+      const blocks = listRealSystemAlarms();
+      return blocks.length > 0 ? blocks.flat() : null;
     },
   );
   if (scheduledAfterAdd === null) {
@@ -1832,8 +1856,8 @@ async function main() {
   console.log('SCHEDULE_EXACT_ALARM восстановлен — дальнейшие шаги видят обычное exact-состояние.');
 
   console.log('── Step 3: изменение времени заменяет alarm, не задваивает (claim #6) ──');
-  const beforeUpdate = listSystemAlarms();
-  const beforeUpdateSnapshots = beforeUpdate.map(parseTriggerSnapshot);
+  const beforeUpdate = listRealSystemAlarms();
+  const beforeUpdateSnapshots = beforeUpdate.flat().map(parseTriggerSnapshot);
   if ((await first.cdp.evaluate(clickByText('Изменить напоминание'))) !== true) {
     fail('кнопка «Изменить напоминание» не найдена перед Step 3');
   }
@@ -1851,8 +1875,8 @@ async function main() {
     15,
     700,
     () => {
-      const lines = listSystemAlarms();
-      return lines.length > 0 ? lines : null;
+      const blocks = listRealSystemAlarms();
+      return blocks.length > 0 ? blocks : null;
     },
   );
   if (afterUpdate === null) {
@@ -1862,12 +1886,12 @@ async function main() {
   }
   if (afterUpdate.length !== beforeUpdate.length) {
     fail(
-      `update изменил КОЛИЧЕСТВО строк dumpsys (${beforeUpdate.length} → ${afterUpdate.length}) — похоже на ` +
+      `update изменил КОЛИЧЕСТВО будильников (${beforeUpdate.length} → ${afterUpdate.length}) — похоже на ` +
         `задвоение, а не замену (claim #6 брифа). До: ${JSON.stringify(beforeUpdate)}. ` +
         `После: ${JSON.stringify(afterUpdate)}`,
     );
   }
-  const afterUpdateSnapshots = afterUpdate.map(parseTriggerSnapshot);
+  const afterUpdateSnapshots = afterUpdate.flat().map(parseTriggerSnapshot);
   const anyConfirmedChange = afterUpdateSnapshots.some((after) =>
     beforeUpdateSnapshots.some((before) => triggerChanged(before, after) === true),
   );
@@ -1889,7 +1913,9 @@ async function main() {
   } else {
     console.log('Триггерное время в dumpsys действительно изменилось, число записей не выросло.');
   }
-  const windowsAfterUpdate = afterUpdate.map(alarmWindowMs).filter((value) => value !== null);
+  const windowsAfterUpdate = afterUpdate
+    .map((block) => alarmWindowMs(block.join('\n')))
+    .filter((value) => value !== null);
   if (windowsAfterUpdate.some((value) => value === 0)) {
     console.log(
       'Бонус: после восстановления SCHEDULE_EXACT_ALARM новый alarm снова standalone (exact) — восстановление подтверждено.',
@@ -1905,12 +1931,13 @@ async function main() {
     fail('кнопка «Отменить напоминание» не найдена');
   }
   const afterCancel = await waitFor('пустой `dumpsys alarm` после отмены', 15, 700, () => {
-    const lines = listSystemAlarms();
-    return lines.length === 0 ? lines : null;
+    const blocks = listRealSystemAlarms();
+    return blocks.length === 0 ? blocks : null;
   });
   if (afterCancel === null) {
     fail(
-      `после отмены напоминания \`dumpsys alarm\` всё ещё показывает записи: ${JSON.stringify(listSystemAlarms())}`,
+      `после отмены напоминания \`dumpsys alarm\` всё ещё показывает будильник: ` +
+        `${JSON.stringify(listRealSystemAlarms())}. Все строки: ${JSON.stringify(listSystemAlarms())}`,
     );
   }
   console.log('Отмена подтверждена: `dumpsys alarm` для пакета пуст.');
@@ -1958,8 +1985,8 @@ async function main() {
   }
 
   const baseline = await waitFor('OS-level alarm второй задачи', 20, 1000, () => {
-    const lines = listSystemAlarms();
-    return lines.length > 0 ? lines : null;
+    const blocks = listRealSystemAlarms();
+    return blocks.length > 0 ? blocks : null;
   });
   if (baseline === null) {
     fail(`после планирования второй задачи \`dumpsys alarm\` пуст для ${APPLICATION_ID}`);
@@ -1972,7 +1999,7 @@ async function main() {
   }
   const remindersRowCountBaseline = inspectDatabase(dbPathB).reminders;
   console.log(
-    `Базовое число dumpsys-строк: ${baselineCount}. id=${reminderB.id}, nativeId=${reminderB.nativeId}. ` +
+    `Базовое число будильников: ${baselineCount}. id=${reminderB.id}, nativeId=${reminderB.nativeId}. ` +
       `Строк reminders в базе: ${remindersRowCountBaseline}.`,
   );
 
@@ -1994,7 +2021,7 @@ async function main() {
     adbSoft(['shell', 'pidof', APPLICATION_ID]).trim() === '' ? true : null,
   );
   if (deadAfterKill === null) fail('процесс не умер после `kill` — Step 5.1 непроверяем');
-  const afterKill = listSystemAlarms();
+  const afterKill = listRealSystemAlarms();
   if (afterKill.length !== baselineCount) {
     fail(
       `после обычного kill процесса alarm пропал/изменился (было ${baselineCount}, стало ${afterKill.length}) — ` +
@@ -2008,14 +2035,14 @@ async function main() {
   );
   adb(['shell', 'am', 'force-stop', APPLICATION_ID], { stdio: 'inherit' });
   const afterForceStop = await waitFor('очистку alarm после force-stop', 15, 700, () => {
-    const lines = listSystemAlarms();
-    return lines.length === 0 ? lines : null;
+    const blocks = listRealSystemAlarms();
+    return blocks.length === 0 ? blocks : null;
   });
   if (afterForceStop === null) {
     fail(
       '`am force-stop` НЕ очистил `dumpsys alarm` — противоречит платформенной модели ADR-0008 (force-stop ' +
-        `обязан перевести пакет в stopped state и снять его pending alarm'ы). Строки: ` +
-        JSON.stringify(listSystemAlarms()),
+        `обязан перевести пакет в stopped state и снять его pending alarm'ы). Будильники: ` +
+        JSON.stringify(listRealSystemAlarms()),
     );
   }
   // ПУСТОЙ dumpsys здесь — ОЖИДАЕМЫЙ, ПРАВИЛЬНЫЙ результат, не повод для
@@ -2031,8 +2058,8 @@ async function main() {
   );
   first = await launchAndAttach('после force-stop (напоминание)');
   const afterRelaunch = await waitFor('восстановление alarm после перезапуска', 20, 1000, () => {
-    const lines = listSystemAlarms();
-    return lines.length > 0 ? lines : null;
+    const blocks = listRealSystemAlarms();
+    return blocks.length > 0 ? blocks : null;
   });
   if (afterRelaunch === null) {
     fail(
@@ -2043,8 +2070,8 @@ async function main() {
   }
   if (afterRelaunch.length !== baselineCount) {
     fail(
-      `после перезапуска число dumpsys-строк изменилось (было ${baselineCount}, стало ${afterRelaunch.length}) — ` +
-        `реконсиляция задвоила alarm вместо чистой замены. Строки: ${JSON.stringify(afterRelaunch)}`,
+      `после перезапуска число будильников изменилось (было ${baselineCount}, стало ${afterRelaunch.length}) — ` +
+        `реконсиляция задвоила alarm вместо чистой замены. Будильники: ${JSON.stringify(afterRelaunch)}`,
     );
   }
   assertSameReminderRow(
@@ -2297,18 +2324,18 @@ async function main() {
     );
     await sleep(1500);
     first = await launchAndAttach(label);
-    const lines = await waitFor(`восстановление alarm ${label}`, 20, 1000, () => {
-      const current = listSystemAlarms();
+    const blocks = await waitFor(`восстановление alarm ${label}`, 20, 1000, () => {
+      const current = listRealSystemAlarms();
       return current.length > 0 ? current : null;
     });
-    if (lines === null) fail(`${label}: \`dumpsys alarm\` пуст для ${APPLICATION_ID}`);
-    return lines;
+    if (blocks === null) fail(`${label}: \`dumpsys alarm\` пуст для ${APPLICATION_ID}`);
+    return blocks;
   }
 
   const afterBoot1 = await broadcastBootCompletedAndRelaunch('после BOOT_COMPLETED #1');
   if (afterBoot1.length !== baselineCount) {
     fail(
-      `после BOOT_COMPLETED #1 число dumpsys-строк изменилось: было ${baselineCount}, стало ${afterBoot1.length}`,
+      `после BOOT_COMPLETED #1 число будильников изменилось: было ${baselineCount}, стало ${afterBoot1.length}`,
     );
   }
   const dbAfterBoot1 = inspectDatabase(pullDatabase('after-boot-1'));
@@ -2318,7 +2345,7 @@ async function main() {
         `${dbAfterBoot1.reminders}) — реконсиляция при старте что-то создала или потеряла в хранилище.`,
     );
   }
-  const idLines1 = linesWithNativeId(afterBoot1, reminderB.nativeId);
+  const idLines1 = linesWithNativeId(afterBoot1.flat(), reminderB.nativeId);
   if (idLines1.length === 0) {
     console.warn(
       `::warning::TODO(B8-controller): нативный id ${reminderB.nativeId} НЕ найден буквально ни в одной строке ` +
@@ -2327,7 +2354,7 @@ async function main() {
     );
   }
   console.log(
-    `После BOOT_COMPLETED #1: alarm восстановлен без задвоения (${afterBoot1.length} строк), reminders=` +
+    `После BOOT_COMPLETED #1: alarm восстановлен без задвоения (${afterBoot1.length} шт.), reminders=` +
       `${dbAfterBoot1.reminders}.`,
   );
 
@@ -2338,7 +2365,7 @@ async function main() {
     const lines = await broadcastBootCompletedAndRelaunch(label);
     if (lines.length !== baselineCount) {
       fail(
-        `${label}: число dumpsys-строк изменилось (было ${baselineCount}, стало ${lines.length}) — плагин и ` +
+        `${label}: число будильников изменилось (было ${baselineCount}, стало ${lines.length}) — плагин и ` +
           'app-level реконсиляция задвоили alarm вместо согласованного результата (claim #5 брифа).',
       );
     }
@@ -2376,7 +2403,7 @@ async function main() {
   );
   if (afterBoot4.length !== baselineCount) {
     fail(
-      `Step 7: после ещё одного BOOT_COMPLETED число dumpsys-строк не равно baseline (${baselineCount} → ` +
+      `Step 7: после ещё одного BOOT_COMPLETED число будильников не равно baseline (${baselineCount} → ` +
         `${afterBoot4.length}) — похоже на шторм повторного планирования.`,
     );
   }
@@ -2601,14 +2628,14 @@ async function main() {
   // цикла BOOT_COMPLETED — к этому моменту его alarm обязан быть на месте.
   // Без этой проверки пустой dumpsys ПОСЛЕ стирания ничего не доказывал бы
   // — alarm мог быть пуст и ДО кнопки «Удалить всё» по совсем другой причине.
-  const beforeEraseAlarms = listSystemAlarms();
+  const beforeEraseAlarms = listRealSystemAlarms();
   if (beforeEraseAlarms.length === 0) {
     fail(
       'перед M52-стиранием `dumpsys alarm` уже пуст — проверка «M52 отменяет alarm» ниже была бы ' +
         'бессодержательной (нечего стирать). Напоминание Блока B должно было пережить force-stop/reboot выше.',
     );
   }
-  console.log(`Перед стиранием: ${beforeEraseAlarms.length} строк dumpsys alarm.`);
+  console.log(`Перед стиранием: ${beforeEraseAlarms.length} будильник(ов) в dumpsys alarm.`);
 
   if ((await second.cdp.evaluate(clickByText('Удалить', { exact: true }))) !== true) {
     fail('кнопка удаления локальных данных не найдена');
@@ -2659,14 +2686,14 @@ async function main() {
   // alarm на устройстве — это провал уровня «уведомление сработает на уже
   // стёртой задаче», и это должно быть видно здесь громко, а не тихо
   // замаскировано прошедшей проверкой SQLite.
-  const alarmsAfterErase = listSystemAlarms();
+  const alarmsAfterErase = listRealSystemAlarms();
   if (alarmsAfterErase.length > 0) {
     fail(
       'M52 (стирание локальных данных) НЕ очистило реальный OS-level alarm: `dumpsys alarm` всё ещё показывает ' +
-        `${alarmsAfterErase.length} строк(и) ${APPLICATION_ID} ПОСЛЕ «Удалить всё», хотя Task B5's ` +
+        `${alarmsAfterErase.length} будильник(ов) ${APPLICATION_ID} ПОСЛЕ «Удалить всё», хотя Task B5's ` +
         '`reconcileReminderSchedule(...)` вызывается сразу после `eraseAllLocalData()` в `DataPrivacy.tsx` ' +
         '`erase()`. Это РЕГРЕСС/незакрытый разрыв между уровнями (SQLite чист, планировщик — нет), а не повод ' +
-        `тихо чинить под давлением времени смоука. Строки: ${JSON.stringify(alarmsAfterErase)}`,
+        `тихо чинить под давлением времени смоука. Будильники: ${JSON.stringify(alarmsAfterErase)}`,
     );
   }
   console.log('M52 подтверждён на OS-уровне: `dumpsys alarm` для пакета пуст после стирания.');
@@ -2715,8 +2742,8 @@ async function main() {
   }
 
   const afterEraseAlarm = await waitFor('OS-level alarm после стирания', 20, 1000, () => {
-    const lines = listSystemAlarms();
-    return lines.length > 0 ? lines : null;
+    const blocks = listRealSystemAlarms();
+    return blocks.length > 0 ? blocks : null;
   });
   if (afterEraseAlarm === null) {
     fail(
@@ -2751,8 +2778,8 @@ async function main() {
     fail('кнопка «Готово» карточки не найдена перед Step 9b');
   }
   await sleep(900);
-  const beforeTzChange = listSystemAlarms();
-  const beforeTzSnapshots = beforeTzChange.map(parseTriggerSnapshot);
+  const beforeTzChange = listRealSystemAlarms();
+  const beforeTzSnapshots = beforeTzChange.flat().map(parseTriggerSnapshot);
   const originalTimezone = adbSoft(['shell', 'settings', 'get', 'global', 'time_zone']).trim();
   const NEW_TIMEZONE = 'Asia/Tokyo';
   if (originalTimezone === '' || originalTimezone === 'null') {
@@ -2789,8 +2816,8 @@ async function main() {
     20,
     1000,
     () => {
-      const lines = listSystemAlarms();
-      return lines.length > 0 ? lines : null;
+      const blocks = listRealSystemAlarms();
+      return blocks.length > 0 ? blocks : null;
     },
   );
   if (afterTzChange === null) {
@@ -2801,12 +2828,12 @@ async function main() {
   }
   if (afterTzChange.length !== beforeTzChange.length) {
     fail(
-      `после смены часового пояса число dumpsys-строк изменилось (было ${beforeTzChange.length}, стало ` +
+      `после смены часового пояса число будильников изменилось (было ${beforeTzChange.length}, стало ` +
         `${afterTzChange.length}) — реконсиляция задвоила alarm вместо замены (claim #9, вторая половина). ` +
         `До: ${JSON.stringify(beforeTzChange)}. После: ${JSON.stringify(afterTzChange)}`,
     );
   }
-  const afterTzSnapshots = afterTzChange.map(parseTriggerSnapshot);
+  const afterTzSnapshots = afterTzChange.flat().map(parseTriggerSnapshot);
   const tzChangeConfirmed = afterTzSnapshots.some((after) =>
     beforeTzSnapshots.some((before) => triggerChanged(before, after) === true),
   );
