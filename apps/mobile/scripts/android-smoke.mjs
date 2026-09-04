@@ -1265,177 +1265,207 @@ async function main() {
   // реально распознан.
   const hasExactBlock = () =>
     listSystemAlarmBlocks().some((block) => alarmWindowMs(block.join('\n')) === 0);
+  // Владелец: если после подтверждённого force-stop (pid уже пуст) наш
+  // exact alarm остаётся — ОДНА короткая контрольная проверка (не
+  // 10×500ms retry-цикл), и если и после неё alarm на месте — это
+  // платформенная семантика этого emulator image (не харнесс-баг, не
+  // повод для нового исследования Force Stop internals): P0 recovery
+  // experiment пропускается (не `fail()`), P0-C не выполняется —
+  // восстанавливать нечего.
+  let p0RecoverySkipped = false;
   if (hasExactBlock()) {
-    console.log(
-      'P0-B: наш exact (window=0) alarm ещё виден сразу после force-stop — короткая перепроверка…',
-    );
-    const settled = await waitFor(
-      'exact (window=0) alarm пропадает из AlarmManager после force-stop',
-      10,
-      500,
-      () => (!hasExactBlock() ? true : null),
-    );
-    if (settled === null) {
-      // Владелец: если именно на этом API/образе force-stop не убирает
-      // alarm — не разворачивать новое исследование, зафиксировать факт и
-      // разбираться со Step 2c/ADR отдельно, не вслепую chasing widget'ы.
-      fail(
-        'P0-B: наш exact (window=0) alarm всё ещё виден в AlarmManager после force-stop и короткой ' +
-          'перепроверки — на этом API/образе эмулятора `am force-stop` не убирает OS alarm. Это ' +
-          'платформенная семантика, не харнесс-баг — не разворачивать новое исследование; P0-эксперимент ' +
-          'этим прогоном непроверяем (alarm никогда не исчезал, восстанавливать нечего). ' +
+    await sleep(500);
+    if (hasExactBlock()) {
+      console.warn(
+        '::warning::P0-B: наш exact (window=0) alarm остаётся в AlarmManager после `am force-stop` и ' +
+          'одной контрольной проверки. API34 CI emulator сохраняет AlarmManager exact alarm после ' +
+          '`am force-stop`; поэтому сценарий «OS alarm исчез → cold-start reconciliation восстановила ' +
+          'его» на этом образе автоматически не доказуем. Это остаётся manual RC check на физическом ' +
+          'Android-устройстве и не является blocker текущего R1 CI. P0 recovery experiment = SKIPPED. ' +
           `Блоки: ${JSON.stringify(listSystemAlarmBlocks())}.`,
       );
+      p0RecoverySkipped = true;
     }
   }
-  console.log(
-    'P0-B подтверждена: процесс остановлен, SQLite/NotificationStorage сохранены, наш exact alarm исчез.',
-  );
 
-  // cold launch — обычный пользовательский запуск.
-  first = await launchAndAttach('после force-stop (cold launch, P0-C)');
-  const consoleEventsDuringP0C = await attachConsoleCapture(first.cdp);
-
-  // Дожидаемся окна bootstrap-реконсиляции по наблюдаемому ПРОДУКТОВОМУ
-  // состоянию (AlarmManager непуст ИЛИ таймаут — сам факт таймаута тоже
-  // диагностика, не повод ждать дольше). Владелец: raw pending()/
-  // can_schedule_exact через CDP — убрать из blocking smoke, они сами
-  // создают нестабильность харнесса — здесь их больше нет вовсе.
-  await waitFor(
-    'окно bootstrap-реконсиляции (dumpsys alarm непуст ИЛИ таймаут — это факт)',
-    20,
-    700,
-    () => (listSystemAlarmBlocks().length > 0 ? true : null),
-  );
-  const p0C = await captureReminderSnapshot(
-    'P0-C — после cold launch, bootstrap reconciliation',
-    taskTitle,
-  );
-
-  const dbPathAtP0C = pullDatabase('step2c-p0-c');
-  const enabledCountAtP0C = countEnabledExplicitReminders(dbPathAtP0C, taskTitle);
-  const exactBlocksAtP0C = p0C.alarms.filter((a) => a.window !== null);
-
-  // ─── P0 acceptance (владелец) ────────────────────────────────────────
-  if (enabledCountAtP0C === 1 && exactBlocksAtP0C.length === 1) {
+  if (p0RecoverySkipped) {
     console.log(
-      'P0 CLOSED: SQLite = ровно 1 enabled explicit reminder, AlarmManager = ровно один alarm ' +
-        'восстановлен после cold launch, дублей нет — startup recovery (A6) работает.',
-    );
-  } else if (
-    enabledCountAtP0C === 1 &&
-    p0C.notificationStorageHasEntry === true &&
-    exactBlocksAtP0C.length === 0
-  ) {
-    fail(
-      'P0 CONFIRMED: SQLite = reminder есть, NotificationStorage = запись есть, AlarmManager = alarm ' +
-        'НЕТ после bootstrap reconciliation. A6 доверяет устаревшему plugin storage и НЕ восстанавливает ' +
-        'OS-удалённый (force-stop) alarm. НЕ чиню A6 самовольно (владелец) — доклад и предложение ' +
-        `минимального recovery design. P0-A: ${JSON.stringify(p0A)}. P0-B: ${JSON.stringify(p0B)}. ` +
-        `P0-C: ${JSON.stringify(p0C)}. Console/exception события во время cold launch (${consoleEventsDuringP0C.length}): ` +
-        `${JSON.stringify(consoleEventsDuringP0C)}.`,
-    );
-  } else if (enabledCountAtP0C === 1 && exactBlocksAtP0C.length === 0) {
-    fail(
-      'P0 (другой recovery defect): SQLite = reminder есть, NotificationStorage тоже не показывает ' +
-        'запись, AlarmManager = alarm НЕТ — bootstrap reconciliation не восстановила desired schedule ' +
-        `вовсе (не про A6/plugin storage). Доклад. P0-A: ${JSON.stringify(p0A)}. P0-B: ${JSON.stringify(p0B)}. ` +
-        `P0-C: ${JSON.stringify(p0C)}.`,
-    );
-  } else if (enabledCountAtP0C === 1) {
-    fail(
-      `P0 (задвоение): AlarmManager содержит ${exactBlocksAtP0C.length} alarm-блок(ов) вместо одного ` +
-        `после cold launch — реконсиляция задвоила alarm. P0-C: ${JSON.stringify(p0C)}.`,
+      'P0-C не выполняется: восстанавливать нечего на этом emulator image (см. warning выше).',
     );
   } else {
-    fail(
-      `P0: в SQLite ${enabledCountAtP0C} enabled explicit-записей для «${taskTitle}» вместо ровно одной ` +
-        `(задвоение или потеря на пути cold launch/реконсиляции). P0-C: ${JSON.stringify(p0C)}.`,
+    console.log(
+      'P0-B подтверждена: процесс остановлен, SQLite/NotificationStorage сохранены, наш exact alarm исчез.',
     );
+
+    // cold launch — обычный пользовательский запуск.
+    first = await launchAndAttach('после force-stop (cold launch, P0-C)');
+    const consoleEventsDuringP0C = await attachConsoleCapture(first.cdp);
+
+    // Дожидаемся окна bootstrap-реконсиляции по наблюдаемому ПРОДУКТОВОМУ
+    // состоянию (AlarmManager непуст ИЛИ таймаут — сам факт таймаута тоже
+    // диагностика, не повод ждать дольше). Владелец: raw pending()/
+    // can_schedule_exact через CDP — убрать из blocking smoke, они сами
+    // создают нестабильность харнесса — здесь их больше нет вовсе.
+    await waitFor(
+      'окно bootstrap-реконсиляции (dumpsys alarm непуст ИЛИ таймаут — это факт)',
+      20,
+      700,
+      () => (listSystemAlarmBlocks().length > 0 ? true : null),
+    );
+    const p0C = await captureReminderSnapshot(
+      'P0-C — после cold launch, bootstrap reconciliation',
+      taskTitle,
+    );
+
+    const dbPathAtP0C = pullDatabase('step2c-p0-c');
+    const enabledCountAtP0C = countEnabledExplicitReminders(dbPathAtP0C, taskTitle);
+    const exactBlocksAtP0C = p0C.alarms.filter((a) => a.window !== null);
+
+    // ─── P0 acceptance (владелец) ──────────────────────────────────────
+    if (enabledCountAtP0C === 1 && exactBlocksAtP0C.length === 1) {
+      console.log(
+        'P0 CLOSED: SQLite = ровно 1 enabled explicit reminder, AlarmManager = ровно один alarm ' +
+          'восстановлен после cold launch, дублей нет — startup recovery (A6) работает.',
+      );
+    } else if (
+      enabledCountAtP0C === 1 &&
+      p0C.notificationStorageHasEntry === true &&
+      exactBlocksAtP0C.length === 0
+    ) {
+      fail(
+        'P0 CONFIRMED: SQLite = reminder есть, NotificationStorage = запись есть, AlarmManager = alarm ' +
+          'НЕТ после bootstrap reconciliation. A6 доверяет устаревшему plugin storage и НЕ восстанавливает ' +
+          'OS-удалённый (force-stop) alarm. НЕ чиню A6 самовольно (владелец) — доклад и предложение ' +
+          `минимального recovery design. P0-A: ${JSON.stringify(p0A)}. P0-B: ${JSON.stringify(p0B)}. ` +
+          `P0-C: ${JSON.stringify(p0C)}. Console/exception события во время cold launch (${consoleEventsDuringP0C.length}): ` +
+          `${JSON.stringify(consoleEventsDuringP0C)}.`,
+      );
+    } else if (enabledCountAtP0C === 1 && exactBlocksAtP0C.length === 0) {
+      fail(
+        'P0 (другой recovery defect): SQLite = reminder есть, NotificationStorage тоже не показывает ' +
+          'запись, AlarmManager = alarm НЕТ — bootstrap reconciliation не восстановила desired schedule ' +
+          `вовсе (не про A6/plugin storage). Доклад. P0-A: ${JSON.stringify(p0A)}. P0-B: ${JSON.stringify(p0B)}. ` +
+          `P0-C: ${JSON.stringify(p0C)}.`,
+      );
+    } else if (enabledCountAtP0C === 1) {
+      fail(
+        `P0 (задвоение): AlarmManager содержит ${exactBlocksAtP0C.length} alarm-блок(ов) вместо одного ` +
+          `после cold launch — реконсиляция задвоила alarm. P0-C: ${JSON.stringify(p0C)}.`,
+      );
+    } else {
+      fail(
+        `P0: в SQLite ${enabledCountAtP0C} enabled explicit-записей для «${taskTitle}» вместо ровно одной ` +
+          `(задвоение или потеря на пути cold launch/реконсиляции). P0-C: ${JSON.stringify(p0C)}.`,
+      );
+    }
+
+    // cdp закрывается здесь явно: Step 2d ниже начинается с полного
+    // uninstall/reinstall (test isolation boundary, владелец) и не
+    // рассчитывает на живую сессию P0-C.
+    first.cdp.close();
   }
 
-  // ─── Step 2d (B6/ST10): деградация при appops-инъекции capability=false
-  // (claim #2). `appops set … deny` здесь — ТОЛЬКО тестовая инъекция
-  // «capability=false», НЕ доказательство настоящего пользовательского
-  // revoke (тот проверяется вручную на устройстве перед релизом). ────────
-  console.log('── Step 2d: деградация при appops-инъекции capability=false (claim #2/ST10) ──');
+  // ─── Step 2d (B6/ST10/atomic replace на реальном Android): деградация
+  // при capability=false — НЕЗАВИСИМЫЙ прогон (владелец): uninstall +
+  // reinstall того же APK, а не продолжение поверх состояния, оставшегося
+  // после P0. Test isolation boundary, а не workaround production-кода —
+  // P0-B доказала (когда не SKIPPED): `am force-stop` на этом emulator
+  // image может оставлять старый exact alarm живым, и он загрязнил бы
+  // проверку «alarm стал inexact», если продолжать на том же пакете.
+  // `appops set … deny` здесь — ТОЛЬКО тестовая инъекция «capability=false»,
+  // НЕ доказательство настоящего пользовательского revoke (тот проверяется
+  // вручную на устройстве перед релизом). ───────────────────────────────
+  console.log('── Step 2d: деградация при capability=false — независимый reinstall (B6/ST10) ──');
 
-  first.cdp.close();
-  adb(['shell', 'am', 'force-stop', APPLICATION_ID], { stdio: 'inherit' });
-  const pidGoneBeforeDeny = await waitFor(
-    'процесс остановлен перед appops-инъекцией (Step 2d)',
-    20,
-    500,
-    () => (adbSoft(['shell', 'pidof', APPLICATION_ID]).trim() === '' ? true : null),
-  );
-  if (pidGoneBeforeDeny === null) {
-    fail(
-      `Step 2d: процесс НЕ остановился после \`am force-stop\`. ` +
-        `pidof: ${JSON.stringify(adbSoft(['shell', 'pidof', APPLICATION_ID]))}.`,
-    );
-  }
-  const noStaleAlarmBeforeDeny = await waitFor(
-    'старый OS alarm пропал перед appops-инъекцией',
-    10,
-    500,
-    () =>
-      listSystemAlarmBlocks().every((block) => alarmWindowMs(block.join('\n')) === null)
-        ? true
-        : null,
-  );
-  if (noStaleAlarmBeforeDeny === null) {
-    fail(
-      `Step 2d: старый OS alarm всё ещё виден после force-stop — appops-инъекция ниже проверяла бы ` +
-        `не то, что задумано. Блоки: ${JSON.stringify(listSystemAlarmBlocks())}.`,
-    );
-  }
-
+  adb(['uninstall', APPLICATION_ID], { stdio: 'inherit' });
+  adb(['install', '-r', apkPath], { stdio: 'inherit' });
+  // Тот же грант, что и при первой установке (см. комментарий у самого
+  // первого `pm grant` выше) — uninstall стирает ВСЕ разрешения приложения
+  // вместе с его данными, без повторной выдачи `schedule()` снова ничего
+  // не запланирует, и Step 2d упадёт на пустом `dumpsys alarm`, а не на
+  // проверяемом claim'е.
+  adb(['shell', 'pm', 'grant', APPLICATION_ID, 'android.permission.POST_NOTIFICATIONS'], {
+    stdio: 'inherit',
+  });
   adb(['shell', 'cmd', 'appops', 'set', APPLICATION_ID, 'SCHEDULE_EXACT_ALARM', 'deny'], {
     stdio: 'inherit',
   });
 
-  first = await launchAndAttach('после appops-инъекции capability=false (cold launch, Step 2d)');
-  // ДИАГНОСТИКА — тот же приём, что `captureBlankScreenDiagnostics`, но БЕЗ
-  // перезагрузки страницы (см. комментарий `attachConsoleCapture`):
-  // подписка ставится СРАЗУ после релонча, чтобы поймать абсолютно всё,
-  // что произойдёт при открытии карточки/пересохранении — владелец прямо
-  // просит проверить unhandled rejection из
-  // `onClick={() => void handleSubmitReminder()}`.
-  const consoleEventsDuringResave = await attachConsoleCapture(first.cdp);
-
-  if ((await first.cdp.evaluate(openTaskRow(taskTitle))) !== true) {
-    fail(`строка задачи «${taskTitle}» не открылась после appops-инъекции`);
-  }
-  await sleep(1200);
-  if ((await first.cdp.evaluate(clickByText('Изменить напоминание'))) !== true) {
+  // Доказать чистое состояние ПЕРЕД Step 2d — буквально то, что просил
+  // владелец: `dumpsys alarm` для пакета пуст, appops = deny.
+  const exactAlarmOpStateAfterReinstall = adb([
+    'shell',
+    'cmd',
+    'appops',
+    'get',
+    APPLICATION_ID,
+    'SCHEDULE_EXACT_ALARM',
+  ]);
+  if (!exactAlarmOpStateAfterReinstall.includes('deny')) {
     fail(
-      'кнопка «Изменить напоминание» не найдена — предыдущее напоминание должно было сохраниться',
+      `Step 2d: после reinstall+\`appops set … deny\` состояние SCHEDULE_EXACT_ALARM не «deny»: ` +
+        `${JSON.stringify(exactAlarmOpStateAfterReinstall)}.`,
     );
   }
+  const alarmBlocksAfterReinstall = listSystemAlarmBlocks();
+  if (alarmBlocksAfterReinstall.length > 0) {
+    fail(
+      `Step 2d: после reinstall \`dumpsys alarm\` для ${APPLICATION_ID} уже содержит запись — reinstall ` +
+        `не дал чистого состояния. Блоки: ${JSON.stringify(alarmBlocksAfterReinstall)}.`,
+    );
+  }
+  console.log(
+    'Step 2d: reinstall подтверждён чистым — appops=deny, AlarmManager для пакета пуст, ' +
+      'POST_NOTIFICATIONS выдан заново.',
+  );
+
+  first = await launchAndAttach('после reinstall (Step 2d, capability=false)');
+  // ДИАГНОСТИКА — тот же приём, что `captureBlankScreenDiagnostics`, но БЕЗ
+  // перезагрузки страницы (см. комментарий `attachConsoleCapture`): владелец
+  // прямо просит проверить unhandled rejection из
+  // `onClick={() => void handleSubmitReminder()}`.
+  const consoleEventsStep2d = await attachConsoleCapture(first.cdp);
+
+  // Тот же онбординг-флоу, что Step 1 в самом начале файла — независимый
+  // прогон означает независимую задачу, не переиспользование состояния.
+  console.log('── Step 2d: онбординг и создание задачи (независимый прогон) ──');
+  if ((await first.cdp.evaluate(clickByText('Начать'))) !== true) {
+    fail('Step 2d: кнопка «Начать» не найдена после reinstall');
+  }
+  await sleep(1200);
+  if ((await first.cdp.evaluate(typeIntoFirstInput(taskTitle))) !== true) {
+    fail('Step 2d: поле ввода первой задачи не найдено');
+  }
+  await sleep(400);
+  if ((await first.cdp.evaluate(clickByText('Добавить задачу'))) !== true) {
+    fail('Step 2d: кнопка «Добавить задачу» не найдена');
+  }
+  await sleep(1500);
+  if ((await first.cdp.evaluate(clickByText('Понятно'))) !== true) {
+    fail('Step 2d: кнопка «Понятно» (экран разбора русского текста) не найдена');
+  }
+  await sleep(1500);
+  if ((await first.cdp.evaluate(openTaskRow(taskTitle))) !== true) {
+    fail(`Step 2d: строка задачи «${taskTitle}» не открылась для планирования напоминания`);
+  }
+  await sleep(1200);
+
+  if ((await first.cdp.evaluate(clickByText('Добавить напоминание'))) !== true) {
+    fail('Step 2d: кнопка «Добавить напоминание» не найдена');
+  }
   await sleep(900);
-  // Владелец: «изменить время и сохранить» — не резохранение теми же
-  // значениями, а реальный другой offset (заметно отличается от Step 2's
-  // изначальных 5 минут и от Step 3's последующих 25).
-  await pickReminderTime(first, 20);
+  if ((await first.cdp.evaluate(selectTodayInDateGrid)) !== true) {
+    fail('Step 2d: ячейка «сегодня» в сетке дат напоминания не найдена');
+  }
+  await sleep(500);
+  const firstReminderTime = await pickReminderTime(first, 30);
   if ((await first.cdp.evaluate(clickByText('Сохранить', { exact: true }))) !== true) {
-    fail('кнопка «Сохранить» не найдена при пересохранении напоминания с capability=false');
+    fail('Step 2d: кнопка «Сохранить» напоминания не найдена');
   }
   await sleep(2000);
 
-  // ДИАГНОСТИКА — снимок СРАЗУ после пересохранения, ДО того, как узнаем,
-  // появилось ли уведомление ST10. Печатается ВСЕГДА (успех/провал), чтобы
-  // не зависеть от того, в какую ветку попадёт `waitFor` ниже.
-  const snapshotAfterResave = await captureReminderSnapshot(
-    'после пересохранения (claim #2 / ST10)',
-    taskTitle,
-  );
-  console.log(
-    `  Console/exception события за время открытия карточки + пересохранения (${consoleEventsDuringResave.length}): ` +
-      JSON.stringify(consoleEventsDuringResave),
-  );
-
-  const inexactNoticeText = await waitFor(
-    'уведомление о неточном напоминании (ST10, Task B6)',
+  const firstNoticeText = await waitFor(
+    'уведомление о неточном напоминании при первом создании (ST10, Step 2d)',
     15,
     700,
     async () => {
@@ -1445,58 +1475,137 @@ async function main() {
         : null;
     },
   );
-  if (inexactNoticeText === null) {
+  if (firstNoticeText === null) {
     const last = await first.cdp.evaluate(READ_APP_TEXT);
     fail(
-      'после appops-инъекции capability=false экран не показал уведомление ST10 ' +
-        `(planning.reminder.inexactNotice) — приложение молчит там, где обязано честно предупредить. ` +
-        `Экран: ${JSON.stringify(String(last).slice(0, 300))}. ` +
-        `Диагностический снимок сразу после пересохранения: ${JSON.stringify(snapshotAfterResave)}. ` +
-        `appops: ${snapshotAfterResave.appops}. ` +
-        `Console/exception события: ${JSON.stringify(consoleEventsDuringResave)}.`,
+      'Step 2d: после создания первого напоминания с capability=false экран не показал уведомление ST10 ' +
+        `(planning.reminder.inexactNotice). Экран: ${JSON.stringify(String(last).slice(0, 300))}. ` +
+        `Console/exception события: ${JSON.stringify(consoleEventsStep2d)}.`,
     );
   }
-  console.log(`UI показывает новое время (ST10 подтверждён): ${JSON.stringify(inexactNoticeText)}`);
-
-  // Финальный acceptance Step 2d (владелец): «SQLite — ровно 1 enabled
-  // explicit» (задвоение исключается явно) и «AlarmManager — ровно 1
-  // alarm, не exact» — само по себе достаточное доказательство деградации
-  // (appops=deny + inexact OS alarm + ST10), сырой `can_schedule_exact`
-  // через CDP больше не дёргается.
-  const dbPathAfterResave = pullDatabase('step2d-after-resave');
-  const enabledExplicitCountAfterResave = countEnabledExplicitReminders(
-    dbPathAfterResave,
-    taskTitle,
-  );
-  if (enabledExplicitCountAfterResave !== 1) {
+  const firstTimeLabel = `${pad2(firstReminderTime.hour)}:${pad2(firstReminderTime.minute)}`;
+  if (!firstNoticeText.includes(firstTimeLabel)) {
     fail(
-      `после пересохранения с capability=false в SQLite ${enabledExplicitCountAfterResave} ` +
-        `enabled explicit-записей для «${taskTitle}», ожидалась ровно 1 (задвоение или потеря). ` +
-        `Снимок: ${JSON.stringify(snapshotAfterResave)}`,
+      `Step 2d: экран не показывает выбранное время «${firstTimeLabel}» первого напоминания. ` +
+        `Экран: ${JSON.stringify(firstNoticeText.slice(0, 300))}.`,
     );
   }
+  console.log(`Step 2d: ST10 подтверждён, UI показывает выбранное время «${firstTimeLabel}».`);
 
-  const blocksAfterDeny = listSystemAlarmBlocks();
-  for (const block of blocksAfterDeny) console.log(`  блок: ${JSON.stringify(block)}`);
-  const windowsAfterDeny = blocksAfterDeny
+  // ─── Acceptance первого reminder (владелец) ──────────────────────────
+  const dbPathFirstReminder = pullDatabase('step2d-first-reminder');
+  const enabledCountFirstReminder = countEnabledExplicitReminders(dbPathFirstReminder, taskTitle);
+  if (enabledCountFirstReminder !== 1) {
+    fail(
+      `Step 2d: после первого создания напоминания в SQLite ${enabledCountFirstReminder} ` +
+        `enabled explicit-записей для «${taskTitle}», ожидалась ровно 1.`,
+    );
+  }
+  const firstReminder = readEnabledReminder(dbPathFirstReminder, taskTitle);
+  const alarmBlocksAfterFirstReminder = listSystemAlarmBlocks();
+  const windowsAfterFirstReminder = alarmBlocksAfterFirstReminder
     .map((block) => alarmWindowMs(block.join('\n')))
     .filter((value) => value !== null);
-  if (windowsAfterDeny.length !== 1) {
+  if (windowsAfterFirstReminder.length !== 1) {
     fail(
-      `AlarmManager содержит ${windowsAfterDeny.length} alarm-блок(ов) для reminder вместо ровно ` +
-        `одного (задвоение или потеря). window'ы: ${JSON.stringify(windowsAfterDeny)}`,
+      `Step 2d: AlarmManager содержит ${windowsAfterFirstReminder.length} alarm-блок(ов) для reminder ` +
+        `вместо ровно одного. window'ы: ${JSON.stringify(windowsAfterFirstReminder)}`,
     );
   }
-  if (windowsAfterDeny[0] === 0) {
+  if (windowsAfterFirstReminder[0] === 0) {
     fail(
-      'плагин продолжает планировать standalone/unbatched (`window=0`) alarm ПРИ appops=deny — ' +
-        'приложение молча выдаёт себя за точное там, где Android честно не может это гарантировать ' +
-        `(claim #2 брифа НЕ подтверждён). window: ${windowsAfterDeny[0]}`,
+      'Step 2d: плагин запланировал standalone/unbatched (`window=0`) alarm ПРИ appops=deny — ' +
+        `приложение молча выдаёт себя за точное. window: ${windowsAfterFirstReminder[0]}`,
     );
   }
   console.log(
-    `Деградация подтверждена: ровно 1 alarm, window=${windowsAfterDeny[0]} (не exact), ` +
-      'SQLite ровно 1 enabled explicit, ST10 показан. Дальше raw can_schedule_exact не дёргаем.',
+    `Step 2d: первый reminder подтверждён — SQLite ровно 1 enabled explicit, AlarmManager ровно ` +
+      `1 alarm, window=${windowsAfterFirstReminder[0]} (не exact), ST10 виден, UI показывает время.`,
+  );
+
+  // ─── Тот же reminder: изменить время и сохранить (atomic replace на
+  // реальном Android) ────────────────────────────────────────────────────
+  if ((await first.cdp.evaluate(clickByText('Изменить напоминание'))) !== true) {
+    fail('Step 2d: кнопка «Изменить напоминание» не найдена перед проверкой atomic replace');
+  }
+  await sleep(900);
+  // Заметно другой offset, не тот же результат округления, что у
+  // `firstReminderTime` — иначе «время не изменилось» и «изменилось на то
+  // же самое» неразличимы.
+  const replacedReminderTime = await pickReminderTime(first, 50);
+  if ((await first.cdp.evaluate(clickByText('Сохранить', { exact: true }))) !== true) {
+    fail('Step 2d: кнопка «Сохранить» изменённого напоминания не найдена');
+  }
+  await sleep(2000);
+
+  const replaceNoticeText = await waitFor(
+    'уведомление о неточном напоминании после atomic replace (ST10, Step 2d)',
+    15,
+    700,
+    async () => {
+      const text = await first.cdp.evaluate(READ_APP_TEXT);
+      return typeof text === 'string' && text.includes('Точное время сейчас недоступно')
+        ? text
+        : null;
+    },
+  );
+  if (replaceNoticeText === null) {
+    const last = await first.cdp.evaluate(READ_APP_TEXT);
+    fail(
+      'Step 2d: после изменения времени с capability=false экран не показал уведомление ST10 — ' +
+        `atomic replace должен сохранить деградацию, а не молчаливо вернуть точность. Экран: ` +
+        `${JSON.stringify(String(last).slice(0, 300))}.`,
+    );
+  }
+  const replacedTimeLabel = `${pad2(replacedReminderTime.hour)}:${pad2(replacedReminderTime.minute)}`;
+  if (!replaceNoticeText.includes(replacedTimeLabel)) {
+    fail(
+      `Step 2d: экран не показывает НОВОЕ выбранное время «${replacedTimeLabel}» после atomic replace. ` +
+        `Экран: ${JSON.stringify(replaceNoticeText.slice(0, 300))}.`,
+    );
+  }
+  console.log(
+    `Step 2d: atomic replace — ST10 подтверждён, UI показывает новое время «${replacedTimeLabel}».`,
+  );
+
+  // ─── Acceptance atomic replace (владелец) ────────────────────────────
+  const dbPathAfterReplace = pullDatabase('step2d-after-replace');
+  const enabledCountAfterReplace = countEnabledExplicitReminders(dbPathAfterReplace, taskTitle);
+  if (enabledCountAfterReplace !== 1) {
+    fail(
+      `Step 2d: после atomic replace в SQLite ${enabledCountAfterReplace} enabled explicit-записей ` +
+        `для «${taskTitle}», ожидалась ровно 1 (задвоение или потеря).`,
+    );
+  }
+  const replacedReminder = readEnabledReminder(dbPathAfterReplace, taskTitle);
+  if (replacedReminder.id === firstReminder.id) {
+    fail(
+      `Step 2d: после atomic replace id enabled explicit-записи НЕ изменился (${replacedReminder.id}) — ` +
+        'ожидалась новая запись (disable-старой + create-новой, `replaceExplicitReminderCommand`), ' +
+        'не мутация той же строки на месте.',
+    );
+  }
+  const alarmBlocksAfterReplace = listSystemAlarmBlocks();
+  const windowsAfterReplace = alarmBlocksAfterReplace
+    .map((block) => alarmWindowMs(block.join('\n')))
+    .filter((value) => value !== null);
+  if (windowsAfterReplace.length !== 1) {
+    fail(
+      `Step 2d: после atomic replace AlarmManager содержит ${windowsAfterReplace.length} alarm-блок(ов) ` +
+        `вместо ровно одного (старый reminder alarm не убран, либо задвоение). window'ы: ` +
+        `${JSON.stringify(windowsAfterReplace)}`,
+    );
+  }
+  if (windowsAfterReplace[0] === 0) {
+    fail(
+      'Step 2d: после atomic replace alarm стал exact (`window=0`) ПРИ appops=deny — деградация не ' +
+        `сохранилась через replace. window: ${windowsAfterReplace[0]}`,
+    );
+  }
+  console.log(
+    'Step 2d (B6/ST10/atomic replace) закрыт: ровно 1 enabled explicit reminder с НОВЫМ id, ровно ' +
+      `1 alarm (window=${windowsAfterReplace[0]}, не exact), старого reminder alarm нет, дублей нет, ` +
+      'ST10 остаётся виден. Raw can_schedule_exact/pending() через CDP не использовались.',
   );
 
   adb(['shell', 'cmd', 'appops', 'set', APPLICATION_ID, 'SCHEDULE_EXACT_ALARM', 'allow'], {
