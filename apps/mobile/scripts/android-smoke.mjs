@@ -279,209 +279,6 @@ function readNotificationStorageFile() {
   }
 }
 
-/** Последние строки logcat (весь буфер устройства, не отфильтрованный по
- * pid — процесс мог уже быть мёртв к моменту вызова) — нужен ИСКЛЮЧИТЕЛЬНО
- * для отчёта при остановке P0-эксперимента (владелец: «STOP с отчётом:
- * command; Kotlin/Rust side; logcat; время invoke; состояние capability»).
- * Не парсится и не проверяется программно — сырой текст в `fail()`. */
-function recentLogcat(lines = 200) {
-  try {
-    return execFileSync('adb', ['logcat', '-d', '-t', String(lines)], {
-      encoding: 'utf8',
-      maxBuffer: 16 * 1024 * 1024,
-    });
-  } catch (error) {
-    return `logcat недоступен: ${error.message}`;
-  }
-}
-
-/**
- * Настоящий системный экран «Будильники и напоминания» для этого
- * приложения (владелец, P0-эксперимент: `cmd appops set` — только
- * диагностический инструмент, НЕ proof настоящей revoke-семантики).
- * `android.settings.REQUEST_SCHEDULE_EXACT_ALARM_PERMISSION` с
- * package-URI — ТОТ ЖЕ системный intent, что реально открывает кнопка
- * «Открыть настройки» в приложении (`exactAlarmSettings.openSettings()`
- * → `plugin:alarm-capability|open_exact_alarm_settings`, Task B4/B6) —
- * ведёт ПРЯМО на экран переключателя для этого приложения, не на общий
- * список Special App Access.
- */
-function requestExactAlarmSettingsScreen() {
-  adb(
-    [
-      'shell',
-      'am',
-      'start',
-      '-a',
-      'android.settings.REQUEST_SCHEDULE_EXACT_ALARM_PERMISSION',
-      '-d',
-      `package:${APPLICATION_ID}`,
-    ],
-    { stdio: 'inherit' },
-  );
-}
-
-/** Снимок иерархии текущего экрана — `uiautomator dump` пишет файл на
- * устройстве, `cat` читает его обратно; тот же `run-as`-независимый
- * adb-путь, что весь остальной файл (этот путь — системный, не app-private,
- * `run-as` тут не нужен и не подходит). */
-function dumpUiHierarchy() {
-  adb(['shell', 'uiautomator', 'dump', '/sdcard/window_dump.xml']);
-  return adb(['shell', 'cat', '/sdcard/window_dump.xml']);
-}
-
-/** Единственный переключатель на экране «Будильники и напоминания» —
- * ищем по КЛАССУ виджета (`android.widget.Switch`), не по `resource-id`:
- * тот нестабилен между версиями AOSP/API уровнями, класс — нет. Возвращает
- * весь XML-узел целиком (не разобранные поля) — `bounds`/`checked`
- * читаются из него отдельными чистыми функциями ниже. */
-function findSwitchNode(xml) {
-  const match = /<node[^>]*class="android\.widget\.Switch"[^>]*\/>/u.exec(xml);
-  return match === null ? null : match[0];
-}
-
-function switchTapPoint(nodeXml) {
-  const match = /bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"/u.exec(nodeXml);
-  if (match === null) return null;
-  const [x1, y1, x2, y2] = [match[1], match[2], match[3], match[4]].map(Number);
-  return { x: Math.round((x1 + x2) / 2), y: Math.round((y1 + y2) / 2) };
-}
-
-function switchIsChecked(nodeXml) {
-  return /\bchecked="true"/u.test(nodeXml);
-}
-
-/**
- * НАСТОЯЩИЙ revoke `SCHEDULE_EXACT_ALARM` — реальным пользовательским
- * путём (владелец): Settings → Alarms & reminders → выключить, а не
- * `cmd appops set … deny`. Официальный контракт AOSP (владелец): revoke
- * → приложение останавливается, все future exact alarms отменяются,
- * `AlarmManagerService` удаляет alarms с `windowLength==0` — именно ЭТО
- * (а не `cmd appops`) должно быть источником истины для Step 2c's claim
- * #2. Если системный экран/переключатель не находится или не реагирует —
- * `fail()` (владелец: «остановись и доложи, не подменяй acceptance
- * appops'ом») — НЕ откатывается на `appops set deny` как запасной путь.
- */
-async function revokeExactAlarmViaRealSettingsUi() {
-  console.log('── Настоящий revoke: Settings → «Будильники и напоминания» → выключить ──');
-  requestExactAlarmSettingsScreen();
-  const xmlWithSwitch = await waitFor(
-    'системный экран «Будильники и напоминания» открылся (uiautomator видит переключатель)',
-    15,
-    700,
-    () => {
-      const xml = dumpUiHierarchy();
-      return xml.includes('android.widget.Switch') ? xml : null;
-    },
-  );
-  if (xmlWithSwitch === null) {
-    fail(
-      'Системный экран «Будильники и напоминания» не открылся, либо `uiautomator dump` не нашёл ' +
-        'android.widget.Switch на нём — UI-автоматизация настоящего revoke невозможна на этом ' +
-        'emulator image. Останавливаюсь, НЕ подменяю acceptance прямым `appops`.',
-    );
-  }
-  const nodeBefore = findSwitchNode(xmlWithSwitch);
-  if (nodeBefore === null) fail(`Переключатель не разобран из XML: ${xmlWithSwitch.slice(0, 500)}`);
-  const tapPoint = switchTapPoint(nodeBefore);
-  if (tapPoint === null) fail(`Bounds переключателя не распознаны: ${nodeBefore}`);
-  if (!switchIsChecked(nodeBefore)) {
-    fail(
-      `Переключатель уже выключен ДО начала эксперимента — неожиданное состояние: ${nodeBefore}`,
-    );
-  }
-  console.log(`Переключатель найден (${JSON.stringify(tapPoint)}), тапаю…`);
-  adb(['shell', 'input', 'tap', String(tapPoint.x), String(tapPoint.y)]);
-  const xmlAfterTap = await waitFor(
-    'переключатель сменил состояние на выключенный',
-    15,
-    500,
-    () => {
-      const xml = dumpUiHierarchy();
-      const node = findSwitchNode(xml);
-      return node !== null && !switchIsChecked(node) ? xml : null;
-    },
-  );
-  if (xmlAfterTap === null) {
-    fail(
-      `После тапа по переключателю (${JSON.stringify(tapPoint)}) он всё ещё checked="true" — тап не ` +
-        `сработал. Текущий XML: ${dumpUiHierarchy().slice(0, 1000)}`,
-    );
-  }
-  console.log(
-    'Настоящий revoke подтверждён UI: переключатель «Будильники и напоминания» реально выключен ' +
-      '(не appops-диагностика).',
-  );
-  adb(['shell', 'input', 'keyevent', 'KEYCODE_BACK'], { stdio: 'inherit' });
-}
-
-/**
- * Оборачивает `cdp.evaluate()` явным таймаутом. Обычный `cdp.evaluate` не
- * имеет своего — если DevTools-запрос не получит ответа, промис висит
- * НАВСЕГДА (живой прогон `33841563125`: `can_schedule_exact` на свежей
- * cold-launch cdp-сессии подвесил весь процесс скрипта — "Unsettled
- * top-level await" вместо честного таймаута). Нужна ИМЕННО для readiness-
- * барьера и для самого снимка Точки C ниже — не подменяет и не ослабляет
- * НИ ОДНУ существующую проверку: раньше зависание вообще не диагностировалось
- * (весь job просто убивался снаружи), теперь — явный, читаемый факт.
- */
-async function evaluateWithTimeout(cdp, expression, timeoutMs) {
-  const TIMED_OUT = Symbol('timed-out');
-  const startedAt = Date.now();
-  const result = await Promise.race([
-    cdp.evaluate(expression).catch((error) => ({ evaluateError: error.message })),
-    sleep(timeoutMs).then(() => TIMED_OUT),
-  ]);
-  const elapsedMs = Date.now() - startedAt;
-  return result === TIMED_OUT
-    ? { timedOut: true, timeoutMs, elapsedMs }
-    : { value: result, elapsedMs };
-}
-
-/**
- * Readiness-барьер (владелец, P0-эксперимент): различает «Tauri IPC вообще
- * ещё не готов» от «конкретно `alarm-capability`/`can_schedule_exact`
- * завис» — ДВЕ проверки ПЕРЕД Точкой C, каждая с явным таймаутом
- * (`evaluateWithTimeout`), не тупым `sleep`:
- * 1. Тривиальный синхронный JS (`1+1`) — жив ли CDP/WebView вообще, до
- *    Tauri IPC ещё не дошли.
- * 2. Уже доказанно надёжный нативный invoke — `plugin:notification|
- *    is_permission_granted` (НЕ guest-js `isPermissionGranted()`, та имеет
- *    короткое замыкание через `window.Notification.permission`, если
- *    разрешение уже не `'default'`, и тогда вообще не тронет нативный
- *    мост — здесь нужен именно сырой invoke, чтобы гарантированно
- *    прогнать IPC насквозь). Именно эта Kotlin-команда (не
- *    `request_permission`) была отдельно найдена и подтверждена
- *    надёжно резолвящейся ещё в исследовании Task B4/B8
- *    (`notification-bridge.ts`'s комментарий про `isPermissionGranted()`
- *    и реальный баг именно `requestPermissions()`).
- * `can_schedule_exact` сюда намеренно НЕ включён — он сам под подозрением,
- * использовать его для проверки самого себя ничего не доказало бы.
- */
-async function waitForTauriIpcReady(cdp) {
-  console.log('── Readiness-барьер: CDP/WebView живой → Tauri IPC живой (P0-эксперимент) ──');
-  const trivial = await evaluateWithTimeout(cdp, '1 + 1', 5000);
-  if (trivial.timedOut === true || trivial.value !== 2) {
-    return { ready: false, stage: 'cdp', probe: '1 + 1', result: trivial };
-  }
-  console.log(`  CDP/WebView живой (1+1 за ${trivial.elapsedMs}мс).`);
-  const known = await evaluateWithTimeout(
-    cdp,
-    "window.__TAURI_INTERNALS__.invoke('plugin:notification|is_permission_granted', {})",
-    8000,
-  );
-  if (known.timedOut === true || typeof known.value !== 'boolean') {
-    return {
-      ready: false,
-      stage: 'tauri-ipc',
-      probe: 'plugin:notification|is_permission_granted',
-      result: known,
-    };
-  }
-  console.log(`  Tauri IPC живой (is_permission_granted за ${known.elapsedMs}мс, ${known.value}).`);
-  return { ready: true };
-}
-
 /**
  * Диагностический снимок (Task B8, ST10/P0-расследование — владелец прямо
  * запросил собрать факты «в одной временной точке», не гадать по одному).
@@ -489,31 +286,23 @@ async function waitForTauriIpcReady(cdp) {
  * существующая проверка/таймаут/assertion этой функцией не заменяется и не
  * ослабляется.
  *
- * Пять фактов:
+ * Четыре факта, ВСЕ — внешними средствами (adb/файлы), без CDP/WebView:
+ * работает одинаково и когда процесс жив, и когда убит (Task B8,
+ * владелец: «raw pending()/can_schedule_exact через CDP — убрать из
+ * blocking smoke, они сами создают нестабильность харнесса» — прежние
+ * версии этой функции дёргали оба сырых invoke живьём через CDP; сырые
+ * invoke'ы и их таймаут-обвязка удалены, не только отключены).
  * 1. SQLite (`readEnabledReminder`) — то, что домен считает желаемым.
- * 2. Нативная capability (`window.__TAURI_INTERNALS__.invoke(
- *    'plugin:alarm-capability|can_schedule_exact', {})`) — ТОТ ЖЕ вызов
- *    (включая ВТОРОЙ аргумент `{}` — реальный guest-js `f(i,t={},n)`,
- *    `api-iife.js`, ВСЕГДА передаёт его, дефолт есть только в обёртке, не
- *    в самом `window.__TAURI_INTERNALS__.invoke`; отсутствие этого
- *    аргумента — подтверждённая живым прогоном причина, почему
- *    `get_pending` ниже раньше падал с «Uncaught (in promise) Object» —
- *    ЭТО была моя собственная ошибка диагностики, не production-баг),
- *    что делает `notification-bridge.ts`'s `getSchedulingCapability()`,
- *    напрямую из WebView через CDP — если `cdp` не передан (снимок без
- *    живой WebView-сессии, например Точка B — процесс убит), поле `null`.
- * 3. `dumpsys alarm` (`listSystemAlarmBlocks`/`alarmWindowMs`/
+ * 2. `dumpsys alarm` (`listSystemAlarmBlocks`/`alarmWindowMs`/
  *    `exactAllowReasonOf`) — реальное состояние AlarmManager.
- * 4. `pending()` плагина (`plugin:notification|get_pending`, тот же
- *    guest-js вызов и та же форма аргументов, что `notification-bridge.ts`'s
- *    `listScheduled()`) — P0: `pending()` читает `NotificationStorage`
- *    плагина, а НЕ AlarmManager, разные источники истины.
- * 5. Физическое содержимое `NotificationStorage` (`readNotificationStorageFile`
- *    выше) — работает и без живого CDP (Точка B, процесс убит), самый
- *    прямой источник истины для того же вопроса, что и (4), без
- *    зависимости от guest-js/WebView вообще.
+ * 3. Физическое содержимое `NotificationStorage` (`readNotificationStorageFile`
+ *    выше) — то, что плагин считает запланированным, независимо от
+ *    AlarmManager (P0-вопрос: A6 может доверять этому полю там, где нужно
+ *    смотреть на (2)).
+ * 4. `appops get` — диагностика текущего состояния SCHEDULE_EXACT_ALARM
+ *    (allow/deny), НЕ механизм и НЕ proof какого-либо revoke.
  */
-async function captureReminderSnapshot(label, taskTitle, cdp) {
+async function captureReminderSnapshot(label, taskTitle) {
   console.log(`── Диагностический снимок: ${label} ──`);
   const dbPath = pullDatabase(`diag-${label.replace(/[^a-z0-9]+/giu, '-')}`);
   const sqlite = readEnabledReminder(dbPath, taskTitle);
@@ -521,26 +310,6 @@ async function captureReminderSnapshot(label, taskTitle, cdp) {
 
   const appops = adb(['shell', 'cmd', 'appops', 'get', APPLICATION_ID, 'SCHEDULE_EXACT_ALARM']);
   console.log(`  appops: ${appops}`);
-
-  let nativeCapability = null;
-  let nativeCapabilityProbe = null;
-  if (cdp !== undefined) {
-    // `evaluateWithTimeout` (не голый `cdp.evaluate`) — живой прогон
-    // `33841563125` подвесил ИМЕННО этот вызов на свежей cold-launch
-    // сессии навсегда; таймаут делает зависание диагностируемым фактом,
-    // а не непрозрачным убийством всего job снаружи.
-    nativeCapabilityProbe = await evaluateWithTimeout(
-      cdp,
-      "window.__TAURI_INTERNALS__.invoke('plugin:alarm-capability|can_schedule_exact', {})",
-      8000,
-    );
-    nativeCapability =
-      nativeCapabilityProbe.timedOut === true ? 'TIMEOUT' : (nativeCapabilityProbe.value ?? null);
-  }
-  console.log(
-    `  Нативная capability (can_schedule_exact): ${JSON.stringify(nativeCapability)} ` +
-      `(${JSON.stringify(nativeCapabilityProbe)})`,
-  );
 
   const blocks = listSystemAlarmBlocks();
   const alarmSummaries = blocks.map((block) => {
@@ -552,17 +321,6 @@ async function captureReminderSnapshot(label, taskTitle, cdp) {
       JSON.stringify(alarmSummaries),
   );
 
-  let pluginPending = null;
-  if (cdp !== undefined) {
-    const pendingProbe = await evaluateWithTimeout(
-      cdp,
-      "window.__TAURI_INTERNALS__.invoke('plugin:notification|get_pending', {})",
-      8000,
-    );
-    pluginPending = pendingProbe.timedOut === true ? 'TIMEOUT' : (pendingProbe.value ?? null);
-  }
-  console.log(`  Plugin pending() (guest-js, через CDP): ${JSON.stringify(pluginPending)}`);
-
   const notificationStorageXml = readNotificationStorageFile();
   const notificationStorageHasEntry =
     typeof notificationStorageXml === 'string' && notificationStorageXml.includes('<string name=');
@@ -571,16 +329,7 @@ async function captureReminderSnapshot(label, taskTitle, cdp) {
       `(${notificationStorageXml.length} байт)`,
   );
 
-  return {
-    label,
-    sqlite,
-    appops,
-    nativeCapability,
-    nativeCapabilityTimedOut: nativeCapabilityProbe?.timedOut === true,
-    alarms: alarmSummaries,
-    pluginPending,
-    notificationStorageHasEntry,
-  };
+  return { label, sqlite, appops, alarms: alarmSummaries, notificationStorageHasEntry };
 }
 
 /**
@@ -1440,93 +1189,212 @@ async function main() {
     `Standalone (window=0) alarm найден — точный путь подтверждён: ${JSON.stringify(windowsAfterAdd)}`,
   );
 
-  console.log('── Step 2c: деградация при отозванной exact-возможности (claim #2) ──');
+  // Владелец (после живого прогона `33845774694`): настоящий пользовательский
+  // revoke через Settings UI нестабилен на CI emulator image (uiautomator
+  // не находит android.widget.Switch на системном экране «Будильники и
+  // напоминания» — см. ledger) и НЕ является release blocker; дальше не
+  // угадываем классы Android Settings widgets. Реальный Settings-toggle —
+  // manual acceptance на физическом устройстве перед релизом, не CI. Для
+  // P0 (архитектурный риск A6: доверяет ли reconciliation устаревшему
+  // NotificationStorage вместо реального AlarmManager) используется
+  // ДЕТЕРМИНИРОВАННЫЙ штатный механизм — `am force-stop`: убивает процесс И
+  // OS alarm, не трогая SQLite/NotificationStorage, воспроизводимо на любом
+  // emulator image. Отдельно ниже (Step 2d) `appops deny` используется
+  // ТОЛЬКО как тестовая инъекция capability=false для проверки ST10 — не
+  // как proof настоящего revoke.
+  console.log('── Step 2c: P0 — потеря OS alarm через Force Stop, startup recovery (A6) ──');
 
-  // ─── Точка A — ДО revoke, процесс ещё жив ────────────────────────────────
-  const pointA = await captureReminderSnapshot(
-    'Точка A — до revoke, процесс жив',
-    taskTitle,
-    first.cdp,
+  // ─── P0-A — до force-stop, процесс ещё жив. Exact-путь (window=0) уже
+  // доказан Step 2b — здесь фиксируем то же самое предусловие тем же
+  // снимком, что и остальные точки. ─────────────────────────────────────
+  const p0A = await captureReminderSnapshot('P0-A — до force-stop, процесс жив', taskTitle);
+  if (p0A.sqlite === null) {
+    fail(
+      `P0-A: SQLite не показывает enabled explicit reminder для «${taskTitle}». Снимок: ${JSON.stringify(p0A)}`,
+    );
+  }
+  if (!p0A.notificationStorageHasEntry) {
+    fail(`P0-A: физический NotificationStorage не содержит запись. Снимок: ${JSON.stringify(p0A)}`);
+  }
+  if (!p0A.alarms.some((a) => a.window === 0)) {
+    fail(
+      `P0-A: AlarmManager не содержит наш exact (window=0) alarm — уже был доказан Step 2b. ` +
+        `Снимок: ${JSON.stringify(p0A)}`,
+    );
+  }
+  console.log(
+    'P0-A подтверждена: SQLite/NotificationStorage/AlarmManager(exact) — все три «есть».',
   );
 
-  await revokeExactAlarmViaRealSettingsUi();
-
-  // Официальный контракт AOSP (владелец, отклонил прежнюю гипотезу «Android
-  // может не убивать процесс сразу»): revoke → приложение ОСТАНАВЛИВАЕТСЯ.
-  // Это ASSERTION, а не мягкое ожидание — `fail()`, не `console.warn`.
-  // Закрываем `cdp`-соединение ДО проверки (сокет всё равно мёртв) и ждём
-  // исчезновения pid, вместо того чтобы снова дёргать WebView.
   first.cdp.close();
-  const pidGone = await waitFor(
-    'процесс убит Android после настоящего revoke (Settings UI) SCHEDULE_EXACT_ALARM',
+
+  adb(['shell', 'am', 'force-stop', APPLICATION_ID], { stdio: 'inherit' });
+  const pidGoneAfterForceStop = await waitFor(
+    'процесс остановлен после force-stop (P0-B)',
     20,
     500,
     () => (adbSoft(['shell', 'pidof', APPLICATION_ID]).trim() === '' ? true : null),
   );
-  if (pidGone === null) {
+  if (pidGoneAfterForceStop === null) {
     fail(
-      'процесс НЕ был убит Android после настоящего (Settings UI) revoke SCHEDULE_EXACT_ALARM — ' +
-        'расходится с официальным контрактом AOSP (владелец): revoke обязан остановить приложение. ' +
+      `P0-B: процесс НЕ остановился после \`am force-stop\` — сам force-stop непроверяем. ` +
         `pidof: ${JSON.stringify(adbSoft(['shell', 'pidof', APPLICATION_ID]))}.`,
     );
   }
-  console.log(
-    'Процесс подтверждённо убит Android после настоящего revoke — контракт AOSP выполнен.',
-  );
 
-  // ─── Точка B — приложение убито (или доведено до этого force-stop'ом ниже
-  // на случай, если Android в этот раз не убил само), ДО relaunch — ТОЛЬКО
-  // внешние средства (adb/файлы), никакого обращения к CDP/WebView. ────────
-  const pointB = await captureReminderSnapshot(
-    'Точка B — killed/no process, до cold launch',
-    taskTitle,
-  );
-  if (!pointB.appops.includes('deny')) {
+  // ─── P0-B — после force-stop, ДО cold launch. ТОЛЬКО внешние средства
+  // (adb/файлы) — процесс мёртв, CDP недоступен. ────────────────────────
+  const p0B = await captureReminderSnapshot('P0-B — после force-stop, до cold launch', taskTitle);
+  if (p0B.sqlite === null) {
     fail(
-      `Точка B: appops (диагностика, не механизм revoke) ожидался «deny» после настоящего Settings UI ` +
-        `revoke, получено: ${pointB.appops} — сам системный toggle не отразился в appops, это ` +
-        'расхождение с официальным контрактом AOSP.',
+      `P0-B: SQLite reminder исчез после force-stop — force-stop не должен трогать данные ` +
+        `приложения. Снимок: ${JSON.stringify(p0B)}`,
     );
   }
-  if (pointB.sqlite === null) {
+  if (!p0B.notificationStorageHasEntry) {
     fail(
-      'Точка B: SQLite не показывает enabled explicit reminder — ожидался «есть» (revoke убивает ' +
-        `AlarmManager-alarm и процесс, но НЕ трогает SQLite). Снимок: ${JSON.stringify(pointB)}.`,
+      `P0-B: NotificationStorage запись исчезла после force-stop — ожидалась «сохранена». ` +
+        `Снимок: ${JSON.stringify(p0B)}`,
     );
   }
   // Проверяем именно отсутствие exact-блока (`window===0`) — НЕ пустоту
-  // массива целиком: живые прогоны показывали посторонние non-exact блоки
-  // (window!==0, чужие/системные alarm) в том же `dumpsys alarm` вывода,
-  // и путать их с отслеживаемым exact-alarm было бы ложным факт-эффектом.
+  // массива целиком: у одной записи AlarmManager несколько дочерних строк
+  // сами по себе тоже содержат имя пакета и попадают в `listSystemAlarmBlocks`
+  // отдельными фрагментами без поля `window=` (см. комментарий у самой
+  // `listSystemAlarmBlocks`) — считать надо только блоки, где `window`
+  // реально распознан.
   const hasExactBlock = () =>
     listSystemAlarmBlocks().some((block) => alarmWindowMs(block.join('\n')) === 0);
   if (hasExactBlock()) {
-    // «Дать ОС коротко завершить обработку revoke и перепроверить» —
-    // владелец: не раздувать таймаут произвольно, один короткий bounded
-    // повтор тем же приёмом, что и весь остальной файл (`waitFor`).
     console.log(
-      'Точка B: exact (window=0) alarm ещё виден сразу после revoke — короткая перепроверка…',
+      'P0-B: наш exact (window=0) alarm ещё виден сразу после force-stop — короткая перепроверка…',
     );
     const settled = await waitFor(
-      'exact (window=0) alarm пропадает из AlarmManager после revoke',
+      'exact (window=0) alarm пропадает из AlarmManager после force-stop',
       10,
       500,
       () => (!hasExactBlock() ? true : null),
     );
     if (settled === null) {
+      // Владелец: если именно на этом API/образе force-stop не убирает
+      // alarm — не разворачивать новое исследование, зафиксировать факт и
+      // разбираться со Step 2c/ADR отдельно, не вслепую chasing widget'ы.
       fail(
-        `Точка B: exact (window=0) alarm всё ещё виден в AlarmManager после короткой перепроверки — ` +
-          'расходится с официальным контрактом AOSP (revoke удаляет alarms с windowLength==0). Блоки: ' +
-          `${JSON.stringify(listSystemAlarmBlocks())}.`,
+        'P0-B: наш exact (window=0) alarm всё ещё виден в AlarmManager после force-stop и короткой ' +
+          'перепроверки — на этом API/образе эмулятора `am force-stop` не убирает OS alarm. Это ' +
+          'платформенная семантика, не харнесс-баг — не разворачивать новое исследование; P0-эксперимент ' +
+          'этим прогоном непроверяем (alarm никогда не исчезал, восстанавливать нечего). ' +
+          `Блоки: ${JSON.stringify(listSystemAlarmBlocks())}.`,
       );
     }
   }
+  console.log(
+    'P0-B подтверждена: процесс остановлен, SQLite/NotificationStorage сохранены, наш exact alarm исчез.',
+  );
 
-  // `am force-stop` — гарантирует чистое состояние перед cold launch
-  // НЕЗАВИСИМО от того, убил ли процесс сам Android (idempotent, если уже
-  // мёртв) — тот же приём, что Step 5.3/Step 6 ниже.
+  // cold launch — обычный пользовательский запуск.
+  first = await launchAndAttach('после force-stop (cold launch, P0-C)');
+  const consoleEventsDuringP0C = await attachConsoleCapture(first.cdp);
+
+  // Дожидаемся окна bootstrap-реконсиляции по наблюдаемому ПРОДУКТОВОМУ
+  // состоянию (AlarmManager непуст ИЛИ таймаут — сам факт таймаута тоже
+  // диагностика, не повод ждать дольше). Владелец: raw pending()/
+  // can_schedule_exact через CDP — убрать из blocking smoke, они сами
+  // создают нестабильность харнесса — здесь их больше нет вовсе.
+  await waitFor(
+    'окно bootstrap-реконсиляции (dumpsys alarm непуст ИЛИ таймаут — это факт)',
+    20,
+    700,
+    () => (listSystemAlarmBlocks().length > 0 ? true : null),
+  );
+  const p0C = await captureReminderSnapshot(
+    'P0-C — после cold launch, bootstrap reconciliation',
+    taskTitle,
+  );
+
+  const dbPathAtP0C = pullDatabase('step2c-p0-c');
+  const enabledCountAtP0C = countEnabledExplicitReminders(dbPathAtP0C, taskTitle);
+  const exactBlocksAtP0C = p0C.alarms.filter((a) => a.window !== null);
+
+  // ─── P0 acceptance (владелец) ────────────────────────────────────────
+  if (enabledCountAtP0C === 1 && exactBlocksAtP0C.length === 1) {
+    console.log(
+      'P0 CLOSED: SQLite = ровно 1 enabled explicit reminder, AlarmManager = ровно один alarm ' +
+        'восстановлен после cold launch, дублей нет — startup recovery (A6) работает.',
+    );
+  } else if (
+    enabledCountAtP0C === 1 &&
+    p0C.notificationStorageHasEntry === true &&
+    exactBlocksAtP0C.length === 0
+  ) {
+    fail(
+      'P0 CONFIRMED: SQLite = reminder есть, NotificationStorage = запись есть, AlarmManager = alarm ' +
+        'НЕТ после bootstrap reconciliation. A6 доверяет устаревшему plugin storage и НЕ восстанавливает ' +
+        'OS-удалённый (force-stop) alarm. НЕ чиню A6 самовольно (владелец) — доклад и предложение ' +
+        `минимального recovery design. P0-A: ${JSON.stringify(p0A)}. P0-B: ${JSON.stringify(p0B)}. ` +
+        `P0-C: ${JSON.stringify(p0C)}. Console/exception события во время cold launch (${consoleEventsDuringP0C.length}): ` +
+        `${JSON.stringify(consoleEventsDuringP0C)}.`,
+    );
+  } else if (enabledCountAtP0C === 1 && exactBlocksAtP0C.length === 0) {
+    fail(
+      'P0 (другой recovery defect): SQLite = reminder есть, NotificationStorage тоже не показывает ' +
+        'запись, AlarmManager = alarm НЕТ — bootstrap reconciliation не восстановила desired schedule ' +
+        `вовсе (не про A6/plugin storage). Доклад. P0-A: ${JSON.stringify(p0A)}. P0-B: ${JSON.stringify(p0B)}. ` +
+        `P0-C: ${JSON.stringify(p0C)}.`,
+    );
+  } else if (enabledCountAtP0C === 1) {
+    fail(
+      `P0 (задвоение): AlarmManager содержит ${exactBlocksAtP0C.length} alarm-блок(ов) вместо одного ` +
+        `после cold launch — реконсиляция задвоила alarm. P0-C: ${JSON.stringify(p0C)}.`,
+    );
+  } else {
+    fail(
+      `P0: в SQLite ${enabledCountAtP0C} enabled explicit-записей для «${taskTitle}» вместо ровно одной ` +
+        `(задвоение или потеря на пути cold launch/реконсиляции). P0-C: ${JSON.stringify(p0C)}.`,
+    );
+  }
+
+  // ─── Step 2d (B6/ST10): деградация при appops-инъекции capability=false
+  // (claim #2). `appops set … deny` здесь — ТОЛЬКО тестовая инъекция
+  // «capability=false», НЕ доказательство настоящего пользовательского
+  // revoke (тот проверяется вручную на устройстве перед релизом). ────────
+  console.log('── Step 2d: деградация при appops-инъекции capability=false (claim #2/ST10) ──');
+
+  first.cdp.close();
   adb(['shell', 'am', 'force-stop', APPLICATION_ID], { stdio: 'inherit' });
-  first = await launchAndAttach('после отзыва SCHEDULE_EXACT_ALARM (cold launch)');
+  const pidGoneBeforeDeny = await waitFor(
+    'процесс остановлен перед appops-инъекцией (Step 2d)',
+    20,
+    500,
+    () => (adbSoft(['shell', 'pidof', APPLICATION_ID]).trim() === '' ? true : null),
+  );
+  if (pidGoneBeforeDeny === null) {
+    fail(
+      `Step 2d: процесс НЕ остановился после \`am force-stop\`. ` +
+        `pidof: ${JSON.stringify(adbSoft(['shell', 'pidof', APPLICATION_ID]))}.`,
+    );
+  }
+  const noStaleAlarmBeforeDeny = await waitFor(
+    'старый OS alarm пропал перед appops-инъекцией',
+    10,
+    500,
+    () =>
+      listSystemAlarmBlocks().every((block) => alarmWindowMs(block.join('\n')) === null)
+        ? true
+        : null,
+  );
+  if (noStaleAlarmBeforeDeny === null) {
+    fail(
+      `Step 2d: старый OS alarm всё ещё виден после force-stop — appops-инъекция ниже проверяла бы ` +
+        `не то, что задумано. Блоки: ${JSON.stringify(listSystemAlarmBlocks())}.`,
+    );
+  }
+
+  adb(['shell', 'cmd', 'appops', 'set', APPLICATION_ID, 'SCHEDULE_EXACT_ALARM', 'deny'], {
+    stdio: 'inherit',
+  });
+
+  first = await launchAndAttach('после appops-инъекции capability=false (cold launch, Step 2d)');
   // ДИАГНОСТИКА — тот же приём, что `captureBlankScreenDiagnostics`, но БЕЗ
   // перезагрузки страницы (см. комментарий `attachConsoleCapture`):
   // подписка ставится СРАЗУ после релонча, чтобы поймать абсолютно всё,
@@ -1535,131 +1403,8 @@ async function main() {
   // `onClick={() => void handleSubmitReminder()}`.
   const consoleEventsDuringResave = await attachConsoleCapture(first.cdp);
 
-  // ─── Readiness-барьер (владелец): WebView живой → Tauri IPC живой —
-  // ПЕРЕД любым обращением к `can_schedule_exact`. Различает «Tauri IPC
-  // вообще не готов» (харнесс/WebView-race — чинить `launchAndAttach`, не
-  // production) от «конкретно `can_schedule_exact` завис» (см. отдельный
-  // разбор ниже, у самой Точки C). ─────────────────────────────────────────
-  const ipcReadiness = await waitForTauriIpcReady(first.cdp);
-  if (ipcReadiness.ready !== true) {
-    fail(
-      'Readiness-барьер НЕ пройден до Точки C — Tauri IPC не отвечает даже на уже доказанно надёжный ' +
-        `вызов (не \`can_schedule_exact\`). Это харнесс/WebView↔Tauri readiness race (владелец: чинить ` +
-        "`launchAndAttach`'s критерий готовности, не увеличивать sleep вслепую), а НЕ B3/production-дефект — " +
-        `у него ещё не было шанса проявиться. Стадия: ${ipcReadiness.stage}, зонд: ${ipcReadiness.probe}, ` +
-        `результат: ${JSON.stringify(ipcReadiness.result)}. ` +
-        `Точка A: ${JSON.stringify(pointA)}. Точка B: ${JSON.stringify(pointB)}. ` +
-        `logcat (последние 200 строк): ${recentLogcat(200)}`,
-    );
-  }
-
-  // ─── Точка C — настоящий cold launch. Дожидаемся окна, в которое
-  // bootstrap-реконсиляция (`App.tsx`) успевает сработать — bounded
-  // `waitFor` на сам наблюдаемый эффект (dumpsys alarm непуст), а не
-  // слепой sleep: если реконсиляция ничего не восстановит, это тоже
-  // диагностический факт (C2/C3 ниже), не повод ждать дольше. ─────────────
-  await waitFor(
-    'окно bootstrap-реконсиляции (dumpsys alarm непуст ИЛИ таймаут — это факт)',
-    20,
-    700,
-    () => (listSystemAlarmBlocks().length > 0 ? true : null),
-  );
-  const pointC = await captureReminderSnapshot(
-    'Точка C — после cold launch, bootstrap reconciliation',
-    taskTitle,
-    first.cdp,
-  );
-
-  // ─── Readiness-барьер пройден, но `can_schedule_exact` в самом снимке
-  // Точки C всё равно завис (`captureReminderSnapshot`'s `evaluateWithTimeout`)
-  // — это уже НЕ харнесс-race (readiness-барьер только что доказал, что
-  // IPC в целом отвечает), а подозрение на настоящий B3 production/plugin
-  // дефект именно в `plugin:alarm-capability|can_schedule_exact`. Владелец:
-  // не чинить это самовольно — STOP с максимально конкретным отчётом. ────
-  if (pointC.nativeCapabilityTimedOut === true) {
-    fail(
-      'Readiness-барьер пройден (Tauri IPC в целом жив), но именно `can_schedule_exact` завис на Точке C ' +
-        '— похоже на настоящий B3 production/plugin-дефект, не на харнесс-race. Не чиню самовольно ' +
-        '(владелец) — отчёт: ' +
-        "команда — window.__TAURI_INTERNALS__.invoke('plugin:alarm-capability|can_schedule_exact', {}); " +
-        'Kotlin-сторона — apps/mobile/src-tauri/alarm-capability/android/src/main/java/.../AlarmCapabilityPlugin.kt ' +
-        '(команда `can_schedule_exact` — Task B3); Rust-сторона — ' +
-        'apps/mobile/src-tauri/alarm-capability/src/lib.rs (та же команда). ' +
-        `Время invoke: ${JSON.stringify(pointC.nativeCapabilityTimedOut)} — таймаут 8000мс исчерпан. ` +
-        `Состояние capability до revoke (Точка A): ${JSON.stringify(pointA.nativeCapability)}, ` +
-        `appops на Точке C: ${JSON.stringify(pointC.appops)}. ` +
-        `logcat (последние 200 строк): ${recentLogcat(200)}`,
-    );
-  }
-
-  // ─── Требуемая владельцем таблица (P0-эксперимент): три момента —
-  // «до revoke», «после настоящего revoke (Settings UI)», «после cold
-  // launch» — по пяти фактам каждый. PID «после cold launch» читается
-  // ЖИВЬЁМ прямо здесь (а не из старого снимка): процесс на этот момент
-  // уже гарантированно поднят (`launchAndAttach` выше сам `fail()`-ит,
-  // если это не так) и это тот же процесс, что видела Точка C. ───────────
-  const pidAtPointC = adbSoft(['shell', 'pidof', APPLICATION_ID]).trim();
-  console.log(
-    '── P0-таблица (владелец): До revoke | После настоящего revoke | После cold launch ──',
-  );
-  console.log(
-    `  SQLite:               ${JSON.stringify(pointA.sqlite !== null)} | ` +
-      `${JSON.stringify(pointB.sqlite !== null)} | ${JSON.stringify(pointC.sqlite !== null)}`,
-  );
-  console.log(
-    `  NotificationStorage:   ${JSON.stringify(pointA.notificationStorageHasEntry)} | ` +
-      `${JSON.stringify(pointB.notificationStorageHasEntry)} | ${JSON.stringify(pointC.notificationStorageHasEntry)}`,
-  );
-  console.log(
-    `  AlarmManager (exact):  ${JSON.stringify(pointA.alarms.some((a) => a.window === 0))} | ` +
-      `${JSON.stringify(pointB.alarms.some((a) => a.window === 0))} | ` +
-      `${JSON.stringify(pointC.alarms.some((a) => a.window === 0))}`,
-  );
-  console.log(
-    `  process/PID:           жив | остановлен (доказано fail()-барьером выше) | ${pidAtPointC || 'НЕТ'}`,
-  );
-  console.log(
-    `  exact capability:      ${JSON.stringify(pointA.nativeCapability)} | (нет живого CDP) | ` +
-      `${JSON.stringify(pointC.nativeCapability)}`,
-  );
-
-  // ─── Интерпретация C1/C2/C3 (владелец) — главный P0 acceptance. ─────────
-  const cAlarmExists = pointC.alarms.length > 0;
-  const cAlarmInexact = pointC.alarms.some((a) => a.window !== null && a.window > 0);
-  const cPendingHasEntry =
-    pointC.notificationStorageHasEntry === true ||
-    (Array.isArray(pointC.pluginPending) && pointC.pluginPending.length > 0);
-  if (pointC.sqlite !== null && cAlarmExists && cAlarmInexact) {
-    console.log(
-      'C1 (GOOD): SQLite = reminder есть, AlarmManager = новый alarm есть, alarm = INEXACT — startup ' +
-        'recovery реально восстановил системно удалённый alarm при denied exact capability.',
-    );
-  } else if (pointC.sqlite !== null && !cAlarmExists && cPendingHasEntry) {
-    fail(
-      'C2 (P0 CONFIRMED): SQLite = reminder есть, plugin NotificationStorage/pending() = reminder есть, ' +
-        'AlarmManager = НЕТ. Предположение A6 о том, что `pending()`/NotificationStorage отражает ' +
-        'фактический AlarmManager, НЕВЕРНО — это разные источники истины, и startup reconciliation не ' +
-        'знает о рассинхроне. НЕ чиню A6 самовольно (владелец) — останавливаюсь для доклада и ' +
-        `предложения минимального recovery design. Точка A: ${JSON.stringify(pointA)}. ` +
-        `Точка B: ${JSON.stringify(pointB)}. Точка C: ${JSON.stringify(pointC)}.`,
-    );
-  } else if (pointC.sqlite !== null && !cAlarmExists) {
-    fail(
-      'C3: SQLite = reminder есть, plugin pending()/NotificationStorage = reminder НЕТ, AlarmManager = ' +
-        'НЕТ. Другой production recovery defect: bootstrap reconciliation не восстановила desired ' +
-        `schedule вовсе (не про A6/pending()). Останавливаюсь для доклада. Точка A: ${JSON.stringify(pointA)}. ` +
-        `Точка B: ${JSON.stringify(pointB)}. Точка C: ${JSON.stringify(pointC)}.`,
-    );
-  } else {
-    fail(
-      `Точка C не подошла ни под C1, ни под C2, ни под C3 — новая, не предусмотренная владельцем ` +
-        `комбинация фактов. Точка A: ${JSON.stringify(pointA)}. Точка B: ${JSON.stringify(pointB)}. ` +
-        `Точка C: ${JSON.stringify(pointC)}.`,
-    );
-  }
-
   if ((await first.cdp.evaluate(openTaskRow(taskTitle))) !== true) {
-    fail(`строка задачи «${taskTitle}» не открылась после отзыва exact-возможности`);
+    fail(`строка задачи «${taskTitle}» не открылась после appops-инъекции`);
   }
   await sleep(1200);
   if ((await first.cdp.evaluate(clickByText('Изменить напоминание'))) !== true) {
@@ -1668,14 +1413,12 @@ async function main() {
     );
   }
   await sleep(900);
-  // Пересохраняем БЕЗ смены даты/времени: `handleSubmitReminder` (`TaskDetail.tsx`)
-  // безусловно делает cancel-затем-create на КАЖДЫЙ submit независимо от
-  // того, изменились ли значения — этого достаточно, чтобы форсировать
-  // свежий `schedule()` (и вместе с ним свежий `getSchedulingCapability()`,
-  // `reconcileTaskReminders`) с УЖЕ отозванной возможностью, не подбирая
-  // новое время только ради этого.
+  // Владелец: «изменить время и сохранить» — не резохранение теми же
+  // значениями, а реальный другой offset (заметно отличается от Step 2's
+  // изначальных 5 минут и от Step 3's последующих 25).
+  await pickReminderTime(first, 20);
   if ((await first.cdp.evaluate(clickByText('Сохранить', { exact: true }))) !== true) {
-    fail('кнопка «Сохранить» не найдена при пересохранении напоминания с отозванной возможностью');
+    fail('кнопка «Сохранить» не найдена при пересохранении напоминания с capability=false');
   }
   await sleep(2000);
 
@@ -1685,7 +1428,6 @@ async function main() {
   const snapshotAfterResave = await captureReminderSnapshot(
     'после пересохранения (claim #2 / ST10)',
     taskTitle,
-    first.cdp,
   );
   console.log(
     `  Console/exception события за время открытия карточки + пересохранения (${consoleEventsDuringResave.length}): ` +
@@ -1706,7 +1448,7 @@ async function main() {
   if (inexactNoticeText === null) {
     const last = await first.cdp.evaluate(READ_APP_TEXT);
     fail(
-      'после отзыва SCHEDULE_EXACT_ALARM экран не показал уведомление ST10 ' +
+      'после appops-инъекции capability=false экран не показал уведомление ST10 ' +
         `(planning.reminder.inexactNotice) — приложение молчит там, где обязано честно предупредить. ` +
         `Экран: ${JSON.stringify(String(last).slice(0, 300))}. ` +
         `Диагностический снимок сразу после пересохранения: ${JSON.stringify(snapshotAfterResave)}. ` +
@@ -1716,54 +1458,46 @@ async function main() {
   }
   console.log(`UI показывает новое время (ST10 подтверждён): ${JSON.stringify(inexactNoticeText)}`);
 
-  // Финальный acceptance Step 2c (владелец, P0-эксперимент): «SQLite —
-  // ровно 1 enabled explicit» — не только «есть хотя бы одна» (задвоение
-  // исключается явно, не по умолчанию), и «native capability = false»
-  // подтверждена уже прямо в снимке выше (`snapshotAfterResave.nativeCapability`).
-  const dbPathAfterResave = pullDatabase('step2c-after-resave');
+  // Финальный acceptance Step 2d (владелец): «SQLite — ровно 1 enabled
+  // explicit» (задвоение исключается явно) и «AlarmManager — ровно 1
+  // alarm, не exact» — само по себе достаточное доказательство деградации
+  // (appops=deny + inexact OS alarm + ST10), сырой `can_schedule_exact`
+  // через CDP больше не дёргается.
+  const dbPathAfterResave = pullDatabase('step2d-after-resave');
   const enabledExplicitCountAfterResave = countEnabledExplicitReminders(
     dbPathAfterResave,
     taskTitle,
   );
   if (enabledExplicitCountAfterResave !== 1) {
     fail(
-      `после пересохранения с отозванной SCHEDULE_EXACT_ALARM в SQLite ${enabledExplicitCountAfterResave} ` +
+      `после пересохранения с capability=false в SQLite ${enabledExplicitCountAfterResave} ` +
         `enabled explicit-записей для «${taskTitle}», ожидалась ровно 1 (задвоение или потеря). ` +
         `Снимок: ${JSON.stringify(snapshotAfterResave)}`,
     );
   }
-  if (snapshotAfterResave.nativeCapability !== false) {
-    fail(
-      `после отзыва SCHEDULE_EXACT_ALARM нативная capability вернула ${JSON.stringify(snapshotAfterResave.nativeCapability)}, ` +
-        'ожидалось буквально `false`.',
-    );
-  }
-  console.log(
-    'SQLite: ровно 1 enabled explicit reminder. Native capability: false. Оба подтверждены.',
-  );
 
-  const linesAfterDeny = listSystemAlarms();
-  console.log(`dumpsys после отзыва возможности (${linesAfterDeny.length} строк):`);
-  for (const line of linesAfterDeny) console.log(`  dumpsys: ${line}`);
   const blocksAfterDeny = listSystemAlarmBlocks();
   for (const block of blocksAfterDeny) console.log(`  блок: ${JSON.stringify(block)}`);
   const windowsAfterDeny = blocksAfterDeny
     .map((block) => alarmWindowMs(block.join('\n')))
     .filter((value) => value !== null);
-  if (windowsAfterDeny.length === 0) {
+  if (windowsAfterDeny.length !== 1) {
     fail(
-      'после отзыва возможности не удалось прочитать `window=` ни в одном полном блоке dumpsys — ' +
-        `TODO(B8-controller), см. Step 2b. Блоки: ${JSON.stringify(blocksAfterDeny)}`,
+      `AlarmManager содержит ${windowsAfterDeny.length} alarm-блок(ов) для reminder вместо ровно ` +
+        `одного (задвоение или потеря). window'ы: ${JSON.stringify(windowsAfterDeny)}`,
     );
   }
-  if (windowsAfterDeny.every((value) => value === 0)) {
+  if (windowsAfterDeny[0] === 0) {
     fail(
-      'плагин продолжает планировать standalone/unbatched (`window=0`) alarm ПОСЛЕ отзыва ' +
-        'SCHEDULE_EXACT_ALARM — приложение молча выдаёт себя за точное там, где Android честно не может это ' +
-        `гарантировать (claim #2 брифа НЕ подтверждён). window'ы: ${JSON.stringify(windowsAfterDeny)}`,
+      'плагин продолжает планировать standalone/unbatched (`window=0`) alarm ПРИ appops=deny — ' +
+        'приложение молча выдаёт себя за точное там, где Android честно не может это гарантировать ' +
+        `(claim #2 брифа НЕ подтверждён). window: ${windowsAfterDeny[0]}`,
     );
   }
-  console.log('Деградация подтверждена: UI честно предупреждает, alarm перестал быть standalone.');
+  console.log(
+    `Деградация подтверждена: ровно 1 alarm, window=${windowsAfterDeny[0]} (не exact), ` +
+      'SQLite ровно 1 enabled explicit, ST10 показан. Дальше raw can_schedule_exact не дёргаем.',
+  );
 
   adb(['shell', 'cmd', 'appops', 'set', APPLICATION_ID, 'SCHEDULE_EXACT_ALARM', 'allow'], {
     stdio: 'inherit',
