@@ -2016,7 +2016,39 @@ async function main() {
   // Обычный `kill`, НЕ `am force-stop` — разные операции ОС, brief прямо
   // требует не путать их: только force-stop переводит пакет в stopped
   // state и снимает alarm'ы, простая гибель процесса — нет.
-  adb(['shell', 'kill', pidBeforeKill]);
+  //
+  // Способов послать сигнал ДВА, и второй нужен не «на всякий случай»:
+  // `adb shell kill <pid>` работает, только если adbd поднялся рутом. На
+  // одном и том же образе это НЕ гарантировано между запусками — прогоны
+  // `33926204464` (оба attempt'а) упали здесь дословным
+  // `kill: <pid>: Operation not permitted`, тогда как в `33921752699` тот
+  // же вызов отработал. Обычный shell (uid 2000) не имеет права слать
+  // сигнал процессу приложения; `run-as <пакет>` переключает uid на сам
+  // пакет — это законный путь для debuggable-сборки, которой и является
+  // эмуляторный APK. Проверяемое поведение при этом не меняется ни на
+  // йоту: процессу приходит тот же сигнал от его же uid, ActivityManager
+  // не участвует, stopped state не выставляется — это по-прежнему
+  // «обычная гибель процесса», а не Force Stop (его отдельно проверяет
+  // Step 5.2 ниже).
+  const killAttempts = [
+    ['shell', 'kill', pidBeforeKill],
+    ['shell', 'run-as', APPLICATION_ID, 'kill', '-9', pidBeforeKill],
+  ];
+  const killErrors = [];
+  for (const attempt of killAttempts) {
+    try {
+      adb(attempt);
+      break;
+    } catch (error) {
+      killErrors.push(`${attempt.join(' ')} → ${String(error?.stderr ?? error).trim()}`);
+    }
+  }
+  if (killErrors.length === killAttempts.length) {
+    fail(
+      `Step 5.1: не удалось завершить процесс ${pidBeforeKill} ни одним доступным способом — проверить ` +
+        `claim #3 нечем, и это НЕ повод считать шаг пройденным. Попытки: ${JSON.stringify(killErrors)}`,
+    );
+  }
   const deadAfterKill = await waitFor('гибель процесса после kill', 15, 500, () =>
     adbSoft(['shell', 'pidof', APPLICATION_ID]).trim() === '' ? true : null,
   );
