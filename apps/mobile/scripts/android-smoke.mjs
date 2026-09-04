@@ -1589,11 +1589,27 @@ async function main() {
         `${JSON.stringify(exactAlarmOpStateAfterReinstall)}.`,
     );
   }
+  // Считаем НАСТОЯЩИЕ alarm'ы — те, у которых распарсился `window=`, — а не
+  // любой блок, упомянувший пакет. Это то же правило, что применяется ниже в
+  // этом же Step 2d (`windowsAfterFirstReminder`/`windowsAfterReplace`) и в
+  // Step 6c; здесь оно единственный раз было пропущено, и прогон
+  // `33920970729` на этом и упал: после uninstall/reinstall в дампе остался
+  // одностроный «блок»
+  // `type=RTC_WAKEUP tag=*walarm*:ru.cmpas.shagi/…TimedNotificationPublisher`
+  // БЕЗ `window=` — след пакета в служебной секции дампа, а не
+  // запланированный alarm (у настоящего блок всегда содержит строку
+  // `type=… window=…`, см. Step 2b выше). Проверка не ослаблена: реальный
+  // уцелевший alarm по-прежнему роняет шаг, а в сообщение по-прежнему идут
+  // ВСЕ сырые блоки, чтобы отличить одно от другого глазами.
   const alarmBlocksAfterReinstall = listSystemAlarmBlocks();
-  if (alarmBlocksAfterReinstall.length > 0) {
+  const realAlarmsAfterReinstall = alarmBlocksAfterReinstall.filter(
+    (block) => alarmWindowMs(block.join('\n')) !== null,
+  );
+  if (realAlarmsAfterReinstall.length > 0) {
     fail(
-      `Step 2d: после reinstall \`dumpsys alarm\` для ${APPLICATION_ID} уже содержит запись — reinstall ` +
-        `не дал чистого состояния. Блоки: ${JSON.stringify(alarmBlocksAfterReinstall)}.`,
+      `Step 2d: после reinstall \`dumpsys alarm\` для ${APPLICATION_ID} уже содержит запланированный ` +
+        `alarm — reinstall не дал чистого состояния. Блоки с window: ` +
+        `${JSON.stringify(realAlarmsAfterReinstall)}. Все блоки: ${JSON.stringify(alarmBlocksAfterReinstall)}.`,
     );
   }
   console.log(
