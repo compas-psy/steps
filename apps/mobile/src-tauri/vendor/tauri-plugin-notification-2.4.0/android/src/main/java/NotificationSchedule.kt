@@ -108,6 +108,20 @@ internal class NotificationScheduleSerializer @JvmOverloads constructor(t: Class
   override fun serialize(
     value: NotificationSchedule, jgen: JsonGenerator, provider: SerializerProvider
   ) {
+    // ШАГИ-ПАТЧ №2 из трёх (см. `PATCH.md` рядом, ADR-0008 дополнение от
+    // 2026-09-04): во все три ветки добавлен `allowWhileIdle`.
+    //
+    // Апстрим-асимметрия: десериализатор ниже ЧИТАЕТ `allowWhileIdle` (поле
+    // есть у всех трёх подклассов `NotificationSchedule`), а этот
+    // сериализатор его НЕ ПИСАЛ. Пока persisted-слой был мёртв (патч №1),
+    // это не проявлялось. Как только записи стали валидными, потеря поля
+    // стала бы реальной деградацией: `TauriNotificationManager.
+    // setExactIfPossible` выбирает по `schedule.allowWhileIdle()` между
+    // `setExactAndAllowWhileIdle(RTC_WAKEUP, …)` и `setExact(RTC, …)` — то
+    // есть восстановленный после reboot alarm молча перестал бы будить
+    // устройство и обходить Doze, хотя мост (`notification-bridge.ts`)
+    // явно просит `allowWhileIdle: true`. Round-trip обязан быть
+    // симметричным, иначе «восстановлено» значит «восстановлено слабее».
     jgen.writeStartObject()
     when (value) {
       is NotificationSchedule.At -> {
@@ -117,6 +131,7 @@ internal class NotificationScheduleSerializer @JvmOverloads constructor(t: Class
         sdf.timeZone = TimeZone.getTimeZone("UTC")
         jgen.writeStringField("date", sdf.format(value.date))
         jgen.writeBooleanField("repeating", value.repeating)
+        jgen.writeBooleanField("allowWhileIdle", value.allowWhileIdle)
 
         jgen.writeEndObject()
       }
@@ -124,6 +139,7 @@ internal class NotificationScheduleSerializer @JvmOverloads constructor(t: Class
         jgen.writeObjectFieldStart("interval")
 
         jgen.writeObjectField("interval", value.interval)
+        jgen.writeBooleanField("allowWhileIdle", value.allowWhileIdle)
 
         jgen.writeEndObject()
       }
@@ -132,6 +148,7 @@ internal class NotificationScheduleSerializer @JvmOverloads constructor(t: Class
 
         jgen.writeObjectField("interval", value.interval)
         jgen.writeNumberField("count", value.count)
+        jgen.writeBooleanField("allowWhileIdle", value.allowWhileIdle)
 
         jgen.writeEndObject()
       }

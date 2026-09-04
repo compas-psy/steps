@@ -2021,6 +2021,205 @@ async function main() {
     `Alarm восстановлен реконсиляцией при старте, без задвоения (${afterRelaunch.length} строк).`,
   );
 
+  // ─── Step 6c: persisted-слой плагина реально работает — round-trip и
+  // восстановление ПОСЛЕ reboot СИЛАМИ РЕСИВЕРА, без запуска UI ──────────
+  //
+  // Frozen-требование (владелец): после настоящей перезагрузки напоминания
+  // восстанавливаются через `BOOT_COMPLETED` БЕЗ того, чтобы человек сначала
+  // открыл ШАГИ. Существующий Step 6 ниже этого НЕ доказывает: он релончит
+  // приложение, и alarm мог бы восстановить наш собственный
+  // `useBootstrapReminderReconciliation`, полностью замаскировав мёртвый
+  // persisted-слой плагина (что и происходило до патчей №1/№2 вендоренного
+  // крейта: `sourceJson` всегда null → в SharedPreferences литерал «null» →
+  // ресивер не восстанавливал ничего). Здесь UI не запускается вовсе.
+  console.log('── Step 6c: round-trip persisted-слоя и boot-restore без запуска UI ──');
+
+  // (1) Физический файл: запись валидна, а не литерал «null».
+  const storeXmlBeforeReboot = readNotificationStorageFile();
+  if (storeXmlBeforeReboot.includes('>null<')) {
+    fail(
+      'Step 6c: в `NOTIFICATION_STORE.xml` лежит литерал «null» — патч №1 (`appendNotifications` ' +
+        `пишет \`writeValueAsString\`) не доехал до APK. Файл: ${storeXmlBeforeReboot.slice(0, 600)}`,
+    );
+  }
+  if (!storeXmlBeforeReboot.includes(String(reminderB.nativeId))) {
+    fail(
+      `Step 6c: в \`NOTIFICATION_STORE.xml\` нет записи с native id ${reminderB.nativeId}. ` +
+        `Файл: ${storeXmlBeforeReboot.slice(0, 600)}`,
+    );
+  }
+  console.log(
+    `Step 6c: persisted-запись валидна (${storeXmlBeforeReboot.length} байт, native id ` +
+      `${reminderB.nativeId} на месте, литерала «null» нет).`,
+  );
+
+  // (2) `get_pending` отдаёт ровно это напоминание с корректными полями —
+  // тот же сырой вызов, что делает production-мост (`listScheduled()`).
+  const pendingRoundTrip = await first.cdp.evaluate(
+    "window.__TAURI_INTERNALS__.invoke('plugin:notification|get_pending', {})",
+  );
+  if (!Array.isArray(pendingRoundTrip) || pendingRoundTrip.length !== 1) {
+    fail(
+      `Step 6c: \`get_pending\` вернул ${JSON.stringify(pendingRoundTrip)} — ожидался массив ровно из ` +
+        'одной записи (round-trip persisted-слоя после патчей №1/№2).',
+    );
+  }
+  const pendingEntry = pendingRoundTrip[0];
+  if (pendingEntry.id !== reminderB.nativeId) {
+    fail(
+      `Step 6c: \`get_pending\` вернул native id ${pendingEntry.id}, ожидался ${reminderB.nativeId}. ` +
+        `Запись: ${JSON.stringify(pendingEntry)}`,
+    );
+  }
+  if (pendingEntry.title !== REMINDER_TASK_B) {
+    fail(
+      `Step 6c: \`get_pending\` вернул title ${JSON.stringify(pendingEntry.title)}, ожидался ` +
+        `${JSON.stringify(REMINDER_TASK_B)} — round-trip потерял payload.`,
+    );
+  }
+  const pendingAt = pendingEntry.schedule?.at;
+  if (pendingAt === undefined || typeof pendingAt.date !== 'string') {
+    fail(
+      `Step 6c: \`get_pending\` вернул запись без \`schedule.at.date\`: ${JSON.stringify(pendingEntry)} — ` +
+        'round-trip потерял расписание (проверить сериализатор `NotificationSchedule`).',
+    );
+  }
+  // `allowWhileIdle` — патч №2: апстримный сериализатор его терял, и
+  // восстановленный alarm молча деградировал бы с
+  // `setExactAndAllowWhileIdle(RTC_WAKEUP)` до `setExact(RTC)` (не будит
+  // устройство, откладывается Doze).
+  if (pendingAt.allowWhileIdle !== true) {
+    fail(
+      `Step 6c: \`get_pending\` вернул \`schedule.at.allowWhileIdle=${JSON.stringify(pendingAt.allowWhileIdle)}\`, ` +
+        'ожидалось `true` — патч №2 (сериализатор `NotificationSchedule`) не доехал до APK, ' +
+        'восстановленный после reboot alarm перестал бы будить устройство. ' +
+        `Запись: ${JSON.stringify(pendingEntry)}`,
+    );
+  }
+  console.log(
+    `Step 6c: round-trip подтверждён — id=${pendingEntry.id}, title совпал, at.date=${pendingAt.date}, ` +
+      'allowWhileIdle=true.',
+  );
+
+  // (3) Приводим систему в ПОСТ-REBOOT состояние: alarm'ов нет, persisted-
+  // слой цел, приложение не запущено. `am force-stop` — единственный
+  // доступный из adb способ снять alarm'ы, не трогая SharedPreferences
+  // (простой `kill` их НЕ снимает — это доказано Step 5.1 выше). Побочный
+  // эффект force-stop — package stopped state, которого после настоящей
+  // перезагрузки не было бы; он компенсируется флагом
+  // `--include-stopped-packages` у broadcast'а ниже, иначе ОС не доставила
+  // бы его остановленному пакету и шаг проверял бы не то.
+  first.cdp.close();
+  adb(['shell', 'am', 'force-stop', APPLICATION_ID], { stdio: 'inherit' });
+  const alarmsClearedForReboot = await waitFor(
+    'снятие alarm перед эмуляцией reboot (Step 6c)',
+    20,
+    500,
+    () =>
+      listSystemAlarmBlocks().every((block) => alarmWindowMs(block.join('\n')) === null)
+        ? true
+        : null,
+  );
+  if (alarmsClearedForReboot === null) {
+    fail(
+      'Step 6c: alarm не снялся перед эмуляцией reboot — оставшийся alarm замаскировал бы неработающий ' +
+        `restore (владелец прямо это запретил). Блоки: ${JSON.stringify(listSystemAlarmBlocks())}`,
+    );
+  }
+  const storeXmlAfterForceStop = readNotificationStorageFile();
+  if (!storeXmlAfterForceStop.includes(String(reminderB.nativeId))) {
+    fail(
+      'Step 6c: persisted-запись исчезла вместе с alarm — восстанавливать ресиверу будет нечего, ' +
+        `это не пост-reboot состояние. Файл: ${storeXmlAfterForceStop.slice(0, 600)}`,
+    );
+  }
+  console.log(
+    'Step 6c: пост-reboot состояние выставлено — alarm нет, persisted-запись цела, приложение не запущено.',
+  );
+
+  // (4) Только broadcast. Никакого `launchAndAttach` — весь смысл шага.
+  function broadcastBootCompletedToReceiverOnly(label) {
+    const output = adbSoft([
+      'shell',
+      'am',
+      'broadcast',
+      '-a',
+      'android.intent.action.BOOT_COMPLETED',
+      '-p',
+      APPLICATION_ID,
+      '--include-stopped-packages',
+    ]);
+    console.log(`Step 6c: broadcast (${label}) → ${JSON.stringify(output)}`);
+    if (!output.includes('Broadcast completed')) {
+      fail(
+        `Step 6c: система не доставила BOOT_COMPLETED (${label}) — это отказ САМОЙ ДОСТАВКИ, а не ` +
+          `неработающий restore, различать обязательно. Вывод \`am broadcast\`: ${JSON.stringify(output)}`,
+      );
+    }
+    return output;
+  }
+
+  broadcastBootCompletedToReceiverOnly('первый');
+  const restoredByReceiver = await waitFor(
+    'восстановление alarm ресивером плагина, без запуска UI (Step 6c)',
+    20,
+    1000,
+    () => {
+      const blocks = listSystemAlarmBlocks().filter(
+        (block) => alarmWindowMs(block.join('\n')) !== null,
+      );
+      return blocks.length > 0 ? blocks : null;
+    },
+  );
+  if (restoredByReceiver === null) {
+    fail(
+      'Step 6c: после BOOT_COMPLETED (доставленного системой) alarm НЕ восстановлен, хотя UI не ' +
+        'запускался — `LocalNotificationRestoreReceiver` не восстановил напоминание из persisted-слоя. ' +
+        'Это прямое нарушение frozen-требования «после reboot напоминания восстанавливаются без ' +
+        `открытия приложения». Файл хранилища: ${readNotificationStorageFile().slice(0, 600)}`,
+    );
+  }
+  if (restoredByReceiver.length !== 1) {
+    fail(
+      `Step 6c: ресивер восстановил ${restoredByReceiver.length} alarm-блок(ов) вместо ровно одного. ` +
+        `Блоки: ${JSON.stringify(restoredByReceiver)}`,
+    );
+  }
+  // UI действительно не поднимался: процесс ресивера жив, но WebView-сокета
+  // отладки у него нет — его открывает только wry при создании WebView.
+  const pidAfterReceiverRestore = adbSoft(['shell', 'pidof', APPLICATION_ID])
+    .trim()
+    .split(/\s+/u)[0];
+  if (pidAfterReceiverRestore !== undefined && pidAfterReceiverRestore !== '') {
+    const socketAfterReceiverRestore = findDevtoolsSocket(pidAfterReceiverRestore);
+    if (socketAfterReceiverRestore !== null) {
+      fail(
+        `Step 6c: у процесса ${pidAfterReceiverRestore} открыт DevTools-сокет ` +
+          `${socketAfterReceiverRestore} — значит поднялся WebView/UI, и шаг проверял не только ресивер.`,
+      );
+    }
+  }
+  const restoredLinesWithId = linesWithNativeId(listSystemAlarms(), reminderB.nativeId);
+  console.log(
+    `Step 6c: ресивер восстановил ровно 1 alarm БЕЗ запуска UI (строк с native id ` +
+      `${reminderB.nativeId}: ${restoredLinesWithId.length}). Блок: ${JSON.stringify(restoredByReceiver[0])}`,
+  );
+
+  // (5) Повторный BOOT_COMPLETED не задваивает.
+  broadcastBootCompletedToReceiverOnly('повторный');
+  await sleep(2000);
+  const afterSecondBootBroadcast = listSystemAlarmBlocks().filter(
+    (block) => alarmWindowMs(block.join('\n')) !== null,
+  );
+  if (afterSecondBootBroadcast.length !== 1) {
+    fail(
+      `Step 6c: после повторного BOOT_COMPLETED alarm-блоков ${afterSecondBootBroadcast.length}, ` +
+        `ожидался ровно один — ресивер задваивает при каждой перезагрузке. ` +
+        `Блоки: ${JSON.stringify(afterSecondBootBroadcast)}`,
+    );
+  }
+  console.log('Step 6c: повторный BOOT_COMPLETED не создал дубль — ровно 1 alarm.');
+
   console.log('── Step 6: BOOT_COMPLETED вместо полного `adb reboot` (claim #4) ──');
   // `adb reboot` — минуты на полный цикл эмулятора, бюджет дымового теста
   // не резиновый (см. заголовок этого блока и брифу задачи, Step 6): вместо

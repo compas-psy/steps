@@ -7,6 +7,7 @@ package app.tauri.notification
 import android.content.Context
 import android.content.SharedPreferences
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.databind.SerializationFeature
 import org.json.JSONException
 import java.lang.Exception
 
@@ -16,13 +17,63 @@ private const val NOTIFICATION_STORE_ID = "NOTIFICATION_STORE"
 private const val ACTION_TYPES_ID = "ACTION_TYPE_STORE"
 
 class NotificationStorage(private val context: Context, private val jsonMapper: ObjectMapper) {
+  // ШАГИ-ПАТЧ №1 из трёх (см. `PATCH.md` рядом, ADR-0008 дополнение от
+  // 2026-09-04) — ПРИЧИНА дефекта, а не его симптом.
+  //
+  // Было: `editor.putString(key, request.sourceJson.toString())`. Поле
+  // `sourceJson` (`Notification.kt`) НИКОГДА никем в этом крейте не
+  // заполняется — ни Rust-стороной (`batch` — mobile-only команда, идёт из JS
+  // прямо в Kotlin), ни `Invoke.parseArgs` (обычный `readValue`, ничего не
+  // инжектит). Для КАЖДОЙ записи, созданной через `batch`, оно `null`, а
+  // Kotlin'овский `Any?.toString()` на null-приёмнике даёт СТРОКУ «null» —
+  // в SharedPreferences ложился литерал `null`, и persisted-слой плагина был
+  // мёртв целиком: `get_pending` падал на нём NPE (патч №3 ниже), а
+  // `LocalNotificationRestoreReceiver` молча не восстанавливал НИЧЕГО после
+  // перезагрузки устройства (`getSavedNotification` возвращал `null`, запись
+  // пропускалась по `?: continue`) — прямое нарушение frozen-требования
+  // «после reboot напоминания восстанавливаются без открытия приложения».
+  //
+  // Стало: сериализуем сам объект — но СВОИМ мапper'ом, а не тем, который
+  // передан в конструктор. Причина ровно одна, и она измерена, а не
+  // предположена (эксперимент на Jackson 2.15.3 — той самой версии, что
+  // объявлена в `tauri-2.11.5/mobile/android/build.gradle.kts:43`):
+  //
+  //   * записывает эту таблицу `NotificationPlugin` — с мапper'ом
+  //     `PluginManager` (`setVisibility(PropertyAccessor.FIELD, ANY)`);
+  //   * читают её ОБА ресивера — `LocalNotificationRestoreReceiver` и
+  //     `TimedNotificationPublisher` — со СТРОГИМ `ObjectMapper()` по
+  //     умолчанию (`TauriNotificationManager.kt`);
+  //   * при FIELD-видимости Jackson выдаёт и backing-поля Kotlin, и
+  //     bean-имена сразу: `{"isGroupSummary":false,…,"groupSummary":false}`.
+  //     Строгий мапper ресивера знает только `groupSummary` и падает на
+  //     `isGroupSummary` с `UnrecognizedPropertyException` — мимо
+  //     `catch (ex: JSONException)` в `getSavedNotification` ниже, то есть
+  //     boot-restore сломался бы ещё грубее, чем до патча.
+  //
+  // Поэтому пишем мапper'ом с ВИДИМОСТЬЮ ПО УМОЛЧАНИЮ: он выдаёт только
+  // bean-имена, и такой JSON читается обратно и строгим `ObjectMapper()`
+  // ресиверов, и мапper'ом плагина (`get_pending`) — проверено обоими.
+  // `FAIL_ON_EMPTY_BEANS` выключен по одной причине: `extra: JSObject`
+  // (наследник `org.json.JSONObject`) не имеет bean-свойств, и НЕпустой
+  // `extra` иначе уронил бы саму запись, то есть `batch()`. ШАГИ `extra` не
+  // шлют (`notification-bridge.ts`), а чужой непустой `extra` вырождается в
+  // `{}` — хуже, чем faithful round-trip, но несравнимо лучше и падения
+  // планирования, и прежнего состояния, когда терялась ВСЯ запись целиком.
+  //
+  // Сохраняется и путь ресивера, который МУТИРУЕТ `schedule.date` для
+  // просроченных уведомлений перед повторной записью: сериализуется текущее
+  // состояние объекта, а не исходный JSON запроса. И формат записи больше не
+  // зависит от того, кто сконструировал `NotificationStorage`.
+  private val storageMapper: ObjectMapper =
+    ObjectMapper().disable(SerializationFeature.FAIL_ON_EMPTY_BEANS)
+
   fun appendNotifications(localNotifications: List<Notification>) {
     val storage = getStorage(NOTIFICATION_STORE_ID)
     val editor = storage.edit()
     for (request in localNotifications) {
       if (request.schedule != null) {
         val key: String = request.id.toString()
-        editor.putString(key, request.sourceJson.toString())
+        editor.putString(key, storageMapper.writeValueAsString(request))
       }
     }
     editor.apply()
@@ -36,8 +87,11 @@ class NotificationStorage(private val context: Context, private val jsonMapper: 
     } else ArrayList()
   }
 
-  // ШАГИ-ПАТЧ (единственное изменение этого вендоренного крейта относительно
-  // апстрима 2.4.0; см. `PATCH.md` рядом и ADR-0008, дополнение от 2026-09-04).
+  // ШАГИ-ПАТЧ №3 из трёх (см. `PATCH.md` рядом и ADR-0008, дополнение от
+  // 2026-09-04) — защита от СИМПТОМА; причину чинит патч №1 выше. Остаётся
+  // и после него: чистит legacy-записи `"null"`, которые успели лечь в
+  // SharedPreferences со сборок ДО патча №1, и не даёт одной битой записи
+  // снова уронить весь `get_pending`.
   //
   // Апстрим-дефект, доказанный живым прогоном на эмуляторе (Android CI
   // `33900673629`, полностью раскрытое через CDP `Runtime.getProperties`
