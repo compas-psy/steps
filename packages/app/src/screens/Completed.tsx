@@ -103,34 +103,22 @@ import { Temporal } from '@js-temporal/polyfill';
 import { t } from '@shagi/i18n';
 import {
   describeRestoreSituation,
-  generateDeviceId,
   restoreTaskCommand,
   type RestoreArchivedProjectChoice,
   type RestoreHierarchyChoice,
   type RestoreSituationResult,
   type RestoreTaskDeps,
   type Task,
-  type Uuid,
 } from '@shagi/core';
 import { Button, EmptyState, Filter, Icon, IconButton, Modal, TaskRow, Toast } from '@shagi/ui';
 
+import { getLocalIdentity } from '../state/local-identity.js';
 import { useAppController, useStorage } from '../state/context.js';
 import './Completed.css';
 
 // --- Локальная идентичность устройства (см. заголовок файла) ----------------
 // Тот же узкий, файл-локальный приём, что `ProjectDetail.tsx`/остальные
 // экраны этого дерева пакетов (граница пакетов, CLAUDE.md — не общий модуль).
-
-interface LocalIdentity {
-  readonly deviceId: Uuid;
-}
-
-let cachedLocalIdentity: LocalIdentity | null = null;
-
-function getLocalIdentity(): LocalIdentity {
-  cachedLocalIdentity ??= { deviceId: generateDeviceId() };
-  return cachedLocalIdentity;
-}
 
 function isInteractiveRowClick(target: EventTarget | null): boolean {
   return target instanceof HTMLElement && target.closest('input, button') !== null;

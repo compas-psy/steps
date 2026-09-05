@@ -541,6 +541,34 @@ describe('ProjectDetail — инлайн-добавление задачи', () 
 
     await waitFor(() => expect(screen.getByText('Новая задача')).toBeInTheDocument());
   });
+
+  it('контрольная строка разбирается: дата и время уходят в поля задачи, а не в название', async () => {
+    // Раньше инлайн-«+» клал текст в название дословно — четвёртая точка
+    // создания задачи, которая не звала разбор. См. заголовок
+    // `src/state/create-task-from-text.ts`.
+    const user = userEvent.setup();
+    const project = makeProject({ title: 'Проект Л' });
+    const { getStorage } = renderProjectDetail(project, [], []);
+
+    await waitFor(() =>
+      expect(screen.getByText(t('projectDetail', 'empty.title'))).toBeInTheDocument(),
+    );
+    const input = screen.getByLabelText(
+      t('projectDetail', 'inlineAdd.label', { section: t('projectDetail', 'sections.none') }),
+    );
+    await user.type(input, '9 сентября в 11:00 Сходить с мамой в МВД{Enter}');
+
+    await waitFor(() => expect(screen.getByText('Сходить с мамой в МВД')).toBeInTheDocument());
+
+    const tasks = await getStorage().tasks.listByCaptureStateAndStatus('processed', 'active');
+    const created = tasks.find((task) => task.title === 'Сходить с мамой в МВД');
+    expect(created).toBeDefined();
+    expect(created?.plannedDate?.month).toBe(9);
+    expect(created?.plannedDate?.day).toBe(9);
+    expect(created?.plannedTime?.toString({ smallestUnit: 'minute' })).toBe('11:00');
+    // Контекст экрана сохранён: задача осталась в своём проекте.
+    expect(created?.projectId).toBe(project.id);
+  });
 });
 
 describe('ProjectDetail — навигация', () => {

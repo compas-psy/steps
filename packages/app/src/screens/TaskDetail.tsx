@@ -134,14 +134,11 @@ import {
   createChecklistItemCommand,
   createExplicitReminderCommand,
   createLabelCommand,
-  createTaskCommand,
   deleteChecklistItemCommand,
   deleteSeriesCommand,
   deleteTaskCommand,
   detachLabelFromTaskCommand,
   doesDurationCrossDeadline,
-  generateDeviceId,
-  generateUuidV7,
   isPlannedAfterDeadline,
   isReminderAfterDeadline,
   isTaskLabelActive,
@@ -208,24 +205,18 @@ import {
 } from '@shagi/ui';
 import { isAvailable, type NotificationPrecision } from '@shagi/platform';
 
+import { getLocalIdentity } from '../state/local-identity.js';
+import {
+  composerNow,
+  parseComposerText,
+  submitComposerTask,
+} from '../state/create-task-from-text.js';
 import { useAppController, useHost, useStorage } from '../state/context.js';
 import { useUndoHost } from '../state/undo-toast.js';
 import { reconcileReminderScheduleForTask } from '../state/reminder-reconciliation.js';
 import './TaskDetail.css';
 
 // --- Локальная идентичность устройства/владельца (см. заголовок файла) ------
-
-interface LocalIdentity {
-  readonly ownerScope: Uuid;
-  readonly deviceId: Uuid;
-}
-
-let cachedLocalIdentity: LocalIdentity | null = null;
-
-function getLocalIdentity(): LocalIdentity {
-  cachedLocalIdentity ??= { ownerScope: generateUuidV7(), deviceId: generateDeviceId() };
-  return cachedLocalIdentity;
-}
 
 // --- Приоритет: числовое значение ↔ подпись/визуальный уровень --------------
 
@@ -1765,28 +1756,35 @@ export function TaskDetail(): ReactElement | null {
 
   function handleAddSubtask(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault();
-    const trimmed = newSubtaskTitle.trim();
-    if (trimmed.length === 0 || task === null) return;
+    const text = newSubtaskTitle.trim();
+    if (text.length === 0 || task === null) return;
     setNewSubtaskTitle('');
-    const { ownerScope } = getLocalIdentity();
-    void runAndRefresh(
-      createTaskCommand(
+    const { ownerScope, deviceId } = getLocalIdentity();
+
+    // Подзадача разбирается тем же путём, что и всё остальное
+    // (`../state/create-task-from-text.js`): «позвонить в 11:00» в строке
+    // подзадачи — то же намерение, что в Quick Add.
+    const parsed = parseComposerText({ text, now: composerNow() });
+
+    void (async () => {
+      const result = await submitComposerTask(
+        text,
+        parsed.chips,
         {
-          ownerScope,
-          title: trimmed,
-          parentTaskId: task.id,
-          projectId: task.projectId,
-          sectionId: task.sectionId,
           captureState: 'processed',
-          source: 'user',
-          sourceChannel: 'text',
           rank: appendTaskRank(subtasks),
+          parentTaskId: task.id,
+          ...(task.projectId !== null ? { projectId: task.projectId } : {}),
+          ...(task.sectionId !== null ? { sectionId: task.sectionId } : {}),
         },
-        commandDeps(),
-      ),
-      refreshOk,
-      showError,
-    );
+        { storage, now: Temporal.Now.instant(), deviceId, ownerScope },
+      );
+      if (result.status !== 'ok') {
+        showError();
+        return;
+      }
+      await refreshOk();
+    })();
   }
 
   function handleConfirmConvertSubtask(): void {

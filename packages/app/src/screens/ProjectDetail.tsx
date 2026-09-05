@@ -121,10 +121,8 @@ import {
   undoCompleteOccurrenceCommand,
   undoDeleteTasksCommand,
   createSectionCommand,
-  createTaskCommand,
   deleteSectionCommand,
   deleteTaskCommand,
-  generateDeviceId,
   generateUuidV7,
   resolveRank,
   updateSectionCommand,
@@ -159,24 +157,18 @@ import {
 } from '@shagi/ui';
 import { isAvailable } from '@shagi/platform';
 
+import { getLocalIdentity } from '../state/local-identity.js';
+import {
+  composerNow,
+  parseComposerText,
+  submitComposerTask,
+} from '../state/create-task-from-text.js';
 import { useAppController, useHost, useStorage } from '../state/context.js';
 import { useUndoHost } from '../state/undo-toast.js';
 import { reconcileReminderScheduleForTask } from '../state/reminder-reconciliation.js';
 import './ProjectDetail.css';
 
 // --- Локальная идентичность устройства/владельца (см. заголовок файла) ------
-
-interface LocalIdentity {
-  readonly ownerScope: Uuid;
-  readonly deviceId: Uuid;
-}
-
-let cachedLocalIdentity: LocalIdentity | null = null;
-
-function getLocalIdentity(): LocalIdentity {
-  cachedLocalIdentity ??= { ownerScope: generateUuidV7(), deviceId: generateDeviceId() };
-  return cachedLocalIdentity;
-}
 
 // --- Модель секции экрана (см. заголовок файла, блок «Секции») --------------
 
@@ -1096,27 +1088,39 @@ export function ProjectDetail(): ReactElement | null {
     void runCommand(updateTaskCommand({ id: task.id, patch }, commandDeps()));
   }
 
-  function handleInlineAdd(sectionEntry: SectionEntry, title: string): void {
+  function handleInlineAdd(sectionEntry: SectionEntry, text: string): void {
     if (project === null) return;
-    const { ownerScope } = getLocalIdentity();
+    const { ownerScope, deviceId } = getLocalIdentity();
     const rank = resolveRank(appendRank(sectionEntry.tasks, generateUuidV7()));
-    void runCommand(
-      createTaskCommand(
+
+    // Инлайн-«+» разбирает фразу тем же путём, что Quick Add
+    // (`../state/create-task-from-text.js`): человек, печатающий «позвонить
+    // в 11:00» в строке проекта, имеет в виду ровно то же, что и в
+    // composer'е, — раньше здесь текст уходил в название дословно.
+    const now = composerNow();
+    const parsed = parseComposerText({ text, now });
+
+    void (async () => {
+      const result = await submitComposerTask(
+        text,
+        parsed.chips,
         {
-          ownerScope,
-          title,
-          projectId: project.id,
-          sectionId: sectionEntry.sectionId,
           // §3 «Contextual Quick Add»: «+» из Project/Section/Board →
           // processed + project context, НЕ голый Inbox-захват.
           captureState: 'processed',
-          source: 'user',
-          sourceChannel: 'text',
           rank: { placement: 'explicit', rank },
+          projectId: project.id,
+          ...(sectionEntry.sectionId !== null ? { sectionId: sectionEntry.sectionId } : {}),
         },
-        commandDeps(),
-      ),
-    );
+        { storage, now: Temporal.Now.instant(), deviceId, ownerScope },
+      );
+      if (result.status !== 'ok') {
+        setErrorMessage(t('projectDetail', 'errors.actionFailed'));
+        return;
+      }
+      setErrorMessage(null);
+      await loadAll();
+    })();
   }
 
   function focusFirstInlineInput(): void {
