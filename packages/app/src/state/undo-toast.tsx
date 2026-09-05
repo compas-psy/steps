@@ -1,4 +1,14 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactElement,
+  type ReactNode,
+} from 'react';
 
 import { t } from '@shagi/i18n';
 import { Button, Toast } from '@shagi/ui';
@@ -165,4 +175,38 @@ export function UndoToast({
       dismissLabel={t('common', 'undo.dismiss')}
     />
   );
+}
+
+/**
+ * Тост Undo живёт ВЫШЕ экранов — в `AppProvider`, который не
+ * размонтируется ни при `controller.closeTask()`, ни при любой другой смене
+ * маршрута. Без этого «Удалить всю серию» осталось бы без Undo: команда
+ * закрывает `TaskDetail`, и локальный для экрана тост исчезал бы вместе с
+ * ним в ту же миллисекунду (найдено владельцем при приёмке `c279c7e`).
+ *
+ * Экран только ПУБЛИКУЕТ предложение (`useUndoHost().offerUndo(...)`) —
+ * отмену выполняет доменная команда, которую экран передал в замыкании.
+ * Хук `useUndoToast` при этом не продублирован: провайдер вызывает его же.
+ */
+const UndoToastContext = createContext<UndoToastController | null>(null);
+
+export function UndoToastProvider({ children }: { readonly children: ReactNode }): ReactElement {
+  const controller = useCommonUndoToast();
+  return (
+    <UndoToastContext.Provider value={controller}>
+      {children}
+      <UndoToast controller={controller} />
+    </UndoToastContext.Provider>
+  );
+}
+
+/** Тот же контракт, что у `useStorage()`: вне провайдера — честная ошибка,
+ * а не молчаливый no-op, который выглядел бы как «Undo просто не
+ * показался». */
+export function useUndoHost(): UndoToastController {
+  const value = useContext(UndoToastContext);
+  if (value === null) {
+    throw new Error('useUndoHost вызван вне <UndoToastProvider>');
+  }
+  return value;
 }

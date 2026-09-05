@@ -160,7 +160,7 @@ import {
 import { isAvailable } from '@shagi/platform';
 
 import { useAppController, useHost, useStorage } from '../state/context.js';
-import { UndoToast, useCommonUndoToast } from '../state/undo-toast.js';
+import { useUndoHost } from '../state/undo-toast.js';
 import { reconcileReminderScheduleForTask } from '../state/reminder-reconciliation.js';
 import './ProjectDetail.css';
 
@@ -677,7 +677,7 @@ export function ProjectDetail(): ReactElement | null {
   );
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   /** 6-секундное «Отменить» (ST §58) — см. `undo-toast.tsx`. */
-  const undoToast = useCommonUndoToast();
+  const undoToast = useUndoHost();
   const [viewOverride, setViewOverride] = useState<Project['defaultView'] | null>(null);
   const [openMenuTaskId, setOpenMenuTaskId] = useState<Uuid | null>(null);
   const [moveDialogTask, setMoveDialogTask] = useState<Task | null>(null);
@@ -1154,8 +1154,6 @@ export function ProjectDetail(): ReactElement | null {
           dismissLabel={t('projectDetail', 'errors.dismiss')}
         />
       )}
-
-      <UndoToast controller={undoToast} />
 
       <SegmentedControl<Project['defaultView']>
         className="shagi-project-detail__view"

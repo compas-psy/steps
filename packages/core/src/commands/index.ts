@@ -72,10 +72,17 @@ export {
   type UndoCompleteTasksResult,
 } from './undo-complete-tasks.js';
 export {
+  planUndoDelete,
   undoDeleteTasksCommand,
+  type UndoDeletePlan,
   type UndoDeleteTasksInput,
   type UndoDeleteTasksResult,
 } from './undo-delete-tasks.js';
+export {
+  undoDeleteSeriesCommand,
+  type UndoDeleteSeriesInput,
+  type UndoDeleteSeriesResult,
+} from './undo-delete-series.js';
 
 // --- Порт хранения Reminder (инверсия зависимости, ADR-0003) — E08 -----------
 export type {

@@ -153,6 +153,7 @@ import {
   resolveWeekend,
   skipOccurrenceCommand,
   undoCompleteOccurrenceCommand,
+  undoDeleteSeriesCommand,
   undoDeleteTasksCommand,
   updateChecklistItemCommand,
   updateRecurringOccurrencePlanningCommand,
@@ -208,7 +209,7 @@ import {
 import { isAvailable, type NotificationPrecision } from '@shagi/platform';
 
 import { useAppController, useHost, useStorage } from '../state/context.js';
-import { UndoToast, useCommonUndoToast } from '../state/undo-toast.js';
+import { useUndoHost } from '../state/undo-toast.js';
 import { reconcileReminderScheduleForTask } from '../state/reminder-reconciliation.js';
 import './TaskDetail.css';
 
@@ -876,7 +877,7 @@ export function TaskDetail(): ReactElement | null {
   const [descriptionDraft, setDescriptionDraft] = useState('');
   const [notice, setNotice] = useState<Notice | null>(null);
   /** 6-секундное «Отменить» (ST §58) — см. `undo-toast.tsx`. */
-  const undoToast = useCommonUndoToast();
+  const undoToast = useUndoHost();
   const [priorityPickerOpen, setPriorityPickerOpen] = useState(false);
   const [projectPickerOpen, setProjectPickerOpen] = useState(false);
   const [sectionPickerOpen, setSectionPickerOpen] = useState(false);
@@ -1570,11 +1571,38 @@ export function TaskDetail(): ReactElement | null {
     setDeleteSeriesConfirm(false);
     void (async () => {
       const result = await deleteSeriesCommand({ currentOccurrenceId }, commandDeps());
-      if (result.status === 'ok') {
-        controller.closeTask();
+      if (result.status !== 'ok') {
+        showError();
         return;
       }
-      showError();
+      const restoredIds = [currentOccurrenceId, ...result.affectedSubtaskIds];
+      for (const id of restoredIds) {
+        await reconcileTaskReminders(id);
+      }
+      controller.closeTask();
+      // Тост живёт в `AppProvider`, а не на этом экране, поэтому переживает
+      // `closeTask()` (ST §58; иначе у «Удалить всю серию» Undo не было бы
+      // вовсе). `previousSeries` — узкий UndoToken: прежняя граница
+      // `stopAfterOccurrenceSeq` невыводима из состояния после удаления.
+      undoToast.offerUndo({
+        message: t('common', 'undo.seriesDeleted'),
+        undo: async () => {
+          const undone = await undoDeleteSeriesCommand(
+            {
+              currentOccurrenceId,
+              previousSeries: result.previousSeries,
+              subtaskIds: result.affectedSubtaskIds,
+              checklistItems: result.affectedChecklistItems,
+            },
+            commandDeps(),
+          );
+          if (undone.status !== 'ok') return 'failed';
+          for (const id of restoredIds) {
+            await reconcileTaskReminders(id);
+          }
+          return 'ok';
+        },
+      });
     })();
   }
 
@@ -1833,8 +1861,6 @@ export function TaskDetail(): ReactElement | null {
           dismissLabel={t('taskDetail', 'errors.dismiss')}
         />
       )}
-
-      <UndoToast controller={undoToast} />
 
       {/* --- 1. Заголовок/контекст --------------------------------------- */}
       {/* Верхняя полоса по макету `[R1][M][24]`: стрелка возврата слева,

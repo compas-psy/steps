@@ -23,6 +23,7 @@ import type { StoragePort } from '@shagi/storage';
 import type { AppHost } from '../App.js';
 import { type AppController, type AppState, createAppController } from './store.js';
 import { resolveStorageBackend } from './storage-backend.js';
+import { UndoToastProvider } from './undo-toast.js';
 
 interface AppContextValue {
   readonly controller: AppController;
@@ -69,7 +70,10 @@ export function AppProvider({
   );
   return (
     <AppContext.Provider value={{ controller: resolvedController, host, storage }}>
-      {children}
+      {/* Тост Undo — ВНУТРИ провайдера состояния, но ВЫШЕ экранов: он обязан
+       * пережить смену маршрута, в том числе `closeTask()` после «Удалить
+       * всю серию» (ST §58, `01§11.8`). */}
+      <UndoToastProvider>{children}</UndoToastProvider>
     </AppContext.Provider>
   );
 }

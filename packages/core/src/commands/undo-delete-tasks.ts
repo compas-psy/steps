@@ -123,11 +123,28 @@ async function buildRestoredParentSnapshot(
   };
 }
 
-export async function undoDeleteTasksCommand(
+/** Собранная, но ещё НЕ применённая обратная мутация. Экспортируется ради
+ * `undo-delete-series.ts`: `01§11.8` требует, чтобы откат «Удалить всю
+ * серию» вернул и серию, и граф текущего occurrence ОДНОЙ мутацией —
+ * зеркально атомарному `deleteSeriesCommand`. Цепочка «сначала задачи,
+ * потом серия» оставляла бы между транзакциями состояние «occurrence жив, а
+ * генерация всё ещё остановлена», которого в домене нет. */
+export type UndoDeletePlan =
+  | {
+      readonly status: 'ok';
+      readonly writes: CommandEntityWrite[];
+      readonly outbox: SyncOutboxEntry[];
+      readonly tasks: readonly Task[];
+      readonly checklistItems: readonly ChecklistItem[];
+      readonly validation: ValidationResult;
+    }
+  | Exclude<UndoDeleteTasksResult, { readonly status: 'ok' }>;
+
+export async function planUndoDelete(
   input: UndoDeleteTasksInput,
   deps: TaskCommandDeps,
-): Promise<UndoDeleteTasksResult> {
-  const generateOpId = deps.generateOpId ?? generateUuidV7;
+  generateOpId: () => Uuid,
+): Promise<UndoDeletePlan> {
   const hlc = { physical: deps.now, logical: 0, deviceId: deps.deviceId };
 
   // Родители раньше детей — зеркало порядка удаления (`delete-task.ts`
@@ -250,11 +267,28 @@ export async function undoDeleteTasksCommand(
     });
   }
 
-  const mutation: CommandDomainMutation = {
+  return {
+    status: 'ok',
     writes,
+    outbox,
+    tasks: restoredTasks,
+    checklistItems: restoredItems,
+    validation: lastValidation,
+  };
+}
+
+export async function undoDeleteTasksCommand(
+  input: UndoDeleteTasksInput,
+  deps: TaskCommandDeps,
+): Promise<UndoDeleteTasksResult> {
+  const plan = await planUndoDelete(input, deps, deps.generateOpId ?? generateUuidV7);
+  if (plan.status !== 'ok') return plan;
+
+  const mutation: CommandDomainMutation = {
+    writes: plan.writes,
     // Непуст по построению: записи добавляются парой с `writes`, а пустой
     // `deletedTargets` отсечён выше исходом `not_deleted`.
-    outbox: outbox as unknown as CommandDomainMutation['outbox'],
+    outbox: plan.outbox as unknown as CommandDomainMutation['outbox'],
   };
   await deps.storage.runTransaction(async (tx) => {
     await tx.applyMutation(mutation);
@@ -262,8 +296,8 @@ export async function undoDeleteTasksCommand(
 
   return {
     status: 'ok',
-    tasks: restoredTasks,
-    checklistItems: restoredItems,
-    validation: lastValidation,
+    tasks: plan.tasks,
+    checklistItems: plan.checklistItems,
+    validation: plan.validation,
   };
 }

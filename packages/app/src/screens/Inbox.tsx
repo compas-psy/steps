@@ -203,7 +203,7 @@ import {
 import { isAvailable } from '@shagi/platform';
 
 import { useAppController, useHost, useStorage } from '../state/context.js';
-import { UndoToast, useCommonUndoToast } from '../state/undo-toast.js';
+import { useUndoHost } from '../state/undo-toast.js';
 import { reconcileReminderScheduleForTask } from '../state/reminder-reconciliation.js';
 import './Inbox.css';
 
@@ -302,7 +302,7 @@ export function Inbox(): ReactElement {
   /** 6-секундное «Отменить» (ST §58). Восстановление делают доменные
    * команды `undoCompleteTasksCommand`/`undoDeleteTasksCommand`, здесь
    * только предложение и его окно. */
-  const undoToast = useCommonUndoToast();
+  const undoToast = useUndoHost();
   const [datePicker, setDatePicker] = useState<DatePickerState | null>(null);
   const [projectMenuOpen, setProjectMenuOpen] = useState(false);
 
@@ -566,8 +566,6 @@ export function Inbox(): ReactElement {
           dismissLabel={t('inbox', 'errors.dismiss')}
         />
       )}
-
-      <UndoToast controller={undoToast} />
 
       {isEmpty && (
         <EmptyState

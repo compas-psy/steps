@@ -32,6 +32,14 @@ export type DeleteSeriesResult =
   | {
       readonly status: 'ok';
       readonly series: RecurrenceSeries;
+      /** Серия ДО удаления — узкий UndoToken (ST §58), живущий ровно окно
+       * Undo. Нужен потому, что прежнее состояние границы НЕВЫВОДИМО из
+       * состояния после удаления: `stopAfterOccurrenceSeq` мог быть уже
+       * задан раньше («до конца месяца»), и предположить `null` значило бы
+       * восстановить не прежнюю серию, а другую. Снимок ровно одной
+       * сущности, а не хранилище снимков — `undoDeleteSeriesCommand`
+       * читает из него только те поля, которые эта команда меняет. */
+      readonly previousSeries: RecurrenceSeries;
       readonly task: Task;
       readonly affectedSubtaskIds: readonly Uuid[];
       readonly affectedChecklistItemIds: readonly Uuid[];
@@ -160,6 +168,7 @@ export async function deleteSeriesCommand(
   return {
     status: 'ok',
     series: finalSeries,
+    previousSeries: series,
     task: (rootWrite as { readonly value: Task }).value,
     affectedSubtaskIds: acc.subtaskIds,
     affectedChecklistItemIds: acc.checklistItemIds,

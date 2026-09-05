@@ -1842,6 +1842,49 @@ describe('TaskDetail — повторы (E11.2)', () => {
     expect(storedSeries?.active).toBe(false);
     expect(storedSeries?.stopAfterOccurrenceSeq).toBe(1n);
   });
+
+  it('после «Удалить всю серию» тост «Отменить» переживает закрытие экрана и возвращает серию (ST §58 U3)', async () => {
+    const user = userEvent.setup();
+    // Серия УЖЕ была ограничена раньше: откат обязан вернуть именно эту
+    // границу, а не «никакой» — иначе Undo восстановил бы другую серию.
+    const series = seedRecurrenceSeries({ stopAfterOccurrenceSeq: makeOccurrenceSeq(9n) });
+    const task = makeTask({
+      title: 'Серия под удаление',
+      seriesId: series.id,
+      occurrenceSeq: 1n,
+    });
+    const { getStorage, controller } = renderTaskDetail(
+      task.id,
+      { tasks: [task], recurrenceSeries: [series] },
+      'todayEmpty',
+    );
+
+    await user.click(
+      await screen.findByRole('button', { name: t('taskDetail', 'organization.deleteSeries') }),
+    );
+    const dialog = await screen.findByRole('dialog', {
+      name: t('taskDetail', 'organization.deleteSeriesConfirmTitle'),
+    });
+    await user.click(
+      within(dialog).getByRole('button', {
+        name: t('taskDetail', 'organization.deleteSeriesConfirmConfirm'),
+      }),
+    );
+
+    // Экран закрылся — а тост остался: он живёт в `AppProvider`, выше
+    // маршрутов (`state/undo-toast.tsx`).
+    await waitFor(() => expect(controller.getState().screen).toBe('todayEmpty'));
+    expect(screen.getByText(t('common', 'undo.seriesDeleted'))).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: t('common', 'undo.action') }));
+
+    await waitFor(async () => {
+      const restoredSeries = await getStorage().recurrenceSeries.findById(series.id);
+      expect(restoredSeries?.active).toBe(true);
+      expect(restoredSeries?.stopAfterOccurrenceSeq).toBe(9n);
+      expect((await getStorage().tasks.findById(task.id))?.deletedAt).toBeNull();
+    });
+  });
 });
 
 describe('TaskDetail — M26: диалог выбора области применения Planning-патча recurring-задачи', () => {

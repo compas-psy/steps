@@ -331,7 +331,7 @@ import {
 import { isAvailable } from '@shagi/platform';
 
 import { useAppController, useAppState, useHost, useStorage } from '../state/context.js';
-import { UndoToast, useCommonUndoToast } from '../state/undo-toast.js';
+import { useUndoHost } from '../state/undo-toast.js';
 import { reconcileReminderScheduleForTask } from '../state/reminder-reconciliation.js';
 import './Today.css';
 
@@ -860,7 +860,7 @@ export function Today(): ReactElement {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   /** 6-секундное «Отменить» (ST §58). Восстанавливают доменные команды —
    * здесь только предложение, его окно и защита от двойного нажатия. */
-  const undoToast = useCommonUndoToast();
+  const undoToast = useUndoHost();
   /** Режим множественного выбора экрана (M37, см. заголовок файла) —
    * `selectedIds` пуст, пока `active === false`; вход и выход всегда идут
    * через `toggleSelectionMode`, которая сама следит, чтобы выбор не
@@ -1438,8 +1438,6 @@ export function Today(): ReactElement {
           dismissLabel={t('today', 'errors.dismiss')}
         />
       )}
-
-      <UndoToast controller={undoToast} />
 
       {groups !== null && isEveryGroupEmpty(groups) && (
         <EmptyState
