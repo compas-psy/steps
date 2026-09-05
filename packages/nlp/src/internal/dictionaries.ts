@@ -14,21 +14,30 @@
 export interface WeekdayEntry {
   readonly iso: number;
   readonly accusative: string;
+  /** Родительный падеж — «до пятницы», см. `weekdayByGenitive`. */
+  readonly genitive: string;
   readonly everyPrefix: 'каждый' | 'каждую' | 'каждое';
 }
 
 export const WEEKDAYS: readonly WeekdayEntry[] = [
-  { iso: 1, accusative: 'понедельник', everyPrefix: 'каждый' },
-  { iso: 2, accusative: 'вторник', everyPrefix: 'каждый' },
-  { iso: 3, accusative: 'среду', everyPrefix: 'каждую' },
-  { iso: 4, accusative: 'четверг', everyPrefix: 'каждый' },
-  { iso: 5, accusative: 'пятницу', everyPrefix: 'каждую' },
-  { iso: 6, accusative: 'субботу', everyPrefix: 'каждую' },
-  { iso: 7, accusative: 'воскресенье', everyPrefix: 'каждое' },
+  { iso: 1, accusative: 'понедельник', genitive: 'понедельника', everyPrefix: 'каждый' },
+  { iso: 2, accusative: 'вторник', genitive: 'вторника', everyPrefix: 'каждый' },
+  { iso: 3, accusative: 'среду', genitive: 'среды', everyPrefix: 'каждую' },
+  { iso: 4, accusative: 'четверг', genitive: 'четверга', everyPrefix: 'каждый' },
+  { iso: 5, accusative: 'пятницу', genitive: 'пятницы', everyPrefix: 'каждую' },
+  { iso: 6, accusative: 'субботу', genitive: 'субботы', everyPrefix: 'каждую' },
+  { iso: 7, accusative: 'воскресенье', genitive: 'воскресенья', everyPrefix: 'каждое' },
 ];
 
 export function weekdayByAccusative(word: string): WeekdayEntry | undefined {
   return WEEKDAYS.find((w) => w.accusative === word);
+}
+
+/** Родительный падеж нужен ровно одной конструкции — «до пятницы»
+ * (`matchers/deadline.ts`). Самостоятельным днём недели он НЕ считается:
+ * «пятницы» посреди фразы — обычное слово, не дата. */
+export function weekdayByGenitive(word: string): WeekdayEntry | undefined {
+  return WEEKDAYS.find((w) => w.genitive === word);
 }
 
 /** Родительный падеж месяца ("5 сентября") — индекс 0 = январь (1). */

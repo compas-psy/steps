@@ -69,7 +69,14 @@ export const DATE_PATTERNS: readonly PatternDef<DateChipValue>[] = [
     resolve: (_m, ctx) => valid(resolveWeekend(ctx.now.date)),
   },
   {
-    regex: new RegExp(`${WORD_BOUNDARY_BEFORE}следующая\\s+неделя${WORD_BOUNDARY_AFTER}`, 'uy'),
+    // Именительный («следующая неделя») и предложный («на следующей
+    // неделе») — одна и та же мысль. Второй вариант в живой речи встречается
+    // чаще («съездить на дачу на следующей неделе»), но грамматика знала
+    // только первый, и вся фраза оседала в названии задачи.
+    regex: new RegExp(
+      `${WORD_BOUNDARY_BEFORE}(?:следующая\\s+неделя|на\\s+следующей\\s+неделе)${WORD_BOUNDARY_AFTER}`,
+      'uy',
+    ),
     resolve: (_m, ctx) => valid(resolveNextWeekMonday(ctx.now.date)),
   },
   {
@@ -77,11 +84,14 @@ export const DATE_PATTERNS: readonly PatternDef<DateChipValue>[] = [
     // в грамматике Date не описаны, у Recurrence своя форма "каждые N
     // месяцев").
     regex: new RegExp(
-      `${WORD_BOUNDARY_BEFORE}через\\s+(\\d{1,3})\\s+(дней|дня|день|недель|недели|неделю)${WORD_BOUNDARY_AFTER}`,
+      `${WORD_BOUNDARY_BEFORE}через\\s+(?:(\\d{1,3})\\s+)?(дней|дня|день|недель|недели|неделю)${WORD_BOUNDARY_AFTER}`,
       'uy',
     ),
     resolve: (m, ctx) => {
-      const amount = Number(m[1]);
+      // Число необязательно: «через неделю» и «через день» — те же «через 1
+      // неделю»/«через 1 день», просто человек так не говорит. Раньше
+      // требовалась цифра, и обе фразы целиком оставались в названии.
+      const amount = m[1] === undefined ? 1 : Number(m[1]);
       const unitWord = m[2] as string;
       const isWeek = unitWord.startsWith('недел');
       return valid(ctx.now.date.add(isWeek ? { weeks: amount } : { days: amount }));

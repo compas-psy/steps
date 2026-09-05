@@ -9,7 +9,7 @@ import type { PatternDef, WorkingCandidate, MatchContext } from '../candidates.j
 import { scanCategory } from '../candidates.js';
 import type { ProtectedRange } from '../text.js';
 import { WORD_BOUNDARY_AFTER, WORD_BOUNDARY_BEFORE } from '../text.js';
-import { WEEKDAYS, weekdayByAccusative } from '../dictionaries.js';
+import { WEEKDAYS, weekdayByAccusative, weekdayByGenitive } from '../dictionaries.js';
 import {
   resolveWeekdayNearestIncludingToday,
   resolveWeekdayNextCalendarWeek,
@@ -58,6 +58,36 @@ const NEAREST_PATTERN: PatternDef<DateChipValue> = {
 export const WEEKDAY_PATTERNS: readonly PatternDef<DateChipValue>[] = [
   NEXT_WEEK_PATTERN,
   NEAREST_PATTERN,
+];
+
+const weekdayGenitiveAlternation = WEEKDAYS.map((w) => w.genitive).join('|');
+
+/**
+ * День недели в родительном падеже БЕЗ предлога — «пятницы».
+ *
+ * Существует только для конструкции «до пятницы» и поэтому НЕ входит в
+ * `WEEKDAY_PATTERNS`: сплошное сканирование по нему превратило бы любое
+ * упоминание «среды» или «субботы» в дату. Маркер «до» здесь и снимает
+ * многозначность — ровно тем же приёмом, что голый час «до 11»
+ * (`matchers/time.ts`, `DEADLINE_BARE_HOUR`).
+ */
+export const DEADLINE_WEEKDAY_PATTERNS: readonly PatternDef<DateChipValue>[] = [
+  {
+    regex: new RegExp(
+      `${WORD_BOUNDARY_BEFORE}(${weekdayGenitiveAlternation})${WORD_BOUNDARY_AFTER}`,
+      'uy',
+    ),
+    resolve: (m, ctx) => {
+      const entry = weekdayByGenitive(m[1] as string);
+      if (entry === undefined) {
+        return { kind: 'invalid', reason: 'invalidDate' };
+      }
+      return {
+        kind: 'valid',
+        value: { date: resolveWeekdayNearestIncludingToday(ctx.now.date, entry.iso) },
+      };
+    },
+  },
 ];
 
 export function matchWeekdayCandidates(

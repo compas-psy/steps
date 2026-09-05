@@ -35,6 +35,7 @@ import {
 } from '../text.js';
 import type { ProtectedRange } from '../text.js';
 import { DATE_PATTERNS } from './date.js';
+import { DEADLINE_WEEKDAY_PATTERNS } from './weekday.js';
 import { DEADLINE_TIME_PATTERNS } from './time.js';
 import { resolveTodayOrTomorrowForTime } from '../temporal-rules.js';
 
@@ -102,7 +103,11 @@ interface Built {
 }
 
 function tryBuildDeadline(textLower: string, pos: number, ctx: MatchContext): Built | null {
-  const datePart = matchAt(DATE_PATTERNS, textLower, pos, ctx);
+  // День недели в родительном («до пятницы») — такая же дата дедлайна, как
+  // «до 5 сентября», просто её форма живёт в категории Weekday и потому не
+  // попадала в `DATE_PATTERNS`. Пробуется вместе с ними одним списком,
+  // чтобы `matchAt` по-прежнему выбирал самое длинное совпадение.
+  const datePart = matchAt([...DATE_PATTERNS, ...DEADLINE_WEEKDAY_PATTERNS], textLower, pos, ctx);
   if (datePart !== null) {
     if (datePart.outcome.kind === 'invalid') {
       return { end: datePart.end, outcome: { kind: 'invalid', reason: 'invalidDate' } };
