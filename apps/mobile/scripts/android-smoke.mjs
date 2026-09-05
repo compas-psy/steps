@@ -882,6 +882,30 @@ function readEnabledReminder(dbPath, taskTitle) {
 }
 
 /**
+ * Правило активного explicit-напоминания задачи как оно лежит в БАЗЕ
+ * (`local_rule_json`) — то есть его дата и время, а не то, что нарисовано
+ * на экране.
+ *
+ * Нужна ровно для одного различения, без которого шаг замены напоминания
+ * три прогона подряд не мог сказать ничего определённого: «замена
+ * применилась, но экран не обновился» и «замена не применилась» выглядят
+ * на экране одинаково.
+ */
+function readEnabledReminderRule(dbPath, taskTitle) {
+  const db = new DatabaseSync(dbPath, { readBigInts: true });
+  const row = db
+    .prepare(
+      `SELECT r.local_rule_json AS rule FROM reminders r
+       JOIN tasks t ON t.id = r.task_id
+       WHERE t.title = ? AND r.kind = 'explicit' AND r.enabled = 1
+       LIMIT 1`,
+    )
+    .get(taskTitle);
+  db.close();
+  return row === undefined ? null : String(row.rule);
+}
+
+/**
  * Число enabled explicit-записей задачи — отдельно от `readEnabledReminder`
  * выше (та с `LIMIT 1` не может отличить «ровно одна» от «задвоилась»).
  * Нужна для финального acceptance Step 2c (владелец, P0-эксперимент):
@@ -2008,9 +2032,19 @@ async function main() {
     );
   }
   if (replaceNoticeText === null) {
+    // ФАКТ, а не версия: что реально лежит в SQLite. Экран и хранилище —
+    // разные утверждения, и до сих пор шаг видел только первое. Если в базе
+    // НОВОЕ время, значит замена применилась, а не обновилась картинка; если
+    // старое — замена не применилась. Без этого различить их нечем, а гадать
+    // после трёх прогонов запрещено самим же ходом расследования.
+    const dbPathFailedReplace = pullDatabase('step2d-replace-failed');
+    const storedAfterFailedReplace = readEnabledReminder(dbPathFailedReplace, taskTitle);
     fail(
       `Step 2d: экран не показывает НОВОЕ выбранное время «${replacedTimeLabel}» после atomic replace ` +
-        `и полного окна ожидания. Экран: ${JSON.stringify(String(lastReplaceScreenText).slice(0, 400))}.`,
+        `и полного окна ожидания. Экран: ${JSON.stringify(String(lastReplaceScreenText).slice(0, 400))}. ` +
+        `В SQLite (enabled explicit reminder): ${JSON.stringify(storedAfterFailedReplace)}, ` +
+        `правило: ${JSON.stringify(readEnabledReminderRule(dbPathFailedReplace, taskTitle))}. ` +
+        `Console/exception события: ${JSON.stringify(consoleEventsStep2d)}.`,
     );
   }
   console.log(
