@@ -287,6 +287,7 @@ function DesktopShell({
              * видимым — `Ctrl+N` (`App.tsx`) сам себя не показывает.
              * Подпись с сочетанием клавиш рядом — она же и учит. */}
             <Button
+              className="shagi-app-shell__quick-add"
               variant="primary"
               block
               leadingIcon={<Icon name="add" size={18} />}
