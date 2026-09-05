@@ -616,6 +616,39 @@ function createCdp(webSocketDebuggerUrl) {
     if (handlers !== undefined) for (const handler of handlers) handler(message.params);
   });
 
+  // Ожидание ответа CDP ОГРАНИЧЕНО по времени.
+  //
+  // Без этого потеря WebView-таргета вешала весь смоук намертво: два
+  // прогона подряд (`33942250857`, `33944433959`) не упали, а завершились
+  // предупреждением Node «Detected unsettled top-level await» — обещание
+  // ответа не разрешалось никогда. Оба раза рядом в логе эмулятора стояло
+  // `Failed to find ColorBuffer` (сбой swiftshader), то есть страница
+  // умирала под нами. Молчаливое зависание хуже провала: оно не говорит ни
+  // что сломалось, ни где.
+  //
+  // Проверки от таймаута не слабеют — он не делает ни одного вывода о
+  // продукте, только превращает «ответа не будет никогда» в осмысленную
+  // ошибку с именем метода.
+  const CDP_TIMEOUT_MS = 30_000;
+  function awaitResponse(id, method, payload) {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        pending.delete(id);
+        reject(
+          new Error(
+            `DevTools ${method}: ответа нет ${CDP_TIMEOUT_MS} мс — страница/таргет потеряны ` +
+              '(в логе эмулятора рядом обычно `Failed to find ColorBuffer`).',
+          ),
+        );
+      }, CDP_TIMEOUT_MS);
+      pending.set(id, (message) => {
+        clearTimeout(timer);
+        resolve(message);
+      });
+      socket.send(JSON.stringify(payload));
+    });
+  }
+
   return {
     ready,
     close: () => socket.close(),
@@ -624,10 +657,7 @@ function createCdp(webSocketDebuggerUrl) {
     async send(method, params = {}) {
       const id = nextId;
       nextId += 1;
-      const response = await new Promise((resolve) => {
-        pending.set(id, resolve);
-        socket.send(JSON.stringify({ id, method, params }));
-      });
+      const response = await awaitResponse(id, method, { id, method, params });
       if (response.error) throw new Error(`DevTools ${method}: ${response.error.message}`);
       return response.result;
     },
@@ -641,15 +671,10 @@ function createCdp(webSocketDebuggerUrl) {
     async evaluate(expression) {
       const id = nextId;
       nextId += 1;
-      const response = await new Promise((resolve) => {
-        pending.set(id, resolve);
-        socket.send(
-          JSON.stringify({
-            id,
-            method: 'Runtime.evaluate',
-            params: { expression, awaitPromise: true, returnByValue: true },
-          }),
-        );
+      const response = await awaitResponse(id, 'Runtime.evaluate', {
+        id,
+        method: 'Runtime.evaluate',
+        params: { expression, awaitPromise: true, returnByValue: true },
       });
       if (response.error) throw new Error(`DevTools: ${response.error.message}`);
       const details = response.result?.exceptionDetails;
@@ -880,7 +905,35 @@ function countEnabledExplicitReminders(dbPath, taskTitle) {
 /** Запускает приложение и подключается к его WebView. Вынесено отдельно,
  * потому что вызывается ДВАЖДЫ: второй раз — после `am force-stop`, чтобы
  * проверить, что задача пережила закрытие. */
+/**
+ * Запуск с ОДНОЙ повторной попыткой, если сорвалось само подключение.
+ *
+ * Ровно один сценарий: эмулятор теряет GPU-поверхность (`Failed to find
+ * ColorBuffer` в его логе), WebView-таргет умирает, и ответ CDP не
+ * приходит никогда. Раньше это вешало прогон намертво, теперь даёт
+ * таймаут — но одного таймаута мало, чтобы дойти до конца сценария.
+ *
+ * Повторяется ТОЛЬКО брошенное исключение подключения. Диагностированные
+ * провалы (процесс не поднялся, сокета нет, пустой экран) идут через
+ * `fail()` и завершают прогон немедленно, как и раньше: пересоздание
+ * сессии не должно превращаться в способ не заметить сломанное
+ * приложение.
+ */
 async function launchAndAttach(label) {
+  try {
+    return await attemptLaunchAndAttach(label);
+  } catch (error) {
+    console.warn(
+      `::warning::Подключение к приложению (${label}) сорвалось: ` +
+        `${String(error?.message ?? error)}. Одна повторная попытка.`,
+    );
+    adbSoft(['shell', 'am', 'force-stop', APPLICATION_ID]);
+    await sleep(2000);
+    return await attemptLaunchAndAttach(`${label}, повтор после сорванного подключения`);
+  }
+}
+
+async function attemptLaunchAndAttach(label) {
   console.log(`── Запуск приложения (${label}) ──`);
   // `monkey` с категорией LAUNCHER, а не `am start -n <id>/.MainActivity`:
   // имя класса активности задаёт шаблон Tauri, и привязываться к нему —
