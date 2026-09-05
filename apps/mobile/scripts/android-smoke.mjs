@@ -2873,7 +2873,11 @@ async function main() {
   // логику возврата и ловушку в истории (`test/state/back-navigation.test.ts`),
   // но не то, что WebView Tauri вообще отдаёт `popstate` по системной
   // кнопке. До этой правки «Назад» закрывала приложение с любого экрана.
-  if (!(await clickByTextWhenReady(first, CONTROL_TITLE, { exact: false }))) {
+  // `openTaskRow`, а не `clickByTextWhenReady`: у строки задачи есть
+  // собственный способ открытия (`page-actions.mjs`), а клик «по тексту»
+  // попадает не в ту точку строки — проверено прогоном `33965961322`,
+  // где карточка так и не открылась.
+  if (!(await actWhenReady(first, openTaskRow(CONTROL_TITLE)))) {
     fail('карточка контрольной задачи не открылась для проверки «Назад»');
   }
   await sleep(1200);
@@ -2889,13 +2893,24 @@ async function main() {
         'системная кнопка уходит в активность вместо навигации внутри продукта',
     );
   }
-  // И вернуться обязано в список, а не остаться в карточке.
+  // И вернуться обязано в СПИСОК, а не остаться в карточке.
+  //
+  // Проверять наличие заголовка задачи здесь недостаточно, и это не
+  // придирка: заголовок есть и в самой карточке, поэтому такая проверка
+  // прошла бы, даже если «Назад» вообще ничего не сделала. Признак того,
+  // что карточка закрыта, — исчезновение её кнопки «Готово», которой на
+  // списке нет.
   const afterBack = await waitFor('возврат в список после «Назад»', 15, 500, async () => {
     const text = await first.cdp.evaluate(READ_APP_TEXT);
-    return typeof text === 'string' && text.includes(CONTROL_TITLE) ? text : null;
+    if (typeof text !== 'string') return null;
+    return text.includes(CONTROL_TITLE) && !text.includes('Готово') ? text : null;
   });
   if (afterBack === null) {
-    fail('после аппаратной «Назад» список задач не восстановился');
+    const last = await first.cdp.evaluate(READ_APP_TEXT);
+    fail(
+      'после аппаратной «Назад» приложение не вернулось в список: ' +
+        `экран показывает ${JSON.stringify(String(last).slice(0, 300))}`,
+    );
   }
   console.log('«Назад» вернула в список, приложение живо.');
   screenshot('06-after-hardware-back');
