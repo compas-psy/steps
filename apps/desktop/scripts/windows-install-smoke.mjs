@@ -24,7 +24,7 @@
  */
 import { execFileSync, spawn } from 'node:child_process';
 import { existsSync, readdirSync, rmSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 
 const installer = process.argv[2];
@@ -52,8 +52,23 @@ const binaryName = `${config.mainBinaryName}.exe`;
 const localAppData = process.env.LOCALAPPDATA;
 if (!localAppData) throw new Error('LOCALAPPDATA не задан — это не Windows-раннер');
 
-const dataDir = join(process.env.APPDATA ?? localAppData, identifier);
-const dbPath = join(dataDir, 'shagi.db');
+/**
+ * Где искать базу. Два кандидата, а не один угаданный: `app_data_dir()`
+ * (`crates/shagi-sqlite`) на Windows отображается в `%APPDATA%` (Roaming),
+ * но рядом Tauri заводит `%LOCALAPPDATA%\<identifier>` под данные WebView2 —
+ * и на прогоне `e2bac5f` появился ИМЕННО он, а базы не было ни там, ни там.
+ * Скрипт принимает любой из двух и печатает, где нашёл: утверждение
+ * «приложение создало свою базу» не зависит от того, какой каталог
+ * выбирает платформа, а вот моя догадка о нём — зависела и была неверной.
+ */
+const roamingDataDir = join(process.env.APPDATA ?? localAppData, identifier);
+const localDataDir = join(localAppData, identifier);
+const candidateDataDirs = [roamingDataDir, localDataDir];
+const dbFileName = 'shagi.db';
+
+function findDb() {
+  return candidateDataDirs.map((dir) => join(dir, dbFileName)).find((path) => existsSync(path));
+}
 
 function step(message) {
   process.stdout.write(`\n=== ${message}\n`);
@@ -94,9 +109,11 @@ process.stdout.write(`${readdirSync(installDir).join('\n')}\n`);
 
 // Предыдущего состояния быть не должно — иначе «база создалась» окажется
 // правдой и для приложения, которое её не создавало.
-if (existsSync(dataDir)) {
-  rmSync(dataDir, { recursive: true, force: true });
-  step(`Каталог данных очищен до запуска: ${dataDir}`);
+for (const dir of candidateDataDirs) {
+  if (existsSync(dir)) {
+    rmSync(dir, { recursive: true, force: true });
+    step(`Каталог данных очищен до запуска: ${dir}`);
+  }
 }
 
 step('Запуск приложения');
@@ -104,7 +121,13 @@ const app = spawn(exePath, [], { detached: true, stdio: 'ignore' });
 app.unref();
 
 try {
-  await waitFor(() => existsSync(dbPath), 90_000, `приложение не создало базу ${dbPath}`);
+  await waitFor(
+    () => findDb() !== undefined,
+    90_000,
+    `приложение не создало ${dbFileName} ни в одном из каталогов: ${candidateDataDirs.join(', ')}`,
+    dumpAppDiagnostics,
+  );
+  const dbPath = findDb();
   step(`База создана: ${dbPath}`);
 
   // WAL включается при открытии соединения (`crates/shagi-sqlite`), но файл
@@ -114,21 +137,16 @@ try {
     () => existsSync(`${dbPath}-wal`),
     30_000,
     `рядом с базой нет ${dbPath}-wal — journal_mode не WAL (нарушение 00§2)`,
+    dumpAppDiagnostics,
   );
   step('WAL-файл на месте — journal_mode=WAL');
 
-  process.stdout.write(`${readdirSync(dataDir).join('\n')}\n`);
+  process.stdout.write(`${readdirSync(dirname(dbPath)).join('\n')}\n`);
 
   // Приложение обязано быть ЖИВО к этому моменту: база, созданная упавшим
   // процессом, ничего не доказывает.
-  const alive = execFileSync('powershell', [
-    '-NoProfile',
-    '-Command',
-    `(Get-Process -Name '${config.mainBinaryName}' -ErrorAction SilentlyContinue | Measure-Object).Count`,
-  ])
-    .toString()
-    .trim();
-  if (alive === '0') throw new Error('процесс приложения умер до конца проверки');
+  const alive = processCount();
+  if (alive === 0) throw new Error('процесс приложения умер до конца проверки');
   step(`Процесс жив (экземпляров: ${alive})`);
 } finally {
   execFileSync('powershell', [
@@ -173,24 +191,76 @@ function findInstallationSync() {
   }
 }
 
-async function waitFor(condition, timeoutMs, failure) {
+function processCount() {
+  return Number(
+    execFileSync('powershell', [
+      '-NoProfile',
+      '-Command',
+      `(Get-Process -Name '${config.mainBinaryName}' -ErrorAction SilentlyContinue | Measure-Object).Count`,
+    ])
+      .toString()
+      .trim(),
+  );
+}
+
+/**
+ * Диагностика падения запуска — ОДНИМ прогоном, а не серией догадок.
+ * Прогон `e2bac5f` дал ровно один факт («базы нет по угаданному пути») и
+ * стоил десяти минут; этот дамп отвечает сразу на все вопросы, которые
+ * иначе пришлось бы задавать по одному: жив ли процесс, что вообще
+ * появилось в каталогах приложения, есть ли `shagi.db` хоть где-нибудь в
+ * профиле пользователя и не записала ли Windows отчёт о падении.
+ */
+function dumpAppDiagnostics() {
+  const userProfile = process.env.USERPROFILE ?? localAppData;
+  const script = `
+    $ErrorActionPreference = 'SilentlyContinue'
+    Write-Output '--- процессы приложения ---'
+    Get-Process -Name '${config.mainBinaryName}' | Select-Object Id, ProcessName, Responding | Format-Table | Out-String
+    Write-Output '--- каталоги приложения ---'
+    foreach ($dir in @('${roamingDataDir}', '${localDataDir}')) {
+      Write-Output ('== ' + $dir)
+      Get-ChildItem -Path $dir -Recurse -Depth 2 -ErrorAction SilentlyContinue |
+        Select-Object -ExpandProperty FullName
+    }
+    Write-Output '--- поиск shagi.db во всём профиле ---'
+    Get-ChildItem -Path '${userProfile}' -Filter 'shagi.db*' -Recurse -ErrorAction SilentlyContinue |
+      Select-Object -ExpandProperty FullName
+    Write-Output '--- журнал приложений Windows за последние 10 минут ---'
+    Get-WinEvent -FilterHashtable @{ LogName='Application'; StartTime=(Get-Date).AddMinutes(-10) } -ErrorAction SilentlyContinue |
+      Where-Object { $_.Message -like '*shagi*' -or $_.LevelDisplayName -eq 'Error' } |
+      Select-Object -First 20 TimeCreated, ProviderName, LevelDisplayName, Message | Format-List | Out-String
+  `;
+  try {
+    process.stdout.write(
+      `\n--- ДИАГНОСТИКА ---\n${execFileSync('powershell', ['-NoProfile', '-Command', script]).toString()}\n`,
+    );
+  } catch (error) {
+    process.stdout.write(`\nдиагностику собрать не удалось: ${String(error)}\n`);
+  }
+}
+
+async function waitFor(condition, timeoutMs, failure, onFailure) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     if (condition()) return;
     await delay(500);
   }
-  // Диагностика в момент падения: без неё следующий прогон снова уйдёт на
-  // угадывание, а он стоит десять минут.
-  try {
-    const dump = execFileSync('powershell', [
-      '-NoProfile',
-      '-Command',
-      `Get-ChildItem '${localAppData}' -Directory | Select-Object -ExpandProperty Name; ` +
-        `Get-ChildItem 'C:\\Program Files' -Directory -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name`,
-    ]).toString();
-    process.stdout.write(`\nКаталоги на момент падения:\n${dump}\n`);
-  } catch {
-    // Диагностика не обязана работать, чтобы падение было честным.
+  if (onFailure) {
+    onFailure();
+  } else {
+    // Диагностика в момент падения: без неё следующий прогон снова уйдёт на
+    // угадывание, а он стоит десять минут.
+    try {
+      const dump = execFileSync('powershell', [
+        '-NoProfile',
+        '-Command',
+        `Get-ChildItem '${localAppData}' -Directory | Select-Object -ExpandProperty Name`,
+      ]).toString();
+      process.stdout.write(`\nКаталоги на момент падения:\n${dump}\n`);
+    } catch {
+      // Диагностика не обязана работать, чтобы падение было честным.
+    }
   }
   throw new Error(`${failure} (ожидание ${timeoutMs} мс)`);
 }
