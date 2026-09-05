@@ -135,5 +135,6 @@
   "errors.actionFailed": "Не удалось выполнить действие. Попробуйте ещё раз.",
   "errors.dismiss": "Закрыть",
   "errors.notFound": "Задача не найдена.",
-  "backArrow.label": "Назад"
+  "backArrow.label": "Назад",
+  "quickActions.changeDate": "Изменить дату"
 }

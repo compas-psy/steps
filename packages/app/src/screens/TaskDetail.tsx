@@ -1933,7 +1933,17 @@ export function TaskDetail(): ReactElement | null {
           onClick={openPlannedPicker}
         >
           <Icon name="calendar" size={18} />
-          <span>{t('taskDetail', 'quickActions.addDate')}</span>
+          {/* Подпись зависит от того, есть ли дата. Кнопка «Добавить дату»
+           * над карточкой, где уже написано «9 сентября, 11:00», —
+           * противоречие, которое человек читает как «дата не сохранилась».
+           * Найдено осмотром скриншота установленной раскладки, а не
+           * тестом: ни один тест не сравнивал подпись кнопки с состоянием
+           * задачи. */}
+          <span>
+            {task.plannedDate === null
+              ? t('taskDetail', 'quickActions.addDate')
+              : t('taskDetail', 'quickActions.changeDate')}
+          </span>
         </button>
         <button
           type="button"
