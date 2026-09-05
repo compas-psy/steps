@@ -101,7 +101,7 @@ import type { StoragePort } from '@shagi/storage';
 import type { StorageBackend } from './state/storage-backend.js';
 import { QuickAdd } from './screens/QuickAdd.js';
 import { SCREENS } from './screens/index.js';
-import { AppShell, isMainTabScreen } from './shell/AppShell.js';
+import { AppShell } from './shell/AppShell.js';
 import { OfflineBanner } from './shell/OfflineBanner.js';
 import { reconcileReminderSchedule } from './state/reminder-reconciliation.js';
 import type { AppController } from './state/store.js';
@@ -133,16 +133,17 @@ function Screens(): ReactElement | null {
   const { screen } = useAppState();
   const ScreenComponent = SCREENS[screen];
   if (ScreenComponent === undefined) return null;
-  // `AppShell` (постоянная нижняя навигация, эпик E09) оборачивает только
-  // «главные» экраны (`isMainTabScreen`) — онбординг-поток и `Inbox`
-  // (карточка со своей кнопкой «Назад», не равноправная вкладка) рендерятся
-  // как раньше, без обвязки.
-  return isMainTabScreen(screen) ? (
+  // Решение «какая обвязка положена этому экрану» целиком внутри `AppShell`:
+  // оно зависит не только от экрана, но и от ширины окна (десктопная
+  // раскладка охватывает больше экранов, чем мобильные вкладки — см.
+  // заголовок `shell/AppShell.tsx`), а ширину знает один хук в одном месте.
+  // Раньше здесь стоял `isMainTabScreen(screen)`; развилка по вьюпорту в
+  // этой точке означала бы вторую подписку на медиазапрос и второй источник
+  // правды о раскладке.
+  return (
     <AppShell>
       <ScreenComponent />
     </AppShell>
-  ) : (
-    <ScreenComponent />
   );
 }
 

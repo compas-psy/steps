@@ -77,6 +77,12 @@ export const TOKENS: readonly TokenDescriptor[] = [
   { name: '--card', kind: 'color', definedIn: 'src/tokens/colors.css', themed: true },
   { name: '--card-foreground', kind: 'color', definedIn: 'src/tokens/colors.css', themed: true },
   { name: '--container-max', kind: 'spacing', definedIn: 'src/tokens/spacing.css', themed: false },
+  {
+    name: '--content-column-max',
+    kind: 'spacing',
+    definedIn: 'src/tokens/spacing.css',
+    themed: false,
+  },
   { name: '--cream', kind: 'color', definedIn: 'src/tokens/colors.css', themed: false },
   { name: '--destructive', kind: 'color', definedIn: 'src/tokens/colors.css', themed: true },
   {

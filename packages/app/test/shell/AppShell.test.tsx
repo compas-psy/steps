@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createUnavailablePlatform } from '@shagi/platform';
 import { t } from '@shagi/i18n';
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 
 import type { AppHost } from '../../src/App.js';
 import { AppProvider } from '../../src/state/context.js';
@@ -32,6 +32,17 @@ describe('isMainTabScreen', () => {
 });
 
 describe('AppShell', () => {
+  // Предмет этого файла — МОБИЛЬНАЯ нижняя навигация, поэтому ширина окна
+  // задаётся явно: по умолчанию happy-dom открывает окно 1024px, а это уже
+  // десктопный брейкпоинт (SPEC/04 §8), где нижней навигации нет вовсе —
+  // тесты ниже проверяли бы не то, что написано в их названиях. Десктопная
+  // раскладка проверяется отдельно, `AppShell.responsive.test.tsx`.
+  beforeEach(() => {
+    (
+      window as unknown as { happyDOM: { setViewport: (v: { width: number }) => void } }
+    ).happyDOM.setViewport({ width: 390 });
+  });
+
   it('рендерит children и нижнюю навигацию с активным пунктом «Сегодня»', () => {
     const controller = createAppController({ screen: 'todayEmpty' });
     render(
@@ -43,9 +54,9 @@ describe('AppShell', () => {
     );
 
     expect(screen.getByTestId('content')).toBeInTheDocument();
-    const todayItem = screen.getByRole('button', { name: t('shell', 'bottomNav.today') });
+    const todayItem = screen.getByRole('button', { name: t('shell', 'nav.today') });
     expect(todayItem).toHaveAttribute('aria-current', 'page');
-    const projectsItem = screen.getByRole('button', { name: t('shell', 'bottomNav.projects') });
+    const projectsItem = screen.getByRole('button', { name: t('shell', 'nav.projects') });
     expect(projectsItem).not.toHaveAttribute('aria-current');
   });
 
@@ -60,7 +71,7 @@ describe('AppShell', () => {
       </AppProvider>,
     );
 
-    await user.click(screen.getByRole('button', { name: t('shell', 'bottomNav.plan') }));
+    await user.click(screen.getByRole('button', { name: t('shell', 'nav.plan') }));
 
     expect(controller.getState().screen).toBe('plan');
   });
@@ -76,7 +87,7 @@ describe('AppShell', () => {
       </AppProvider>,
     );
 
-    await user.click(screen.getByRole('button', { name: t('shell', 'bottomNav.projects') }));
+    await user.click(screen.getByRole('button', { name: t('shell', 'nav.projects') }));
 
     expect(controller.getState().screen).toBe('projects');
   });
@@ -92,7 +103,7 @@ describe('AppShell', () => {
       </AppProvider>,
     );
 
-    await user.click(screen.getByRole('button', { name: t('shell', 'bottomNav.search') }));
+    await user.click(screen.getByRole('button', { name: t('shell', 'nav.search') }));
 
     expect(controller.getState().screen).toBe('search');
   });
@@ -108,7 +119,7 @@ describe('AppShell', () => {
       </AppProvider>,
     );
 
-    await user.click(screen.getByRole('button', { name: t('shell', 'bottomNav.quickAdd') }));
+    await user.click(screen.getByRole('button', { name: t('shell', 'nav.quickAdd') }));
 
     // Таблица `01§3` «Origin → Inherited values»: с Today задача планируется
     // на сегодня, а не падает во Входящие без даты. Раньше это приносила
@@ -130,7 +141,7 @@ describe('AppShell', () => {
       </AppProvider>,
     );
 
-    const centerButton = screen.getByRole('button', { name: t('shell', 'bottomNav.quickAdd') });
+    const centerButton = screen.getByRole('button', { name: t('shell', 'nav.quickAdd') });
     expect(centerButton).not.toBeDisabled();
 
     await user.click(centerButton);

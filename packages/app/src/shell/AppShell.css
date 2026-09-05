@@ -30,3 +30,89 @@
 .shagi-app-shell.shagi-app-shell > .shagi-app-shell__nav {
   flex-shrink: 0;
 }
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * Десктопная раскладка (>=1024, SPEC/04 §8). Разметку выбирает React
+ * (`AppShell.tsx`), а не `@media`: нижней навигации на десктопе НЕТ В DOM —
+ * см. заголовок `use-desktop-viewport.ts`, почему «спрятать» недостаточно.
+ * Поэтому здесь нет ни одного `@media`-переключателя раскладки: класс
+ * `--desktop` уже означает «ширина >= 1024».
+ *
+ * Макет `[R1][D][01] Today / Default` (`docs/spec/DESIGN/source_unpacked/
+ * ШАГИ - R1 Design.dc.html`, строки 838–872): сайдбар 240px не прокручивается
+ * вместе с контентом, прокручивается только правая колонка.
+ * ───────────────────────────────────────────────────────────────────────── */
+
+.shagi-app-shell--desktop {
+  flex-direction: row;
+  /* Страница целиком не прокручивается НИ ПО ОДНОЙ оси: вертикаль — забота
+     колонки контента (`__main`), горизонтали не должно быть вовсе. Это и
+     есть гарантия «нет горизонтального page overflow» из критериев приёмки
+     — что бы ни вылезло вширь внутри экрана (широкая таблица, доска
+     проекта, меню у правого края), оно не двигает саму страницу. */
+  overflow: hidden;
+}
+
+/* Специфичность 0-2-0 — та же причина, что у `__nav` выше: правило спорит с
+ * собственным CSS `@shagi/ui`, который попадает в бандл позже. */
+.shagi-app-shell--desktop.shagi-app-shell--desktop > .shagi-app-shell__sidebar {
+  flex-shrink: 0;
+  height: 100%;
+}
+
+.shagi-app-shell__main {
+  flex: 1;
+  /* Без `min-width: 0` flex-элемент не сжимается уже своего содержимого —
+     любая широкая строка внутри экрана растягивала бы колонку и выдавливала
+     горизонтальную прокрутку страницы наружу, мимо `overflow:hidden` выше. */
+  min-width: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  /* Вертикальные поля приносят сами экраны (у каждого свой ритм), здесь —
+     только зазор от сайдбара, чтобы контент к нему не прилипал. */
+  padding-inline: var(--space-4);
+}
+
+/* Ограничение ширины читаемой колонки — ровно то, чего не хватало
+   Windows-сборке: без него список задач растягивался на все 1920px. */
+.shagi-app-shell__column {
+  width: 100%;
+  max-width: var(--content-column-max);
+  min-width: 0;
+}
+
+/* ── Шапка сайдбара: знак сервиса, название, «Новая задача» ── */
+
+.shagi-app-shell__brand {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.shagi-app-shell__brand-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.shagi-app-shell__brand-name {
+  font-family: var(--font-sans);
+  font-size: var(--text-body-primary);
+  line-height: var(--lh-body-primary);
+  font-weight: var(--fw-bold);
+  letter-spacing: var(--ls-caption);
+  color: var(--sidebar-foreground);
+}
+
+/* Подпись сочетания клавиш под кнопкой: на десктопе `Ctrl+N` — основной
+ * способ завести задачу с клавиатуры (`App.tsx`), но сам себя он не
+ * показывает. Моноширинный шрифт — так же, как макет подписывает
+ * «Cmd/Ctrl + K» в `[R1][D][15]`. `--sidebar-muted` уже поднят до
+ * читаемых 65% на форест-фоне (`colors.css`, ADR-0002-соседний разбор). */
+.shagi-app-shell__shortcut {
+  font-family: var(--font-mono);
+  font-size: var(--text-caption);
+  line-height: var(--lh-caption);
+  color: var(--sidebar-muted);
+  text-align: center;
+}

@@ -1,8 +1,14 @@
 {
-  "bottomNav.label": "Основная навигация",
-  "bottomNav.today": "Сегодня",
-  "bottomNav.plan": "План",
-  "bottomNav.projects": "Проекты",
-  "bottomNav.search": "Поиск",
-  "bottomNav.quickAdd": "Быстрое добавление"
+  "nav.label": "Основная навигация",
+  "nav.today": "Сегодня",
+  "nav.plan": "План",
+  "nav.inbox": "Входящие",
+  "nav.projects": "Проекты",
+  "nav.search": "Поиск",
+  "nav.completed": "Завершённые",
+  "nav.settings": "Настройки",
+  "nav.quickAdd": "Быстрое добавление",
+  "sidebar.productName": "ШАГИ",
+  "sidebar.quickAdd": "Новая задача",
+  "sidebar.quickAddShortcut": "Ctrl + N"
 }
