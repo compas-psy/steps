@@ -52,8 +52,6 @@ const binaryName = `${config.mainBinaryName}.exe`;
 const localAppData = process.env.LOCALAPPDATA;
 if (!localAppData) throw new Error('LOCALAPPDATA не задан — это не Windows-раннер');
 
-const installDir = join(localAppData, 'Programs', productName);
-const exePath = join(installDir, binaryName);
 const dataDir = join(process.env.APPDATA ?? localAppData, identifier);
 const dbPath = join(dataDir, 'shagi.db');
 
@@ -64,11 +62,35 @@ function step(message) {
 step(`Тихая установка: ${installer}`);
 execFileSync(installer, ['/S'], { stdio: 'inherit' });
 
-// NSIS с `/S` возвращает управление до того, как распакует всё до конца.
-// Ждём появления файла, а не фиксированную паузу: пауза «на глазок» — это
-// либо потерянное время, либо ложное падение на медленном раннере.
-await waitFor(() => existsSync(exePath), 60_000, `не появился ${exePath}`);
+/**
+ * Каталог установки НЕ угадывается, а читается из реестра — из той самой
+ * записи деинсталляции, которую NSIS создаёт сам.
+ *
+ * Первая версия этого скрипта складывала путь руками
+ * (`%LOCALAPPDATA%\Programs\<productName>`) и упала на живом раннере:
+ * установка прошла, а файла там не оказалось. Угадывать второй раз
+ * бессмысленно — раскладка принадлежит шаблону NSIS в Tauri и может
+ * поменяться с его версией. `InstallLocation` и `UninstallString` —
+ * авторитетный источник, который переживёт такую смену.
+ */
+let installation = null;
+// NSIS с `/S` возвращает управление до того, как допишет реестр. Ждём
+// появления записи, а не фиксированную паузу: пауза «на глазок» — это либо
+// потерянное время, либо ложное падение на медленном раннере.
+await waitFor(
+  () => {
+    installation = findInstallationSync();
+    return installation !== null && Boolean(installation.InstallLocation);
+  },
+  60_000,
+  'в реестре не появилась запись об установке',
+);
+
+const installDir = installation.InstallLocation.replace(/"/g, '').replace(/\\$/, '');
+const exePath = join(installDir, binaryName);
+await waitFor(() => existsSync(exePath), 30_000, `не появился ${exePath}`);
 step(`Установлено: ${exePath}`);
+process.stdout.write(`${readdirSync(installDir).join('\n')}\n`);
 
 // Предыдущего состояния быть не должно — иначе «база создалась» окажется
 // правдой и для приложения, которое её не создавало.
@@ -117,18 +139,58 @@ try {
 }
 
 step('Тихое удаление');
-const uninstaller = join(installDir, 'uninstall.exe');
+// `UninstallString` — тоже из реестра, а не собранный руками путь: имя
+// деинсталлятора принадлежит шаблону NSIS ровно так же, как каталог.
+const uninstaller = String(installation.UninstallString).replace(/"/g, '');
 if (!existsSync(uninstaller)) throw new Error(`деинсталлятор не найден: ${uninstaller}`);
 execFileSync(uninstaller, ['/S'], { stdio: 'inherit' });
 await waitFor(() => !existsSync(exePath), 60_000, `после удаления остался ${exePath}`);
 
 step('Install smoke пройден: установка → запуск → база с WAL → удаление');
 
+/** Синхронная обёртка над чтением реестра — `waitFor` принимает предикат. */
+function findInstallationSync() {
+  try {
+    const script = `
+      $ErrorActionPreference = 'SilentlyContinue'
+      $roots = @(
+        'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall',
+        'HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall',
+        'HKLM:\\Software\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall'
+      )
+      $found = foreach ($root in $roots) {
+        Get-ChildItem $root | ForEach-Object { Get-ItemProperty $_.PSPath } |
+          Where-Object { $_.DisplayName -eq '${productName}' -or $_.PSChildName -like '*${identifier}*' }
+      }
+      $found | Select-Object -First 1 |
+        Select-Object DisplayName, InstallLocation, UninstallString |
+        ConvertTo-Json -Compress
+    `;
+    const raw = execFileSync('powershell', ['-NoProfile', '-Command', script]).toString().trim();
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
 async function waitFor(condition, timeoutMs, failure) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     if (condition()) return;
     await delay(500);
+  }
+  // Диагностика в момент падения: без неё следующий прогон снова уйдёт на
+  // угадывание, а он стоит десять минут.
+  try {
+    const dump = execFileSync('powershell', [
+      '-NoProfile',
+      '-Command',
+      `Get-ChildItem '${localAppData}' -Directory | Select-Object -ExpandProperty Name; ` +
+        `Get-ChildItem 'C:\\Program Files' -Directory -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name`,
+    ]).toString();
+    process.stdout.write(`\nКаталоги на момент падения:\n${dump}\n`);
+  } catch {
+    // Диагностика не обязана работать, чтобы падение было честным.
   }
   throw new Error(`${failure} (ожидание ${timeoutMs} мс)`);
 }
