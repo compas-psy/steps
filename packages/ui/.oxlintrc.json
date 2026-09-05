@@ -23,6 +23,14 @@
 // это заготовка (задача E00.1), сами компоненты и их пропсы — E03.
 {
   "extends": ["../../.oxlintrc.json"],
+  // `env` через `extends` не наследуется — проверено прогоном: с `no-undef`
+  // в корневом конфиге `document`/`window` здесь считались неопределёнными.
+  // Поэтому список повторён явно, а не «должен подтянуться сам».
+  "env": {
+    "builtin": true,
+    "node": true,
+    "browser": true
+  },
   "jsPlugins": [{ "name": "eslint-js", "specifier": "oxlint-plugin-eslint" }],
   "rules": {
     // `import/no-unassigned-import` наследуется из корневого конфига

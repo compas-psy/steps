@@ -841,6 +841,27 @@ function pullDatabase(label) {
 }
 
 /** Читает содержимое снятой базы — то, что физически лежит в SQLite. */
+/**
+ * Контрольная задача по файлу базы: заголовок, дата и время в канонических
+ * полях. Возвращает `null`, если задачи нет вовсе, — вызывающий сам решает,
+ * что это значит.
+ */
+function readControlTask(dbPath) {
+  const db = new DatabaseSync(dbPath, { readOnly: true });
+  try {
+    return (
+      db
+        .prepare(
+          `SELECT title, planned_date, planned_time FROM tasks
+           WHERE title = ? AND deleted_at IS NULL`,
+        )
+        .get(CONTROL_TITLE) ?? null
+    );
+  } finally {
+    db.close();
+  }
+}
+
 function inspectDatabase(path) {
   const db = new DatabaseSync(path, { readBigInts: true });
   const one = (sql) => db.prepare(sql).get();
