@@ -1020,6 +1020,91 @@ jobs:
           retention-days: 7
 
   # ─────────────────────────────────────────────────────────────────────────
+  # КОРОТКАЯ ПРИЁМКА — тот же APK, два свойства, одиннадцать шагов.
+  #
+  # Отдельный job, а не шаг внутри `smoke`, по той же причине, по которой
+  # `smoke` отделён от `build`: у падений должна быть РАЗНАЯ причина. Длинный
+  # смоук проверяет полтора десятка свойств и падает в несвязанных местах —
+  # три прогона подряд дали три разные точки отказа, и по такому отчёту
+  # нельзя сказать, работает ли продукт. Здесь сценарий ровно один: Quick Add
+  # и персистентность (`apps/mobile/scripts/android-acceptance.mjs`, разбор —
+  # в его заголовке). Красный `acceptance` означает поломку продукта, а не
+  # невезение.
+  #
+  # `needs: build` — тот же готовый эмуляторный APK, что и у `smoke`: оба
+  # job'а забирают ОДИН артефакт, поэтому «на приёмке работает, а в смоуке
+  # нет» не может объясняться разными сборками.
+  # ─────────────────────────────────────────────────────────────────────────
+  acceptance:
+    name: Короткая приёмка на эмуляторе
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Установить Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version-file: '.nvmrc'
+
+      # sdkmanager/avdmanager — java-инструменты; версия здесь не принципиальна
+      # (AGP тут не запускается), но полагаться на «что окажется в образе» —
+      # ровно тот способ получить падение, которое нечем объяснить.
+      - name: JDK 21
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Забрать APK для эмулятора
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: shagi-android-emulator-x86_64
+          path: emulator-apk
+
+      # Без доступа к /dev/kvm эмулятор поднимается программной эмуляцией и
+      # не укладывается ни в какой разумный таймаут. Правило udev — штатный
+      # приём для образов GitHub, где узел есть, но принадлежит группе kvm.
+      - name: Включить KVM
+        run: |
+          set -euo pipefail
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      # Тот же образ, что у `smoke`: API 34, `google_apis` — свежий WebView,
+      # он и проверяется.
+      - name: Запустить короткую приёмку на эмуляторе
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          ram-size: 4096M
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          # Ровно одна строка: этот шаг исполняет каждую строку отдельным
+          # `sh -c` (переменные и `set -e` между строками не живут), поэтому
+          # весь сценарий — в скрипте рядом с тестом.
+          script: bash apps/mobile/scripts/android-acceptance.sh
+
+      # Отдельный артефакт, не общий со `smoke`: снимки двух сценариев с
+      # одинаковыми именами шагов перетирали бы друг друга, а разбирать надо
+      # именно тот прогон, который упал. `always()` — снимки нужны в первую
+      # очередь тогда, когда сценарий не прошёл.
+      - name: Приложить скриншоты короткой приёмки
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: shagi-android-short-acceptance-screenshots
+          path: smoke-screenshots/*.png
+          if-no-files-found: warn
+          retention-days: 7
+
+  # ─────────────────────────────────────────────────────────────────────────
   # RELEASE — только на теге и только для подписанной и проверенной сборки.
   #
   # `verified_release`, а не `signed`. Второе означает лишь «keystore

@@ -44,6 +44,17 @@ const RECURRING = 'Полить цветы каждый день @дом';
 const RECURRING_TITLE = 'Полить цветы';
 const AFTER_ERASE = 'Задача после стирания';
 
+// ── Константы короткой приёмки (`android-acceptance.mjs`) ──────────────────
+// Дословно те же строки, что в самом сценарии: если они разойдутся, эта
+// проверка перестанет проверять именно его.
+const CONTROL_PHRASE = '9 сентября в 11:00 Сходить с мамой в МВД';
+const CONTROL_TITLE = 'Сходить с мамой в МВД';
+const CONTROL_DATE_CHIP = '9 сентября';
+const CONTROL_TIME_CHIP = '11:00';
+const TASK_CARD_DONE = 'Готово';
+const SEARCH_TAB = 'Поиск';
+const SEARCH_INPUT_LABEL = 'Поиск по задачам, проектам и меткам';
+
 let failures = 0;
 function check(name, ok, detail = '') {
   if (!ok) failures += 1;
@@ -214,6 +225,93 @@ check(
   (await run(clickByText('Добавить задачу'))) === true,
 );
 await wait(1200);
+
+// ── Короткая приёмка (`android-acceptance.mjs`) — её собственный путь ──────
+//
+// Всё, что до этой черты, повторяет длинный смоук. Ниже — шаги, которых у
+// него нет и которые иначе впервые исполнились бы на эмуляторе: открытие
+// задачи через «Поиск» (у смоука задача открывается из «Сегодня»), подписи
+// чипов контрольной фразы и признак возврата из карточки по системной
+// «Назад». Эмулятора у автора сценария нет; здесь эти выражения проходят
+// на настоящей веб-сборке того же продукта за секунды.
+check('кнопка «Понятно» после стирания', (await run(clickByText('Понятно'))) === true);
+await wait(1200);
+
+check(
+  'кнопка быстрого добавления (контрольная фраза)',
+  (await run(clickByLabel('Быстрое добавление'))) === true,
+);
+await wait(900);
+check(
+  'поле Quick Add (контрольная фраза)',
+  (await run(typeIntoFirstInput(CONTROL_PHRASE))) === true,
+);
+await wait(900);
+
+// Чипы предпросмотра ДО создания — обе половины утверждения приёмки.
+const previewText = String(await run(READ_APP_TEXT));
+check(
+  `чип даты «${CONTROL_DATE_CHIP}» в предпросмотре`,
+  previewText.includes(CONTROL_DATE_CHIP),
+  previewText.slice(0, 200),
+);
+check(
+  `чип времени «${CONTROL_TIME_CHIP}» в предпросмотре`,
+  previewText.includes(CONTROL_TIME_CHIP),
+);
+check(
+  'предпросмотр — не уже созданная задача: строки списка с этим названием ещё нет',
+  !String(await run(READ_TASK_ROW_TITLES)).includes(CONTROL_TITLE),
+);
+
+check(
+  'кнопка «Добавить задачу» в Quick Add (контрольная фраза)',
+  (await run(clickByLabel('Добавить задачу'))) === true,
+);
+await wait(1600);
+
+// Задача на 9 сентября на «Сегодня» не появляется — ровно поэтому короткая
+// приёмка открывает её через «Поиск».
+check(
+  'контрольной задачи нет в списке «Сегодня» (дата будущая)',
+  !String(await run(READ_TASK_ROW_TITLES)).includes(CONTROL_TITLE),
+  String(await run(READ_TASK_ROW_TITLES)).slice(0, 200),
+);
+
+check(
+  'пункт «Поиск» нижней навигации',
+  (await run(clickByText(SEARCH_TAB, { exact: true }))) === true,
+);
+await wait(900);
+check('поле поиска', (await run(typeIntoLabeled(SEARCH_INPUT_LABEL, CONTROL_TITLE))) === true);
+await wait(1200);
+check(
+  'контрольная задача найдена поиском',
+  String(await run(READ_TASK_ROW_TITLES)).includes(CONTROL_TITLE),
+  String(await run(READ_TASK_ROW_TITLES)).slice(0, 200),
+);
+check('строка результата открывает карточку', (await run(openTaskRow(CONTROL_TITLE))) === true);
+await wait(1200);
+check(
+  'в открытой карточке есть «Готово»',
+  String(await run(READ_APP_TEXT)).includes(TASK_CARD_DONE),
+);
+
+// Системная «Назад» на Android приходит в страницу тем же `popstate`, что и
+// браузерная (`packages/app/src/state/back-navigation.ts`) — значит признак
+// возврата проверяем здесь, а не только на устройстве.
+await page.goBack();
+await wait(1200);
+const afterBackText = String(await run(READ_APP_TEXT));
+check(
+  'после «Назад» кнопки «Готово» нет — карточка закрыта',
+  !afterBackText.includes(TASK_CARD_DONE),
+  afterBackText.slice(0, 200),
+);
+check(
+  'после «Назад» видна нижняя навигация — вернулись в список',
+  afterBackText.includes(SEARCH_TAB),
+);
 
 await browser.close();
 console.log(failures === 0 ? '\nВсе выражения страницы работают.' : `\nНе сработало: ${failures}`);
