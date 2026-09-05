@@ -434,65 +434,120 @@ export function patchManifestPermissions(manifestText, allowedNames) {
 }
 
 /**
- * Системная «Назад» Android должна приходить в СТРАНИЦУ, а не в активность.
+ * Системная «Назад» Android должна попадать в СТРАНИЦУ, а не в активность.
  *
- * Разбор настоящей поломки, а не предположение. Прогон `33974178292` уронил
- * оба сценария на эмуляторе в одной точке:
+ * ── Три прогона измерений, а не рассуждений ─────────────────────────────
  *
- *     ── Аппаратная «Назад»: из карточки задачи, не из приложения ──
- *     ##[error]аппаратная «Назад» из карточки задачи закрыла приложение
+ * `33974178292`: оба сценария на эмуляторе упали в одной точке —
+ * «аппаратная „Назад“ из карточки задачи закрыла приложение».
  *
- * Причина найдена в исходниках зависимостей. `wry` мост между системной
- * кнопкой и WebView УМЕЕТ (`WryActivity.setWebView`: `canGoBack()` →
- * `goBack()`), но Tauri его сознательно выключает:
+ * Первая гипотеза читалась прямо в исходниках: `wry` мост «кнопка →
+ * `WebView.goBack()`» умеет (`WryActivity.setWebView`), а Tauri его
+ * выключает (`TauriActivity.kt:35`, `handleBackNavigation = false`).
+ * Включили обратно — `33975705991` показал в логе собранный
+ * `MainActivity.kt` с `= true` и ТУ ЖЕ поломку.
  *
- *     tauri-2.11.5/mobile/android-codegen/TauriActivity.kt:35
- *     override val handleBackNavigation: Boolean = false
+ * Тогда сценарий стал снимать состояние с устройства. `33976789058`:
  *
- * Из-за этого кнопка уходит в активность и закрывает приложение с любого
- * экрана, а ловушка истории (`packages/app/src/state/back-navigation.ts`)
- * не может сработать в принципе: `popstate` до страницы не доходит. То есть
- * дефект был не в нашем JS — его юнит-тест зелёный и всегда был зелёным, —
- * а в том, что до страницы просто не доносили событие. Ровно поэтому
- * поведение проверяется на устройстве, а не только тестом.
+ *     История WebView до нажатия: {"length":2,"state":{"shagi:back-trap":true}}
+ *     ##[error]аппаратная «Назад» ... закрыла приложение
  *
- * `MainActivity.kt` — файл ПОЛЬЗОВАТЕЛЬСКИЙ (в отличие от `TauriActivity.kt`,
- * помеченного «AUTO-GENERATED. DO NOT MODIFY»), но он рождается заново на
- * каждом `tauri android init` в CI, каталога `gen/` в репозитории нет.
- * Поэтому — патч после генерации, той же файловой точкой и по той же
- * причине, что `patchManifestPermissions` выше.
+ * То есть служебная запись в истории СТОЯЛА — значит `canGoBack()` обязан
+ * был вернуть `true`, — флаг стоял, а `popstate` до страницы не дошёл.
+ * Вывод: посредника между кнопкой и продуктом быть не должно.
  *
- * Чистая функция: строка на входе, строка на выходе. Патч идемпотентен, а
- * если опорной строки нет — БРОСАЕТ. Молчаливый no-op здесь уже стоил
- * семнадцати минут эмулятора (прогон `33963943918`): замена не сработала,
- * никто об этом не узнал, и сборка поехала дальше как ни в чём не бывало.
+ * ── Что делается вместо этого ───────────────────────────────────────────
+ *
+ * Оболочка регистрирует СВОЙ `OnBackPressedCallback` и спрашивает продукт
+ * напрямую: `window.__shagiOnHardwareBack()` (ставится в
+ * `packages/app/src/state/back-navigation.ts`). Вернули `true` — возврат
+ * сделан внутри продукта. Вернули `false` (или страница ещё не готова) —
+ * возвращаться некуда, и кнопка честно уходит системе: приложение, из
+ * которого нельзя выйти «Назад», — это ловушка в буквальном смысле.
+ *
+ * Флаг `handleBackNavigation` НЕ трогается: он остаётся выключённым, как в
+ * шаблоне Tauri, и обработчик в приложении ровно один — наш. Два
+ * обработчика на одну кнопку — способ получить второй дефект вместо
+ * починки первого.
+ *
+ * `onWebViewCreate` вызывается из `setWebView` безусловно, последней
+ * строкой, — это точка, где WebView уже есть.
+ *
+ * ── Почему патчем, а не файлом в репозитории ────────────────────────────
+ *
+ * `MainActivity.kt` — файл ПОЛЬЗОВАТЕЛЬСКИЙ (в отличие от
+ * `TauriActivity.kt`, помеченного «AUTO-GENERATED. DO NOT MODIFY»), но
+ * рождается заново на каждом `tauri android init` в CI, каталога `gen/` в
+ * репозитории нет. Та же файловая точка и та же причина, что у
+ * `patchManifestPermissions` выше.
+ *
+ * Чистая функция: строка на входе, строка на выходе. Идемпотентна, а если
+ * опорной строки нет — БРОСАЕТ. Молчаливый no-op здесь уже стоил
+ * семнадцати минут эмулятора (прогон `33963943918`).
  */
-export const BACK_NAVIGATION_PROPERTY = 'handleBackNavigation';
+export const BACK_BRIDGE_MARKER = 'onWebViewCreate';
 
-const BACK_NAVIGATION_OVERRIDE = [
-  '  // Мост «системная кнопка → WebView» включён обратно: `TauriActivity`',
-  '  // ставит `handleBackNavigation = false`, и «Назад» закрывала приложение',
-  '  // с любого экрана. С `true` wry спрашивает `WebView.canGoBack()`, вызывает',
-  '  // `goBack()`, страница получает `popstate` — и ловушка истории',
-  '  // (`packages/app/src/state/back-navigation.ts`) возвращает человека на шаг',
-  '  // назад. На корневом экране ловушки нет намеренно: там кнопка обязана',
-  '  // уйти системе и свернуть приложение.',
-  `  override val ${BACK_NAVIGATION_PROPERTY}: Boolean = true`,
+const BACK_BRIDGE_IMPORTS = ['android.webkit.WebView', 'androidx.activity.OnBackPressedCallback'];
+
+const BACK_BRIDGE_OVERRIDE = [
+  '  // Системная «Назад» спрашивает САМ ПРОДУКТ, а не WebView и не wry:',
+  '  // мост wry на эмуляторе не сработал даже с записью в истории и',
+  '  // включённым `handleBackNavigation` (прогоны 33975705991, 33976789058).',
+  '  // Договор со страницей — `packages/app/src/state/back-navigation.ts`.',
+  '  override fun onWebViewCreate(webView: WebView) {',
+  '    onBackPressedDispatcher.addCallback(',
+  '      this,',
+  '      object : OnBackPressedCallback(true) {',
+  '        override fun handleOnBackPressed() {',
+  '          webView.evaluateJavascript(',
+  '            "(function(){var h=window.__shagiOnHardwareBack;" +',
+  '              "return typeof h===\'function\'?!!h():false})()"',
+  '          ) { handled ->',
+  '            // Страница не взяла возврат на себя — значит это корень, и',
+  '            // кнопка обязана уйти системе, свернув приложение.',
+  '            if (handled != "true") {',
+  '              isEnabled = false',
+  '              onBackPressedDispatcher.onBackPressed()',
+  '              isEnabled = true',
+  '            }',
+  '          }',
+  '        }',
+  '      }',
+  '    )',
+  '  }',
 ].join('\n');
 
 const MAIN_ACTIVITY_WITH_BODY = /class\s+MainActivity\s*:\s*TauriActivity\(\)\s*\{/;
 const MAIN_ACTIVITY_WITHOUT_BODY = /class\s+MainActivity\s*:\s*TauriActivity\(\)[ \t]*(?=\r?\n|$)/;
+const PACKAGE_LINE = /^package\s+[^\n]+$/m;
+
+/** Импорты, которых ещё нет, — сразу после `package`. Порядок не важен для
+ * Kotlin, важна идемпотентность: повторный прогон не должен их задваивать. */
+function withImports(text) {
+  const missing = BACK_BRIDGE_IMPORTS.filter(
+    (name) => !new RegExp(`^import\\s+${name.replace(/\./g, '\\.')}\\s*$`, 'm').test(text),
+  );
+  if (missing.length === 0) return text;
+  const packageLine = text.match(PACKAGE_LINE);
+  if (packageLine === null) {
+    throw new Error(
+      'MainActivity.kt: не нашли строку «package» — шаблон Tauri изменился, ' +
+        'патч системной «Назад» нужно проверить вручную',
+    );
+  }
+  const block = missing.map((name) => `import ${name}`).join('\n');
+  return text.replace(PACKAGE_LINE, `${packageLine[0]}\n\n${block}`);
+}
 
 export function patchBackNavigation(activityText) {
-  if (activityText.includes(BACK_NAVIGATION_PROPERTY)) {
+  if (activityText.includes(BACK_BRIDGE_MARKER)) {
     return { text: activityText, patched: false };
   }
   const withBody = activityText.match(MAIN_ACTIVITY_WITH_BODY);
   if (withBody !== null) {
     return {
-      text: activityText.replace(
-        MAIN_ACTIVITY_WITH_BODY,
-        `${withBody[0]}\n${BACK_NAVIGATION_OVERRIDE}\n`,
+      text: withImports(
+        activityText.replace(MAIN_ACTIVITY_WITH_BODY, `${withBody[0]}\n${BACK_BRIDGE_OVERRIDE}\n`),
       ),
       patched: true,
     };
@@ -500,9 +555,11 @@ export function patchBackNavigation(activityText) {
   const withoutBody = activityText.match(MAIN_ACTIVITY_WITHOUT_BODY);
   if (withoutBody !== null) {
     return {
-      text: activityText.replace(
-        MAIN_ACTIVITY_WITHOUT_BODY,
-        `class MainActivity : TauriActivity() {\n${BACK_NAVIGATION_OVERRIDE}\n}`,
+      text: withImports(
+        activityText.replace(
+          MAIN_ACTIVITY_WITHOUT_BODY,
+          `class MainActivity : TauriActivity() {\n${BACK_BRIDGE_OVERRIDE}\n}`,
+        ),
       ),
       patched: true,
     };

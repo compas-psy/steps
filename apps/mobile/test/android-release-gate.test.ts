@@ -488,17 +488,10 @@ describe('имя AAB — по тому же правилу СИМПАС, что 
 });
 
 describe('patchBackNavigation — системная «Назад» в страницу, а не в активность', () => {
-  // Шаблон `tauri android init` в чистом виде: класс без тела. Второй
-  // вариант — с телом — берётся с настоящего примера Tauri (`examples/api`),
-  // где в `MainActivity` уже есть `onCreate` с `enableEdgeToEdge()`. Патч
-  // обязан работать на обоих: какой именно шаблон приедет в CI, решает
-  // версия Tauri, а не мы.
-  const WITHOUT_BODY = [
-    'package ru.cmpas.shagi',
-    '',
-    'class MainActivity : TauriActivity()',
-    '',
-  ].join('\n');
+  // Шаблон, который РЕАЛЬНО приехал в CI (виден в логе шага прогона
+  // 33975705991): класс с телом, `onCreate` с `enableEdgeToEdge`. Второй
+  // вариант — голый класс без тела — оставлен потому, что какой именно
+  // шаблон приедет, решает версия Tauri, а не мы.
   const WITH_BODY = [
     'package ru.cmpas.shagi',
     '',
@@ -513,30 +506,53 @@ describe('patchBackNavigation — системная «Назад» в стра�
     '}',
     '',
   ].join('\n');
+  const WITHOUT_BODY = [
+    'package ru.cmpas.shagi',
+    '',
+    'class MainActivity : TauriActivity()',
+    '',
+  ].join('\n');
 
-  it('объявляет handleBackNavigation = true, когда у класса нет тела', () => {
-    const { text, patched } = patchBackNavigation(WITHOUT_BODY);
-    expect(patched).toBe(true);
-    expect(text).toContain('override val handleBackNavigation: Boolean = true');
-    // Тело создано, а не приписано снаружи класса: без этого Kotlin не
-    // соберётся, а проверка «строка есть в файле» прошла бы и так.
-    expect(text).toContain('class MainActivity : TauriActivity() {');
-    expect(text.trimEnd().endsWith('}')).toBe(true);
-  });
-
-  it('вставляет override в существующее тело, не теряя onCreate', () => {
+  it('спрашивает продукт, а не WebView: мост wry не используется', () => {
     const { text, patched } = patchBackNavigation(WITH_BODY);
     expect(patched).toBe(true);
-    expect(text).toContain('override val handleBackNavigation: Boolean = true');
-    // Главное в этом случае — что патч НИЧЕГО не выбросил: `enableEdgeToEdge`
-    // отвечает за безопасные зоны, и потерять его значило бы починить «Назад»
-    // ценой раскладки под вырезом.
+    expect(text).toContain('override fun onWebViewCreate(webView: WebView)');
+    expect(text).toContain('window.__shagiOnHardwareBack');
+    // Главное отличие от предыдущей попытки, которая НЕ помогла: решение
+    // принимает страница, а не `WebView.canGoBack()`, и флаг wry не
+    // трогается вовсе — обработчик на кнопке ровно один.
+    expect(text).not.toContain('webView.canGoBack');
+    expect(text).not.toContain('override val handleBackNavigation');
+  });
+
+  it('оставляет системе выход с корня', () => {
+    const { text } = patchBackNavigation(WITH_BODY);
+    // Без этой ветки приложение стало бы неубиваемым «Назад»: страница
+    // отвечает «не мой возврат», и кнопка обязана уйти системе.
+    expect(text).toContain('if (handled != "true")');
+    expect(text).toContain('onBackPressedDispatcher.onBackPressed()');
+  });
+
+  it('дописывает недостающие импорты ровно один раз', () => {
+    const { text } = patchBackNavigation(WITH_BODY);
+    expect(text.match(/^import android\.webkit\.WebView$/gm)).toHaveLength(1);
+    expect(text.match(/^import androidx\.activity\.OnBackPressedCallback$/gm)).toHaveLength(1);
+    // Ничего из шаблона не потеряно: `enableEdgeToEdge` отвечает за
+    // безопасные зоны, и починить «Назад» ценой раскладки под вырезом —
+    // не починка.
     expect(text).toContain('enableEdgeToEdge()');
     expect(text).toContain('super.onCreate(savedInstanceState)');
   });
 
+  it('создаёт тело класса, когда его нет', () => {
+    const { text, patched } = patchBackNavigation(WITHOUT_BODY);
+    expect(patched).toBe(true);
+    expect(text).toContain('class MainActivity : TauriActivity() {');
+    expect(text.trimEnd().endsWith('}')).toBe(true);
+  });
+
   it('идемпотентен: второй прогон ничего не меняет', () => {
-    const once = patchBackNavigation(WITHOUT_BODY);
+    const once = patchBackNavigation(WITH_BODY);
     const twice = patchBackNavigation(once.text);
     expect(twice.patched).toBe(false);
     expect(twice.text).toBe(once.text);

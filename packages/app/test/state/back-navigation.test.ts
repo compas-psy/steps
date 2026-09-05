@@ -125,3 +125,52 @@ describe('ловушка в истории', () => {
     expect(controller.getState().screen).toBe('inbox');
   });
 });
+
+/**
+ * Договор с оболочкой Android. Она НЕ полагается ни на мост wry, ни на
+ * `WebView.canGoBack()`: три прогона на эмуляторе показали, что запись в
+ * истории стоит, флаг включён, а `popstate` до страницы не доходит
+ * (33974178292, 33975705991, 33976789058). Поэтому `MainActivity.kt`
+ * (патчится в `.github/workflows/build-android.yml`) зовёт эту функцию и
+ * делает ровно то, что она ответила.
+ *
+ * Здесь проверяется НАША половина договора. Что оболочка действительно её
+ * зовёт, проверяется на устройстве — короткой приёмкой, а не здесь.
+ */
+function hook(): (() => boolean) | undefined {
+  return (window as unknown as Record<string, unknown>)['__shagiOnHardwareBack'] as
+    (() => boolean) | undefined;
+}
+
+describe('window.__shagiOnHardwareBack — договор с оболочкой Android', () => {
+  it('на корне отвечает «не мой возврат» — иначе из приложения нельзя выйти', () => {
+    const controller = createAppController({ screen: 'todayEmpty' });
+    const handle = installBackNavigation(controller);
+
+    expect(hook()?.()).toBe(false);
+    expect(controller.getState().screen).toBe('todayEmpty');
+
+    handle.dispose();
+  });
+
+  it('с карточки задачи возвращает в список и отвечает «обработал»', () => {
+    const controller = createAppController({ screen: 'taskDetail', returnScreen: 'inbox' });
+    const handle = installBackNavigation(controller);
+
+    expect(hook()?.()).toBe(true);
+    // Обе половины обязательны: «вернул true» без смены экрана означало бы,
+    // что оболочка съела кнопку, а человек остался на той же карточке.
+    expect(controller.getState().screen).toBe('inbox');
+
+    handle.dispose();
+  });
+
+  it('снимается вместе со слушателями', () => {
+    const controller = createAppController({ screen: 'inbox' });
+    const handle = installBackNavigation(controller);
+    expect(hook()).toBeTypeOf('function');
+
+    handle.dispose();
+    expect(hook()).toBeUndefined();
+  });
+});

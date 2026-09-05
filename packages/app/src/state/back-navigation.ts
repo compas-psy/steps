@@ -37,6 +37,32 @@ import type { AppController } from './store.js';
 /** Метка служебной записи истории — чтобы не спутать её с чужой. */
 const BACK_TRAP = 'shagi:back-trap';
 
+/**
+ * Имя глобальной функции, которую зовёт оболочка Android по системной
+ * кнопке «Назад». Договор с `MainActivity.kt` (патчится в
+ * `.github/workflows/build-android.yml`): вернули `true` — продукт сам
+ * обработал возврат, оболочке делать нечего; вернули `false` — возвращаться
+ * некуда, и кнопка обязана уйти системе.
+ *
+ * ── Почему не только ловушка истории ─────────────────────────────────────
+ *
+ * Ловушка (ниже) — механизм для БРАУЗЕРА, и там он работает: измерено в
+ * настоящем Chromium. На Android он опирается на мост wry «системная кнопка
+ * → `WebView.goBack()`», и вот этот мост оказался ненадёжным. Измерено на
+ * эмуляторе, прогон `33976789058`:
+ *
+ *     История WebView до нажатия: {"length":2,"state":{"shagi:back-trap":true}}
+ *     ##[error]аппаратная «Назад» ... закрыла приложение
+ *
+ * То есть запись в истории СТОЯЛА (значит `WebView.canGoBack()` обязан был
+ * вернуть `true`), `override val handleBackNavigation: Boolean = true` в
+ * собранном `MainActivity.kt` тоже стоял — а `popstate` до страницы всё
+ * равно не дошёл. Три прогона ушли на то, чтобы это доказать, и вывод из
+ * них один: посредника между кнопкой и продуктом быть не должно. Оболочка
+ * спрашивает продукт напрямую и делает то, что он ответил.
+ */
+const HARDWARE_BACK_HOOK = '__shagiOnHardwareBack';
+
 export interface BackNavigationHandle {
   /** Снимает слушатели. Ловушка в истории остаётся — вычищать её значило бы
    * инициировать ещё одну навигацию при размонтировании. */
@@ -54,6 +80,16 @@ export function installBackNavigation(controller: AppController): BackNavigation
   }
 
   let trapArmed = false;
+
+  /** Ответ продукта оболочке Android: обработали ли мы возврат сами. */
+  function handleHardwareBack(): boolean {
+    if (!controller.canGoBack()) return false;
+    controller.goBack();
+    return true;
+  }
+
+  const globals = window as unknown as Record<string, unknown>;
+  globals[HARDWARE_BACK_HOOK] = handleHardwareBack;
 
   function armIfNeeded(): void {
     if (trapArmed || !controller.canGoBack()) return;
@@ -77,6 +113,9 @@ export function installBackNavigation(controller: AppController): BackNavigation
     dispose: () => {
       unsubscribe();
       window.removeEventListener('popstate', handlePopState);
+      if (globals[HARDWARE_BACK_HOOK] === handleHardwareBack) {
+        delete globals[HARDWARE_BACK_HOOK];
+      }
     },
   };
 }
