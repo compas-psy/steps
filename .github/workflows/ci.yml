@@ -179,6 +179,24 @@ jobs:
         working-directory: apps/web
         run: pnpm test:e2e
 
+      # Снимки состояний десктопной раскладки, которые владелец потребовал
+      # на приёмку: Today без панели, Today с задачей в Inspector'е, проект
+      # со списком и панелью, Quick Add с разобранной контрольной строкой,
+      # тёмная тема. Их снимает `e2e/inspector-acceptance.spec.ts` на шаге
+      # выше. `always()` — снимки нужнее всего, когда приёмка не прошла.
+      #
+      # Это НЕ замена снимкам с установленной сборки (те делает
+      # `windows-install-smoke.mjs` с настоящего `.exe`): здесь тот же бандл
+      # в настоящем Chromium, но по нему можно прокликать сценарий.
+      - name: Приложить скриншоты приёмки десктопа
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: shagi-desktop-acceptance-screenshots
+          path: apps/web/acceptance-screenshots/*.png
+          if-no-files-found: warn
+          retention-days: 7
+
       # Выражения, которыми дымовой тест Android водит приложение по DOM
       # (`apps/mobile/scripts/page-actions.mjs`), проверяются ЗДЕСЬ — на
       # веб-сборке того же продукта. Причина простая: сломанный селектор
