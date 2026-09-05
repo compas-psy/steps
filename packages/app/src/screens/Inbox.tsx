@@ -202,7 +202,7 @@ import {
 } from '@shagi/ui';
 import { isAvailable } from '@shagi/platform';
 
-import { useAppController, useHost, useStorage } from '../state/context.js';
+import { useAppController, useAppState, useHost, useStorage } from '../state/context.js';
 import { useUndoHost } from '../state/undo-toast.js';
 import { reconcileReminderScheduleForTask } from '../state/reminder-reconciliation.js';
 import './Inbox.css';
@@ -288,6 +288,13 @@ export function Inbox(): ReactElement {
   const storage = useStorage();
   const host = useHost();
   const controller = useAppController();
+  /** Живое обновление списка: счётчик растёт после каждой подтверждённой
+   * правки задачи (`state/store.ts`, `dataVersion`). На десктопе карточка
+   * живёт в панели СПРАВА, а этот список остаётся смонтированным слева —
+   * без такой зависимости он показывал бы данные, прочитанные один раз при
+   * монтировании. Перечитывание, а не перемонтирование: состояние экрана
+   * (прокрутка, раскрытые группы, режим выбора) сохраняется. */
+  const { dataVersion } = useAppState();
 
   const [tasks, setTasks] = useState<readonly Task[] | null>(null);
   const [projects, setProjects] = useState<readonly Project[]>([]);
@@ -320,7 +327,7 @@ export function Inbox(): ReactElement {
     return () => {
       cancelled = true;
     };
-  }, [storage]);
+  }, [storage, dataVersion]);
 
   /** Перезапрашивает очередь после успешной команды — см. заголовок файла,
    * блок «Очередь и фокус». Проекты не перезапрашиваются здесь: ни одна

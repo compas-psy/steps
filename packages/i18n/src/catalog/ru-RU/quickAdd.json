@@ -32,6 +32,8 @@
   "rejected.label": "Не распознано",
   "rejected.item": "«{text}» — распознано, но не принято",
   "errors.submitFailed": "Не удалось создать задачу. Попробуйте ещё раз.",
-  "created.onDate": "Задача добавлена на {date}",
-  "created.toInbox": "Задача добавлена во «Входящие»"
+  "created.onDate": "Создано на {date}",
+  "created.toInbox": "Задача добавлена во «Входящие»",
+  "created.onDateTime": "Создано на {date}, {time}",
+  "created.open": "Открыть"
 }

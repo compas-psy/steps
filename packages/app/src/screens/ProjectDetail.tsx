@@ -163,7 +163,7 @@ import {
   parseComposerText,
   submitComposerTask,
 } from '../state/create-task-from-text.js';
-import { useAppController, useHost, useStorage } from '../state/context.js';
+import { useAppController, useAppState, useHost, useStorage } from '../state/context.js';
 import { useUndoHost } from '../state/undo-toast.js';
 import { reconcileReminderScheduleForTask } from '../state/reminder-reconciliation.js';
 import './ProjectDetail.css';
@@ -659,6 +659,14 @@ export function ProjectDetail(): ReactElement | null {
   const storage = useStorage();
   const host = useHost();
   const controller = useAppController();
+  /** Живое обновление списка: счётчик растёт после каждой подтверждённой
+   * правки задачи (`state/store.ts`, `dataVersion`). На десктопе карточка
+   * живёт в панели СПРАВА, а этот список остаётся смонтированным слева —
+   * без такой зависимости он показывал бы данные, прочитанные один раз при
+   * монтировании. Перечитывание, а не перемонтирование: состояние экрана
+   * (прокрутка, раскрытые группы, режим выбора) сохраняется. */
+  const { dataVersion } = useAppState();
+
   const projectId = controller.getState().selectedProjectId;
 
   const [project, setProject] = useState<Project | null>(null);
@@ -719,7 +727,7 @@ export function ProjectDetail(): ReactElement | null {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- storage/projectId стабильны на время жизни экрана
-  }, [storage, projectId]);
+  }, [storage, projectId, dataVersion]);
 
   function commandDeps(): { storage: typeof storage; now: Temporal.Instant; deviceId: Uuid } {
     return { storage, now: Temporal.Now.instant(), deviceId: getLocalIdentity().deviceId };

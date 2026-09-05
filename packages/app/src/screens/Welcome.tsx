@@ -14,7 +14,15 @@
  * же способом, каким `ghost` вторичен `primary` во всём остальном продукте.
  *
  * Presentational: оба действия делегированы `AppController`
- * (`continueLocally`/`goTo`), сам экран не хранит состояния.
+ * (`continueLocally`), сам экран не хранит состояния.
+ *
+ * Входа по аккаунту здесь НЕТ намеренно. Бэкенда аутентификации не
+ * существует, и кнопка «Войти» вела на экран, который может только
+ * сказать «этого пока нет», — то есть предлагала действие, заведомо зная,
+ * что оно не сработает. Локальный режим — не запасной путь, а основной и
+ * единственный в этой версии, и приветствие говорит именно это. Настоящий
+ * контур аккаунта вернёт сюда кнопку вместе с сервером, который её
+ * обслуживает, а не раньше.
  */
 import type { ReactElement } from 'react';
 
@@ -51,16 +59,6 @@ export function Welcome(): ReactElement {
           onClick={() => controller.continueLocally()}
         >
           {t('onboarding', 'welcome.startLocal')}
-        </Button>
-
-        <Button
-          type="button"
-          variant="ghost"
-          size="lg"
-          block
-          onClick={() => controller.goTo('signIn')}
-        >
-          {t('onboarding', 'welcome.signIn')}
         </Button>
 
         <p className="shagi-welcome__footnote">{t('onboarding', 'welcome.footnote')}</p>

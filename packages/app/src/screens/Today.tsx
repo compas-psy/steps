@@ -845,6 +845,14 @@ export function Today(): ReactElement {
   const storage = useStorage();
   const host = useHost();
   const controller = useAppController();
+  /** Живое обновление списка: счётчик растёт после каждой подтверждённой
+   * правки задачи (`state/store.ts`, `dataVersion`). На десктопе карточка
+   * живёт в панели СПРАВА, а этот список остаётся смонтированным слева —
+   * без такой зависимости он показывал бы данные, прочитанные один раз при
+   * монтировании. Перечитывание, а не перемонтирование: состояние экрана
+   * (прокрутка, раскрытые группы, режим выбора) сохраняется. */
+  const { dataVersion } = useAppState();
+
   const [groups, setGroups] = useState<TodayGroups | null>(null);
   /** Счётчик активных Входящих для бейджа заголовка — см. заголовок файла,
    * блок «Бейдж Входящих». `null` только до первого разрешения эффекта
@@ -925,7 +933,7 @@ export function Today(): ReactElement {
     return () => {
       cancelled = true;
     };
-  }, [storage]);
+  }, [storage, dataVersion]);
 
   useEffect(() => {
     const closedJustNow = quickAddWasOpen.current && !quickAddOpen;

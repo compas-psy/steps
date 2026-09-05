@@ -159,7 +159,7 @@ import {
 } from '@shagi/ui';
 import { isAvailable } from '@shagi/platform';
 
-import { useAppController, useHost, useStorage } from '../state/context.js';
+import { useAppController, useAppState, useHost, useStorage } from '../state/context.js';
 import { reconcileReminderScheduleForTask } from '../state/reminder-reconciliation.js';
 import './Plan.css';
 
@@ -323,6 +323,14 @@ export function Plan(): ReactElement {
   const storage = useStorage();
   const host = useHost();
   const controller = useAppController();
+  /** Живое обновление списка: счётчик растёт после каждой подтверждённой
+   * правки задачи (`state/store.ts`, `dataVersion`). На десктопе карточка
+   * живёт в панели СПРАВА, а этот список остаётся смонтированным слева —
+   * без такой зависимости он показывал бы данные, прочитанные один раз при
+   * монтировании. Перечитывание, а не перемонтирование: состояние экрана
+   * (прокрутка, раскрытые группы, режим выбора) сохраняется. */
+  const { dataVersion } = useAppState();
+
   const today = Temporal.Now.plainDateISO();
 
   const [groups, setGroups] = useState<readonly PlanDayGroup[] | null>(null);
@@ -340,7 +348,7 @@ export function Plan(): ReactElement {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `today` фиксировано на монтирование экрана, см. заголовок файла
-  }, [storage]);
+  }, [storage, dataVersion]);
 
   /** Перезапрос повестки после успешной команды — тот же приём, что
    * `Today.tsx` `refreshGroups`: список строится заново из хранилища, а не

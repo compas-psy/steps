@@ -113,7 +113,7 @@ import {
 import { Button, EmptyState, Filter, Icon, IconButton, Modal, TaskRow, Toast } from '@shagi/ui';
 
 import { getLocalIdentity } from '../state/local-identity.js';
-import { useAppController, useStorage } from '../state/context.js';
+import { useAppController, useAppState, useStorage } from '../state/context.js';
 import './Completed.css';
 
 // --- Локальная идентичность устройства (см. заголовок файла) ----------------
@@ -149,6 +149,14 @@ function isReadyToRestore(dialog: RestoreDialogState): boolean {
 export function Completed(): ReactElement {
   const storage = useStorage();
   const controller = useAppController();
+  /** Живое обновление списка: счётчик растёт после каждой подтверждённой
+   * правки задачи (`state/store.ts`, `dataVersion`). На десктопе карточка
+   * живёт в панели СПРАВА, а этот список остаётся смонтированным слева —
+   * без такой зависимости он показывал бы данные, прочитанные один раз при
+   * монтировании. Перечитывание, а не перемонтирование: состояние экрана
+   * (прокрутка, раскрытые группы, режим выбора) сохраняется. */
+  const { dataVersion } = useAppState();
+
   const [tasks, setTasks] = useState<readonly Task[] | null>(null);
   const [dialog, setDialog] = useState<RestoreDialogState | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -166,7 +174,7 @@ export function Completed(): ReactElement {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- storage стабилен на время жизни экрана
-  }, [storage]);
+  }, [storage, dataVersion]);
 
   function restoreDeps(): RestoreTaskDeps {
     // `storage` (полный `StoragePort`) структурно подходит и под `.storage`

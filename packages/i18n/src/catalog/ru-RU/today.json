@@ -61,6 +61,6 @@
   "bulk.labelAttach": "Поставить «{label}»",
   "bulk.labelDetach": "Снять «{label}»",
   "bulk.deleteConfirmTitle": "Удалить выбранные задачи?",
-  "bulk.deleteConfirmBody": "{count, plural, one {Будет удалена # задача} few {Будут удалены # задачи} many {Будут удалены # задач} other {Будет удалено # задачи}} вместе с их подзадачами и чек-листами. Отменить это будет нельзя.",
+  "bulk.deleteConfirmBody": "{count, plural, one {Будет удалена # задача} few {Будут удалены # задачи} many {Будут удалены # задач} other {Будет удалено # задачи}} вместе с их подзадачами и чек-листами. Сразу после удаления можно будет отменить.",
   "bulk.deleteConfirmAccept": "Удалить"
 }

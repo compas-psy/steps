@@ -48,6 +48,13 @@ export interface UndoOffer {
   readonly undo: () => Promise<UndoOutcome>;
 }
 
+/** Необязательное действие рядом с уведомлением — например «Открыть» у
+ * подтверждения о созданной задаче. */
+export interface NoticeAction {
+  readonly label: string;
+  readonly run: () => void;
+}
+
 export interface UndoToastController {
   /** Активное предложение отката, `null` — тоста нет. */
   readonly offer: UndoOffer | null;
@@ -56,6 +63,8 @@ export interface UndoToastController {
   /** Сообщение о конфликте или сбое отката — отдельная строка, не заменяет
    * `offer` собой: показывается ПОСЛЕ того, как тост закрылся. */
   readonly notice: string | null;
+  /** Действие текущего уведомления, `null` — уведомление без действия. */
+  readonly noticeAction: NoticeAction | null;
   offerUndo(offer: UndoOffer): void;
   /**
    * Показать простое уведомление без кнопки отката.
@@ -70,7 +79,7 @@ export interface UndoToastController {
    * Канал `notice` (в отличие от `offer`) уже существует и уже
    * отрисовывается — здесь ему просто дан публичный вход.
    */
-  showNotice(message: string): void;
+  showNotice(message: string, action?: NoticeAction): void;
   runUndo(): Promise<void>;
   dismiss(): void;
   dismissNotice(): void;
@@ -88,6 +97,7 @@ export function useUndoToast(messages: UndoToastMessages): UndoToastController {
   const [offer, setOffer] = useState<UndoOffer | null>(null);
   const [running, setRunning] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [noticeAction, setNoticeAction] = useState<NoticeAction | null>(null);
   /** Защита от повторного применения. Именно `ref`, не `state`: два
    * быстрых нажатия попадают в один и тот же рендер, и проверка по
    * состоянию их не разделила бы — состояние обновится только к
@@ -111,6 +121,7 @@ export function useUndoToast(messages: UndoToastMessages): UndoToastController {
 
   const dismissNotice = useCallback((): void => {
     setNotice(null);
+    setNoticeAction(null);
   }, []);
 
   const runUndo = useCallback(async (): Promise<void> => {
@@ -152,12 +163,37 @@ export function useUndoToast(messages: UndoToastMessages): UndoToastController {
     return () => clearTimeout(timer);
   }, [offer]);
 
+  // Уведомление тоже закрывается само, тем же окном. Найдено сквозным
+  // проходом по продукту: подтверждение «Создано на 9 сентября» висело
+  // поверх содержимого и после перехода на другой экран — на карточке
+  // задачи оно накрывало кнопку «Изменить дату плана». Тост, который не
+  // уходит сам, перестаёт быть уведомлением и становится помехой.
+  useEffect(() => {
+    if (notice === null) return undefined;
+    const timer = setTimeout(() => {
+      setNotice(null);
+      setNoticeAction(null);
+    }, UNDO_WINDOW_MS);
+    return () => clearTimeout(timer);
+  }, [notice]);
+
   /** См. `showNotice` в описании интерфейса. */
-  function showNotice(message: string): void {
+  function showNotice(message: string, action?: NoticeAction): void {
     setNotice(message);
+    setNoticeAction(action ?? null);
   }
 
-  return { offer, running, notice, offerUndo, runUndo, dismiss, dismissNotice, showNotice };
+  return {
+    offer,
+    running,
+    notice,
+    noticeAction,
+    offerUndo,
+    runUndo,
+    dismiss,
+    dismissNotice,
+    showNotice,
+  };
 }
 
 /**
@@ -185,10 +221,29 @@ export function UndoToast({
   readonly controller: UndoToastController;
 }): ReactElement | null {
   if (controller.notice !== null) {
+    const action = controller.noticeAction;
     return (
       <Toast
-        variant="warning"
+        // `default`, а не `warning`: подтверждение «задача создана» — не
+        // предупреждение. Тон канала перестал быть правдой, когда через
+        // него пошли не только сбои отката.
         message={controller.notice}
+        {...(action === null
+          ? {}
+          : {
+              action: (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    controller.dismissNotice();
+                    action.run();
+                  }}
+                >
+                  {action.label}
+                </Button>
+              ),
+            })}
         onDismiss={controller.dismissNotice}
         dismissLabel={t('common', 'undo.dismiss')}
       />

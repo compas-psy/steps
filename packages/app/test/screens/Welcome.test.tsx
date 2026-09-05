@@ -37,26 +37,19 @@ describe('Welcome (M02)', () => {
     });
   });
 
-  it('«Войти» ведёт на signIn, не включая localMode — вход не обязателен, но и не локальный режим сам по себе', async () => {
-    const user = userEvent.setup();
-    const controller = createAppController({ screen: 'welcome' });
+  it('входа по аккаунту здесь нет — бэкенда не существует, тупика быть не должно', () => {
+    // Раньше здесь стояла кнопка «Войти», которая вела на экран, умеющий
+    // только сказать «этого пока нет». Продукт предлагал действие, заведомо
+    // зная, что оно не сработает. Локальный режим — основной и
+    // единственный путь этой версии, и приветствие говорит именно это.
     render(
-      <AppProvider host={testHost()} controller={controller}>
+      <AppProvider host={testHost()} controller={createAppController({ screen: 'welcome' })}>
         <Welcome />
       </AppProvider>,
     );
 
-    await user.click(screen.getByRole('button', { name: t('onboarding', 'welcome.signIn') }));
-
-    expect(controller.getState()).toEqual({
-      screen: 'signIn',
-      localMode: false,
-      selectedProjectId: null,
-      selectedTaskId: null,
-      returnScreen: null,
-      settingsReturnScreen: null,
-      quickAdd: null,
-      dataVersion: 0,
-    });
+    const buttons = screen.getAllByRole('button');
+    expect(buttons).toHaveLength(1);
+    expect(buttons[0]).toHaveAccessibleName(t('onboarding', 'welcome.startLocal'));
   });
 });

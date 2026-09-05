@@ -139,7 +139,7 @@
 import { useEffect, useMemo, useState, type ReactElement } from 'react';
 import { Temporal } from '@js-temporal/polyfill';
 
-import { formatDate, t } from '@shagi/i18n';
+import { formatDate, formatTime, t } from '@shagi/i18n';
 import {
   BottomSheet,
   Button,
@@ -337,24 +337,36 @@ export function QuickAdd(): ReactElement | null {
         return;
       }
 
-      // Отклик о том, КУДА ушла задача. Найдено разбором walkthrough:
-      // человек на «Сегодня» писал «9 сентября в 11:00 Сходить с мамой в
-      // МВД», нажимал «Добавить» и видел ровно тот же экран — задача
-      // создавалась на 9 сентября, а на «Сегодня» её по определению нет.
-      // Никакого сообщения при этом не было (измерено в браузере). Молчание
-      // после действия человек читает как «не сработало».
+      // Отклик о том, КУДА ушла задача, и как её открыть.
       //
-      // Сообщение показывается ТОЛЬКО когда задачи не видно здесь и сейчас:
-      // подтверждать то, что человек и так видит появившимся в списке, —
-      // лишний шум.
-      const createdDate = result.task.plannedDate;
+      // Найдено сквозным проходом по продукту: человек на «Сегодня» писал
+      // «9 сентября в 11:00 Сходить с мамой в МВД», нажимал «Добавить» и
+      // видел ровно тот же экран. Задача создавалась на 9 сентября, но на
+      // «Сегодня» её по определению нет, а сообщения не было вовсе
+      // (измерено: `bodyHasTitle: false`). Молчание после действия человек
+      // читает как «не сработало».
+      //
+      // Сообщение показывается ТОЛЬКО когда задачи не видно здесь и
+      // сейчас — подтверждать появившееся в списке было бы шумом.
+      const created = result.task;
       const today = Temporal.Now.plainDateISO();
-      if (createdDate !== null && !createdDate.equals(today)) {
+      const openCreated = {
+        label: t('quickAdd', 'created.open'),
+        run: () => controller.openTask(created.id),
+      };
+      if (created.plannedDate !== null && !created.plannedDate.equals(today)) {
+        const date = formatDate(created.plannedDate, { weekday: 'short' });
         toast.showNotice(
-          t('quickAdd', 'created.onDate', { date: formatDate(createdDate, { weekday: 'short' }) }),
+          created.plannedTime === null
+            ? t('quickAdd', 'created.onDate', { date })
+            : t('quickAdd', 'created.onDateTime', {
+                date,
+                time: formatTime(created.plannedTime),
+              }),
+          openCreated,
         );
-      } else if (createdDate === null && captureState === 'inbox' && origin !== 'inbox') {
-        toast.showNotice(t('quickAdd', 'created.toInbox'));
+      } else if (created.plannedDate === null && captureState === 'inbox' && origin !== 'inbox') {
+        toast.showNotice(t('quickAdd', 'created.toInbox'), openCreated);
       }
 
       clearDraft();
