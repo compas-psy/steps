@@ -393,6 +393,23 @@ async function main() {
   // WebView Tauri вообще отдаёт `popstate` по системной кнопке. До правки
   // back-navigation «Назад» закрывала приложение с любого экрана.
   console.log('── Аппаратная «Назад» ──');
+
+  // Состояние ловушки СНЯТО С УСТРОЙСТВА до нажатия, а не выведено из
+  // рассуждений. Прогон `33975705991` показал, что мост в Kotlin включён
+  // (`override val handleBackNavigation: Boolean = true` в собранном
+  // `MainActivity.kt` — это видно в логе шага), а приложение всё равно
+  // закрывается. Значит вопрос ровно один: успела ли страница положить
+  // служебную запись в историю. В настоящем Chromium она кладётся —
+  // измерено (`length=3`, `state={"shagi:back-trap":true}`), — но
+  // WebView Android это отдельная среда, и догадками её не проверить.
+  //
+  // Диагностика не роняет сценарий: приговор выносит проверка ПОСЛЕ
+  // нажатия, а эта строка объясняет, почему он такой.
+  const historyBefore = await first.cdp.evaluate(
+    'JSON.stringify({ length: history.length, state: history.state })',
+  );
+  console.log(`История WebView до нажатия: ${historyBefore}`);
+
   adb(['shell', 'input', 'keyevent', 'KEYCODE_BACK'], { stdio: 'inherit' });
   await sleep(1500);
 
