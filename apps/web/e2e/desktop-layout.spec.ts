@@ -61,10 +61,16 @@ for (const viewport of DESKTOP_VIEWPORTS) {
     const { documentWidth, windowWidth } = await pageOverflow(page);
     expect(documentWidth, 'горизонтальная прокрутка страницы').toBeLessThanOrEqual(windowWidth);
 
-    // «Не километровая полоса»: колонка контента заметно уже окна.
-    const column = await page.locator('.shagi-app-shell__column').first().boundingBox();
-    expect(column).not.toBeNull();
-    expect(column?.width ?? 0).toBeLessThanOrEqual(viewport.width * 0.75);
+    // «Не километровая полоса» — меряется СТРОКА ЗАДАЧИ, а не колонка
+    // раскладки. Раньше здесь стоял `.shagi-app-shell__column`, и когда
+    // ограничение ширины переехало с самой колонки на её содержимое (ради
+    // Inspector'а: колонка обязана занимать всё свободное место, иначе
+    // панель прижималась бы к списку посреди окна), тест покраснел, хотя
+    // продукт вёл себя правильно. Строка задачи — ровно то, на что жаловался
+    // владелец, и она не зависит от того, на каком узле живёт `max-width`.
+    const row = await page.locator('.shagi-task-row').first().boundingBox();
+    expect(row, 'строка задачи не найдена').not.toBeNull();
+    expect(row?.width ?? 0).toBeLessThanOrEqual(viewport.width * 0.75);
   });
 
   test(`${label}: Quick Add — центрированный диалог, а не шторка снизу, и закрывается Escape`, async ({
