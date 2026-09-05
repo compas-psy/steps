@@ -62,6 +62,21 @@ export {
 // `01§9`), см. комментарий `delete-task.ts`.
 export { deleteTaskCommand, type DeleteTaskInput, type DeleteTaskResult } from './delete-task.js';
 
+// --- Undo/Restore R1 (ST §58, `01§8`/`01§9`) ---------------------------------
+// Обратные доменные мутации к завершению и удалению: 6-секундное окно
+// «Отменить». Не переиспользуют `restoreTaskCommand` — та про экран
+// «Завершённые» с ветвлениями §11.10/§11.11 и выбором пользователя.
+export {
+  undoCompleteTasksCommand,
+  type UndoCompleteTasksInput,
+  type UndoCompleteTasksResult,
+} from './undo-complete-tasks.js';
+export {
+  undoDeleteTasksCommand,
+  type UndoDeleteTasksInput,
+  type UndoDeleteTasksResult,
+} from './undo-delete-tasks.js';
+
 // --- Порт хранения Reminder (инверсия зависимости, ADR-0003) — E08 -----------
 export type {
   CommandReminderDomainMutation,

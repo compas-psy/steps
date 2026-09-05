@@ -1,9 +1,10 @@
+import type { ChecklistItem } from '../entities/checklist-item.js';
 import type { Task } from '../entities/task.js';
 import type { RecurrenceSeries } from '../entities/recurrence-series.js';
 import { generateUuidV7 } from '../identity/index.js';
 import type { SyncOutboxEntry } from '../entities/sync-outbox.js';
 import { makeOccurrenceSeq, type Uuid } from '../values.js';
-import { deleteTaskCommand } from './delete-task.js';
+import { collectTombstones, emptyTombstoneCollection } from './delete-task.js';
 import { diffChangedFields, tickClocks } from './project-section-clock.js';
 import { RECURRENCE_SERIES_MUTABLE_FIELDS } from './recurrence-template.js';
 import type { CommandDomainMutation, CommandEntityWrite } from './storage-port.js';
@@ -34,6 +35,8 @@ export type DeleteSeriesResult =
       readonly task: Task;
       readonly affectedSubtaskIds: readonly Uuid[];
       readonly affectedChecklistItemIds: readonly Uuid[];
+      /** Снимки tombstone-пунктов — материал Undo, см. `DeleteTaskResult`. */
+      readonly affectedChecklistItems: readonly ChecklistItem[];
     }
   | { readonly status: 'not_found' }
   /** Цель существует, но не принадлежит серии (`seriesId === null`) —
@@ -67,10 +70,12 @@ export type DeleteSeriesResult =
  * checklist текущего occurrence (который решение переиспользует буквально
  * из уже готового `deleteTaskCommand`, не дублируя его каскад).
  *
- * Порядок: СНАЧАЛА патч серии (граница генерации выставлена раньше, чем
- * текущий occurrence перестаёт существовать — та же логика "не единая
- * атомарная транзакция, но безопасный порядок", что `create-recurring-
- * task.ts`), ЗАТЕМ tombstone текущего occurrence.
+ * Порядок внутри мутации: СНАЧАЛА патч серии (граница генерации логически
+ * предшествует исчезновению текущего occurrence — так читается и журнал
+ * outbox на будущем сервере), ЗАТЕМ tombstone текущего occurrence и его
+ * каскада. Обе части — ОДНА транзакция (пакет работ Undo/Restore R1):
+ * состояние «серия остановлена, occurrence ещё жив» не должно переживать
+ * падение, потому что один Undo обязан вернуть весь граф целиком.
  */
 export async function deleteSeriesCommand(
   input: DeleteSeriesInput,
@@ -127,27 +132,37 @@ export async function deleteSeriesCommand(
     retryCount: 0,
   };
   const seriesWrite: CommandEntityWrite = { entity: 'recurrence_series', value: finalSeries };
-  const seriesMutation: CommandDomainMutation = {
-    writes: [seriesWrite],
-    outbox: [seriesOutboxEntry],
-  };
-  await deps.storage.runTransaction(async (tx) => {
-    await tx.applyMutation(seriesMutation);
-  });
 
-  const deleteResult = await deleteTaskCommand({ id: current.id }, deps);
-  if (deleteResult.status !== 'ok') {
+  // Каскад текущего occurrence собирается БЕЗ записи и уходит в ту же
+  // мутацию, что патч серии (пакет работ Undo/Restore R1). Раньше это были
+  // две транзакции подряд; между ними существовало состояние «генерация уже
+  // остановлена, но текущий occurrence ещё жив», переживающее падение и
+  // невосстановимое одним Undo. MASTER §7: пользовательская команда — одна
+  // локальная транзакция.
+  const acc = emptyTombstoneCollection();
+  const validation = await collectTombstones(current, deps, generateOpId, acc);
+  if (!validation.valid) {
     throw new Error(
-      `deleteSeriesCommand: deleteTaskCommand вернул "${deleteResult.status}" на только что ` +
-        'прочитанной живой задаче — недостижимо (тот же приём, что каскад `delete-task.ts`).',
+      'deleteSeriesCommand: валидатор отклонил tombstone только что прочитанной живой задачи — ' +
+        'недостижимо (мягкое удаление не меняет ни одно проверяемое поле, см. `delete-task.ts`).',
     );
   }
 
+  const mutation: CommandDomainMutation = {
+    writes: [seriesWrite, ...acc.writes],
+    outbox: [seriesOutboxEntry, ...acc.outbox],
+  };
+  await deps.storage.runTransaction(async (tx) => {
+    await tx.applyMutation(mutation);
+  });
+
+  const rootWrite = acc.writes[acc.writes.length - 1];
   return {
     status: 'ok',
     series: finalSeries,
-    task: deleteResult.task,
-    affectedSubtaskIds: deleteResult.affectedSubtaskIds,
-    affectedChecklistItemIds: deleteResult.affectedChecklistItemIds,
+    task: (rootWrite as { readonly value: Task }).value,
+    affectedSubtaskIds: acc.subtaskIds,
+    affectedChecklistItemIds: acc.checklistItemIds,
+    affectedChecklistItems: acc.checklistItems,
   };
 }
