@@ -23,7 +23,7 @@
  * e2e веба на том же коде. Здесь — граница платформы, и только она.
  */
 import { execFileSync, spawn } from 'node:child_process';
-import { existsSync, readdirSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 
@@ -116,6 +116,72 @@ for (const dir of candidateDataDirs) {
   }
 }
 
+/** Каталог артефактов приёмки. */
+const SCREENSHOT_DIR = process.env.SHAGI_SCREENSHOT_DIR ?? join(process.cwd(), 'smoke-screenshots');
+
+/**
+ * Снимок окна УСТАНОВЛЕННОГО приложения.
+ *
+ * Владелец продукта потребовал скриншоты частью приёмки: «зелёный CI сам по
+ * себе больше не является доказательством готовности UI». Снимается именно
+ * окно приложения (`PrintWindow` по хендлу), а не весь рабочий стол: у
+ * раннера разрешение экрана своё и меньше целевого, и снимок десктопа
+ * доказывал бы разрешение раннера, а не раскладку продукта.
+ *
+ * Окно предварительно приводится к заданному размеру (`MoveWindow`), чтобы
+ * снимки соответствовали тем разрешениям, на которых владелец требует
+ * корректной работы: 1280x720, 1440x900, 1920x1080.
+ *
+ * Неудача снимка НЕ роняет смоук: он проверяет установку и персистентность,
+ * а не графику. Но и молча пустой файл не оставляет — пишет причину.
+ */
+function screenshot(name, width, height) {
+  mkdirSync(SCREENSHOT_DIR, { recursive: true });
+  const target = join(SCREENSHOT_DIR, `${name}.png`);
+  const script = `
+$ErrorActionPreference = 'Stop'
+Add-Type -AssemblyName System.Drawing
+Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+public class Win {
+  [DllImport("user32.dll")] public static extern bool MoveWindow(IntPtr h,int x,int y,int w,int t,bool r);
+  [DllImport("user32.dll")] public static extern bool PrintWindow(IntPtr h,IntPtr dc,uint f);
+  [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
+}
+"@
+$p = Get-Process -Name '${config.mainBinaryName}' -ErrorAction SilentlyContinue |
+     Where-Object { $_.MainWindowHandle -ne 0 } | Select-Object -First 1
+if (-not $p) { Write-Output 'NO_WINDOW'; exit 0 }
+$h = $p.MainWindowHandle
+[void][Win]::MoveWindow($h, 0, 0, ${width}, ${height}, $true)
+[void][Win]::SetForegroundWindow($h)
+Start-Sleep -Milliseconds 1500
+$bmp = New-Object System.Drawing.Bitmap ${width}, ${height}
+$g = [System.Drawing.Graphics]::FromImage($bmp)
+$dc = $g.GetHdc()
+# 2 = PW_RENDERFULLCONTENT: без него WebView2 отдаёт пустой прямоугольник.
+[void][Win]::PrintWindow($h, $dc, 2)
+$g.ReleaseHdc($dc)
+$bmp.Save('${target.replace(/\\/g, '\\\\')}', [System.Drawing.Imaging.ImageFormat]::Png)
+Write-Output 'OK'
+`;
+  try {
+    const out = execFileSync('powershell', ['-NoProfile', '-Command', script], {
+      encoding: 'utf8',
+    }).trim();
+    if (out.includes('OK') && existsSync(target)) {
+      step(`Скриншот ${width}x${height}: ${target}`);
+      return;
+    }
+    process.stdout.write(`ВНИМАНИЕ: скриншот «${name}» не снят (${out || 'пустой ответ'})\n`);
+  } catch (error) {
+    process.stdout.write(
+      `ВНИМАНИЕ: скриншот «${name}» не снят: ${error instanceof Error ? error.message : error}\n`,
+    );
+  }
+}
+
 step('Запуск приложения');
 const app = spawn(exePath, [], { detached: true, stdio: 'ignore' });
 app.unref();
@@ -148,6 +214,11 @@ try {
   const alive = processCount();
   if (alive === 0) throw new Error('процесс приложения умер до конца проверки');
   step(`Процесс жив (экземпляров: ${alive})`);
+
+  // Три разрешения, на которых владелец требует корректной раскладки.
+  screenshot('windows-1280x720', 1280, 720);
+  screenshot('windows-1440x900', 1440, 900);
+  screenshot('windows-1920x1080', 1920, 1080);
 } finally {
   execFileSync('powershell', [
     '-NoProfile',

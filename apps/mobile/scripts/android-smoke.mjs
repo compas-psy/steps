@@ -36,7 +36,7 @@
  */
 
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync, statSync, existsSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, writeFileSync, statSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
@@ -788,6 +788,31 @@ function listAppFiles() {
  * WAL копируется вместе с базой и под тем же именем: последние коммиты
  * могут лежать ещё в нём, и без него снимок был бы «почти правдой».
  */
+/**
+ * Снимок экрана устройства в каталог артефактов прогона. Владелец продукта
+ * потребовал скриншоты как ЧАСТЬ приёмки, а не как приятное дополнение:
+ * зелёный прогон сам по себе больше не считается доказательством того, что
+ * интерфейсом можно пользоваться. Снимок делается с установленной сборки на
+ * устройстве, а не с браузера.
+ */
+function screenshot(name) {
+  mkdirSync(SCREENSHOT_DIR, { recursive: true });
+  const target = join(SCREENSHOT_DIR, `${name}.png`);
+  const png = execFileSync('adb', ['exec-out', 'screencap', '-p'], {
+    maxBuffer: 64 * 1024 * 1024,
+    encoding: 'buffer',
+  });
+  // `screencap -p` на некоторых образах отдаёт текст ошибки вместо PNG —
+  // сигнатура проверяется, чтобы в артефактах не оказалось пустышки,
+  // выданной за скриншот.
+  if (png.length < 8 || png[0] !== 0x89 || png[1] !== 0x50) {
+    console.log(`ВНИМАНИЕ: скриншот «${name}» не снят (adb вернул ${png.length} байт, не PNG)`);
+    return;
+  }
+  writeFileSync(target, png);
+  console.log(`Скриншот: ${target} (${png.length} байт)`);
+}
+
 function pullDatabase(label) {
   const dir = mkdtempSync(join(tmpdir(), `shagi-db-${label}-`));
   const local = join(dir, 'shagi.db');
@@ -1043,6 +1068,21 @@ async function attemptLaunchAndAttach(label) {
 
 const LIVE_SUBTASK = 'Живая подзадача';
 const DOOMED_SUBTASK = 'Лишняя подзадача';
+/**
+ * Контрольная строка приёмки владельца продукта. Проверяется на Android
+ * ровно та же фраза, что на Windows и в юнит-приёмке
+ * (`packages/app/test/acceptance/control-phrase.test.tsx`): требование
+ * звучало как «та же NLP строка должна создавать ту же domain task».
+ *
+ * Утверждение делается по SQLite, а не по экрану: экран мог бы показать
+ * правильный заголовок и при пустых `planned_date`/`planned_time`.
+ */
+const CONTROL_PHRASE = '9 сентября в 11:00 Сходить с мамой в МВД';
+const CONTROL_TITLE = 'Сходить с мамой в МВД';
+
+/** Каталог артефактов приёмки: скриншоты установленной сборки. */
+const SCREENSHOT_DIR = process.env.SHAGI_SCREENSHOT_DIR ?? join(process.cwd(), 'smoke-screenshots');
+
 const RECURRING_TASK = 'Полить цветы каждый день @дом';
 /** Заголовок, каким его сохранит домен: NLP вырезает и повтор, и метку. */
 const RECURRING_TITLE = 'Полить цветы';
@@ -2709,6 +2749,8 @@ async function main() {
   }
   await sleep(1200);
 
+  screenshot('01-today');
+
   console.log('── Повтор и метка через Quick Add ──');
   if ((await first.cdp.evaluate(clickByLabel('Быстрое добавление'))) !== true) {
     fail('кнопка быстрого добавления не найдена');
@@ -2761,6 +2803,50 @@ async function main() {
     );
   }
 
+  console.log('── Контрольная строка приёмки через Quick Add ──');
+  // Владелец продукта: «та же NLP строка должна создавать ту же domain
+  // task». Утверждение — по SQLite после перезапуска (ниже), здесь только
+  // ввод и подтверждение, что чипы видны ДО создания.
+  if ((await first.cdp.evaluate(clickByLabel('Быстрое добавление'))) !== true) {
+    fail('кнопка быстрого добавления не найдена (контрольная строка)');
+  }
+  await sleep(1000);
+  if (!(await actWhenReady(first, typeIntoFirstInput(CONTROL_PHRASE)))) {
+    fail('поле Quick Add не найдено (контрольная строка)');
+  }
+  await sleep(800);
+
+  // Предпросмотр обязан показать разобранное ДО создания — это отдельное
+  // требование приёмки, а не следствие правильной записи в базу.
+  const previewText = await first.cdp.evaluate(READ_APP_TEXT);
+  if (typeof previewText !== 'string' || !previewText.includes('11:00')) {
+    fail(
+      'предпросмотр Quick Add не показал разобранное время 11:00 до создания задачи. ' +
+        `Экран показывает: ${JSON.stringify(String(previewText).slice(0, 300))}`,
+    );
+  }
+  screenshot('02-quick-add-control-phrase');
+
+  if ((await first.cdp.evaluate(clickByLabel('Добавить задачу'))) !== true) {
+    fail('кнопка «Добавить задачу» в Quick Add не найдена (контрольная строка)');
+  }
+  const controlOnScreen = await waitFor('появление контрольной задачи', 20, 500, async () => {
+    const text = await first.cdp.evaluate(READ_APP_TEXT);
+    return typeof text === 'string' && text.includes(CONTROL_TITLE) ? text : null;
+  });
+  if (controlOnScreen === null) {
+    fail(`задача «${CONTROL_TITLE}» не появилась после Quick Add с контрольной строкой`);
+  }
+  // Служебные токены обязаны исчезнуть из названия — если на экране всё ещё
+  // есть «9 сентября в 11:00 Сходить», значит разбор до задачи не дошёл.
+  if (controlOnScreen.includes(CONTROL_PHRASE)) {
+    fail(
+      'после создания на экране осталась исходная фраза целиком: ' +
+        'разобранные дата и время не ушли из названия задачи',
+    );
+  }
+  screenshot('03-today-after-control-phrase');
+
   // Приложение не должно было умереть по дороге.
   if (adbSoft(['shell', 'pidof', APPLICATION_ID]).trim() === '') {
     fail('приложение упало в процессе сценария');
@@ -2807,9 +2893,33 @@ async function main() {
     );
   }
 
+  screenshot('04-today-after-restart');
+
   console.log('── Файл базы в app-private каталоге ──');
   console.log(listAppFiles());
   const dbPath = pullDatabase('after-restart');
+
+  console.log('── Контрольная строка: канонические поля задачи в SQLite ──');
+  const control = readControlTask(dbPath);
+  if (control === null) {
+    fail(`в базе нет задачи «${CONTROL_TITLE}» — контрольная строка не дошла до хранилища`);
+  }
+  console.log(`Контрольная задача: ${JSON.stringify(control)}`);
+  // Год не фиксируется: «9 сентября» разрешается относительно сегодняшнего
+  // дня, и прибитый к одному году прогон начал бы врать, а не ловить
+  // регрессию. Проверяется то, что обязано выполняться всегда.
+  if (!/^\d{4}-09-09$/.test(String(control.planned_date ?? ''))) {
+    fail(
+      `planned_date контрольной задачи = ${JSON.stringify(control.planned_date)}, ` +
+        'ожидалось девятое сентября',
+    );
+  }
+  if (String(control.planned_time ?? '').slice(0, 5) !== '11:00') {
+    fail(
+      `planned_time контрольной задачи = ${JSON.stringify(control.planned_time)}, ожидалось 11:00`,
+    );
+  }
+  console.log('Контрольная строка: название, дата и время на месте.');
   const state = inspectDatabase(dbPath);
   console.log(`Содержимое базы: ${JSON.stringify(state)}`);
 
