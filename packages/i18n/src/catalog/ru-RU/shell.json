@@ -10,5 +10,6 @@
   "nav.quickAdd": "Быстрое добавление",
   "sidebar.productName": "ШАГИ",
   "sidebar.quickAdd": "Новая задача",
-  "sidebar.quickAddShortcut": "Ctrl + N"
+  "sidebar.quickAddShortcut": "Ctrl + N",
+  "inspector.label": "Карточка задачи"
 }

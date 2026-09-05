@@ -107,6 +107,7 @@ import {
   type SidebarSection,
 } from '@shagi/ui';
 
+import { SCREENS } from '../screens/index.js';
 import { useAppController, useAppState } from '../state/context.js';
 import type { AppController, QuickAddOrigin, ScreenId } from '../state/store.js';
 import { useIsDesktopViewport } from './use-desktop-viewport.js';
@@ -257,15 +258,41 @@ function MobileShell({
   );
 }
 
+/**
+ * Экран, который остаётся в рабочей колонке, пока карточка задачи открыта в
+ * Inspector'е. Это `returnScreen` — то же поле, которым уже пользуются
+ * «Готово» и аппаратная «Назад» (`store.ts` `openTask`/`closeTask`), а не
+ * второй источник правды о том, «откуда пришли».
+ *
+ * `null`, когда Inspector открывать не надо: не десктоп, не карточка задачи
+ * или `returnScreen` пуст (по продуктовым путям такого не бывает —
+ * `openTask` единственный вход на `taskDetail`, — но оборонительная ветка
+ * дешевле, чем пустая колонка).
+ */
+function inspectorBackdropScreen(screen: ScreenId, returnScreen: ScreenId | null): ScreenId | null {
+  if (screen !== 'taskDetail') return null;
+  return returnScreen;
+}
+
 function DesktopShell({
   screen,
+  returnScreen,
   controller,
   children,
 }: {
   readonly screen: ScreenId;
+  readonly returnScreen: ScreenId | null;
   readonly controller: AppController;
   readonly children: ReactNode;
 }): ReactElement {
+  // SPEC/04 §9: «Task opens right Inspector desktop; mobile compact sheet →
+  // full detail». То есть на десктопе клик по задаче НЕ должен уводить со
+  // списка: список остаётся слева, карточка открывается справа. До этого
+  // экран `taskDetail` занимал всю рабочую колонку — ровно тот
+  // «full-page mobile TaskDetail», который §8-§10 запрещают.
+  const backdrop = inspectorBackdropScreen(screen, returnScreen);
+  const BackdropScreen = backdrop === null ? undefined : SCREENS[backdrop];
+  const inspectorOpen = BackdropScreen !== undefined;
   return (
     <div className="shagi-app-shell shagi-app-shell--desktop">
       <Sidebar<ScreenId>
@@ -302,14 +329,21 @@ function DesktopShell({
         }
       />
       <main className="shagi-app-shell__main">
-        <div className="shagi-app-shell__column">{children}</div>
+        <div className="shagi-app-shell__column">
+          {inspectorOpen && BackdropScreen !== undefined ? <BackdropScreen /> : children}
+        </div>
+        {inspectorOpen && (
+          <aside className="shagi-app-shell__inspector" aria-label={t('shell', 'inspector.label')}>
+            {children}
+          </aside>
+        )}
       </main>
     </div>
   );
 }
 
 export function AppShell({ children }: { children: ReactNode }): ReactElement {
-  const { screen } = useAppState();
+  const { screen, returnScreen } = useAppState();
   const controller = useAppController();
   const desktop = useIsDesktopViewport();
 
@@ -318,7 +352,7 @@ export function AppShell({ children }: { children: ReactNode }): ReactElement {
 
   if (desktop) {
     return (
-      <DesktopShell screen={screen} controller={controller}>
+      <DesktopShell screen={screen} returnScreen={returnScreen} controller={controller}>
         {children}
       </DesktopShell>
     );
