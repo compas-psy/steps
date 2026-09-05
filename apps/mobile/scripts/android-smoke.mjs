@@ -1088,8 +1088,24 @@ async function pickReminderTime(session, minutesAhead) {
  * лишней задержки не добавляется.
  */
 async function clickByTextWhenReady(session, text, options = {}, attempts = 12, delayMs = 500) {
+  return actWhenReady(session, clickByText(text, options), attempts, delayMs);
+}
+
+/**
+ * То же самое для остальных взаимодействий со страницей (открыть строку
+ * задачи, напечатать в поле, выбрать «сегодня» в сетке дат): выполнить
+ * скрипт-действие, пока он не вернёт `true`.
+ *
+ * Прогон `33939706659` упал на `openTaskRow` («строка задачи … не
+ * открылась после стирания») — тот же класс, что и одноразовые клики,
+ * просто другое действие: после M52-стирания список перерисовывается, и
+ * фиксированного `sleep` перед одной попыткой снова не хватило. Условие
+ * не ослаблено: действие обязано удаться, иначе вызывающий код падает
+ * прежним сообщением.
+ */
+async function actWhenReady(session, script, attempts = 12, delayMs = 500) {
   for (let attempt = 0; attempt < attempts; attempt += 1) {
-    if ((await session.cdp.evaluate(clickByText(text, options))) === true) return true;
+    if ((await session.cdp.evaluate(script)) === true) return true;
     await sleep(delayMs);
   }
   return false;
@@ -1198,7 +1214,7 @@ async function main() {
   await sleep(1200);
 
   console.log('── Создание настоящей задачи ──');
-  if ((await first.cdp.evaluate(typeIntoFirstInput(taskTitle))) !== true) {
+  if (!(await actWhenReady(first, typeIntoFirstInput(taskTitle)))) {
     fail('поле ввода первой задачи не найдено');
   }
   await sleep(400);
@@ -1240,7 +1256,7 @@ async function main() {
   // ═══════════════════════════════════════════════════════════════════════
 
   console.log('── Напоминание: открытие карточки «Проверка сборки» ──');
-  if ((await first.cdp.evaluate(openTaskRow(taskTitle))) !== true) {
+  if (!(await actWhenReady(first, openTaskRow(taskTitle)))) {
     fail(`строка задачи «${taskTitle}» не открылась для планирования напоминания`);
   }
   await sleep(1200);
@@ -1257,7 +1273,7 @@ async function main() {
     fail('кнопка «Добавить напоминание» не найдена');
   }
   await sleep(900);
-  if ((await first.cdp.evaluate(selectTodayInDateGrid)) !== true) {
+  if (!(await actWhenReady(first, selectTodayInDateGrid))) {
     fail('ячейка «сегодня» в сетке дат напоминания не найдена');
   }
   await sleep(500);
@@ -1723,7 +1739,7 @@ async function main() {
     fail('Step 2d: кнопка «Начать» не найдена после reinstall');
   }
   await sleep(1200);
-  if ((await first.cdp.evaluate(typeIntoFirstInput(taskTitle))) !== true) {
+  if (!(await actWhenReady(first, typeIntoFirstInput(taskTitle)))) {
     fail('Step 2d: поле ввода первой задачи не найдено');
   }
   await sleep(400);
@@ -1735,7 +1751,7 @@ async function main() {
     fail('Step 2d: кнопка «Понятно» (экран разбора русского текста) не найдена');
   }
   await sleep(1500);
-  if ((await first.cdp.evaluate(openTaskRow(taskTitle))) !== true) {
+  if (!(await actWhenReady(first, openTaskRow(taskTitle)))) {
     fail(`Step 2d: строка задачи «${taskTitle}» не открылась для планирования напоминания`);
   }
   await sleep(1200);
@@ -1744,7 +1760,7 @@ async function main() {
     fail('Step 2d: кнопка «Добавить напоминание» не найдена');
   }
   await sleep(900);
-  if ((await first.cdp.evaluate(selectTodayInDateGrid)) !== true) {
+  if (!(await actWhenReady(first, selectTodayInDateGrid))) {
     fail('Step 2d: ячейка «сегодня» в сетке дат напоминания не найдена');
   }
   await sleep(500);
@@ -2020,7 +2036,7 @@ async function main() {
     fail('кнопка быстрого добавления не найдена (Task B8, Блок B)');
   }
   await sleep(900);
-  if ((await first.cdp.evaluate(typeIntoFirstInput(REMINDER_TASK_B))) !== true) {
+  if (!(await actWhenReady(first, typeIntoFirstInput(REMINDER_TASK_B)))) {
     fail('поле Quick Add не найдено (Task B8, Блок B)');
   }
   await sleep(700);
@@ -2033,7 +2049,7 @@ async function main() {
   });
   if (createdTaskB === null) fail(`задача «${REMINDER_TASK_B}» не появилась после Quick Add`);
 
-  if ((await first.cdp.evaluate(openTaskRow(REMINDER_TASK_B))) !== true) {
+  if (!(await actWhenReady(first, openTaskRow(REMINDER_TASK_B)))) {
     fail(`строка задачи «${REMINDER_TASK_B}» не открылась`);
   }
   await sleep(1200);
@@ -2043,7 +2059,7 @@ async function main() {
     fail('кнопка «Добавить напоминание» не найдена (Блок B)');
   }
   await sleep(900);
-  if ((await first.cdp.evaluate(selectTodayInDateGrid)) !== true) {
+  if (!(await actWhenReady(first, selectTodayInDateGrid))) {
     fail('ячейка «сегодня» не найдена (Блок B)');
   }
   await sleep(500);
@@ -2518,12 +2534,12 @@ async function main() {
   // две подзадачи, одна из них удаляется, и одна задача через Quick Add с
   // повтором и меткой.
   console.log('── Иерархия: две подзадачи, одна удаляется (tombstone) ──');
-  if ((await first.cdp.evaluate(openTaskRow(taskTitle))) !== true) {
+  if (!(await actWhenReady(first, openTaskRow(taskTitle)))) {
     fail(`строка задачи «${taskTitle}» не открылась — карточка недоступна`);
   }
   await sleep(1200);
   for (const subtask of [LIVE_SUBTASK, DOOMED_SUBTASK]) {
-    if ((await first.cdp.evaluate(typeIntoLabeled('Новая подзадача', subtask))) !== true) {
+    if (!(await actWhenReady(first, typeIntoLabeled('Новая подзадача', subtask)))) {
       fail('поле «Новая подзадача» не найдено в карточке задачи');
     }
     await sleep(400);
@@ -2548,7 +2564,7 @@ async function main() {
     fail('кнопка быстрого добавления не найдена');
   }
   await sleep(1000);
-  if ((await first.cdp.evaluate(typeIntoFirstInput(RECURRING_TASK))) !== true) {
+  if (!(await actWhenReady(first, typeIntoFirstInput(RECURRING_TASK)))) {
     fail('поле Quick Add не найдено');
   }
   await sleep(800);
@@ -2804,7 +2820,7 @@ async function main() {
     fail('после стирания приложение не показало приветствие с кнопкой «Начать»');
   }
   await sleep(1200);
-  if ((await second.cdp.evaluate(typeIntoFirstInput(AFTER_ERASE_TASK))) !== true) {
+  if (!(await actWhenReady(second, typeIntoFirstInput(AFTER_ERASE_TASK)))) {
     fail('после стирания поле первой задачи не найдено');
   }
   await sleep(400);
@@ -2824,7 +2840,7 @@ async function main() {
   // задача без истории отмен (та же причина, что у `REMINDER_TASK_B` —
   // `countExplicitByTask` не в игре, здесь и так пусто после стирания).
   console.log('── Step 9: напоминание снова планируется после стирания ──');
-  if ((await second.cdp.evaluate(openTaskRow(AFTER_ERASE_TASK))) !== true) {
+  if (!(await actWhenReady(second, openTaskRow(AFTER_ERASE_TASK)))) {
     fail(`строка задачи «${AFTER_ERASE_TASK}» не открылась после стирания`);
   }
   await sleep(1200);
@@ -2832,7 +2848,7 @@ async function main() {
     fail('кнопка «Добавить напоминание» не найдена после стирания (Step 9)');
   }
   await sleep(900);
-  if ((await second.cdp.evaluate(selectTodayInDateGrid)) !== true) {
+  if (!(await actWhenReady(second, selectTodayInDateGrid))) {
     fail('ячейка «сегодня» не найдена после стирания (Step 9)');
   }
   await sleep(500);
