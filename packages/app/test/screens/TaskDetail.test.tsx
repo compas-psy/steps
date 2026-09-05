@@ -858,6 +858,66 @@ describe('TaskDetail — Explicit Reminder (M31, `01§18`)', () => {
     );
   });
 
+  it('«Изменить напоминание» меняет ЧАС, а не только дату (Task B8, живой прогон 33937574899)', async () => {
+    // Три Android-прогона подряд (33923605802, 33928070475, 33937574899)
+    // падали на замене напоминания РОВНО тогда, когда менялся час
+    // (22:45→23:05, 23:50→00:10, 02:40→03:00), и проходили, когда час
+    // оставался прежним (23:20→23:40). Соседний тест выше меняет только
+    // ДАТУ, поэтому путь «сменить час» не был покрыт ничем. Этот тест
+    // проходит его целиком через тот же production-flow.
+    const user = userEvent.setup();
+    const task = makeTask({ title: 'Замена часа' });
+    const { getStorage } = renderTaskDetail(task.id, { tasks: [task] });
+
+    await user.click(
+      await screen.findByRole('button', { name: t('taskDetail', 'planning.reminder.add') }),
+    );
+    await user.click(await screen.findByRole('gridcell', { current: 'date' }));
+
+    async function pickTime(hour: string, minute: string): Promise<void> {
+      const hours = screen.getByRole('listbox', {
+        name: t('taskDetail', 'planning.reminder.hourListLabel'),
+      });
+      await user.click(within(hours).getByRole('option', { name: hour }));
+      const minutes = screen.getByRole('listbox', {
+        name: t('taskDetail', 'planning.reminder.minuteListLabel'),
+      });
+      await user.click(within(minutes).getByRole('option', { name: minute }));
+    }
+
+    await pickTime('02', '40');
+    await user.click(
+      screen.getByRole('button', { name: t('taskDetail', 'planning.reminder.save') }),
+    );
+    const reminderA = await waitFor(async () => {
+      const found = (await getStorage().reminders.listByTask(task.id)).find(
+        (r) => r.kind === 'explicit' && r.enabled,
+      );
+      if (found === undefined) throw new Error('первое напоминание ещё не создано');
+      return found;
+    });
+    expect((reminderA.localRuleJson as { time?: string }).time).toBe('02:40:00');
+
+    // Замена: тот же день, ДРУГОЙ час.
+    await user.click(
+      await screen.findByRole('button', { name: t('taskDetail', 'planning.reminder.change') }),
+    );
+    await pickTime('03', '00');
+    await user.click(
+      screen.getByRole('button', { name: t('taskDetail', 'planning.reminder.save') }),
+    );
+
+    await waitFor(async () => {
+      const enabled = (await getStorage().reminders.listByTask(task.id)).filter(
+        (r) => r.kind === 'explicit' && r.enabled,
+      );
+      expect(enabled).toHaveLength(1);
+      const replaced = enabled[0];
+      if (replaced === undefined) throw new Error('ожидалось ровно одно активное напоминание');
+      expect((replaced.localRuleJson as { time?: string }).time).toBe('03:00:00');
+    });
+  });
+
   it('второй explicit reminder на ту же задачу, минуя cancel, по-прежнему запрещён — правило 19 не ослаблено фиксом countExplicitByTask', async () => {
     const task = makeTask({ title: 'Уже с напоминанием' });
     const { getStorage } = renderTaskDetail(task.id, { tasks: [task] });

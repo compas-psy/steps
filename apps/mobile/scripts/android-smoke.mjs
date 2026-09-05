@@ -52,6 +52,7 @@ import {
   READ_STORAGE_STATE,
   READ_TASK_ROW_TITLES,
   selectDialOption,
+  readDialSelection,
   selectDayAfterTodayInDateGrid,
   selectTodayInDateGrid,
   typeIntoFirstInput,
@@ -1045,6 +1046,28 @@ async function pickReminderTime(session, minutesAhead) {
     fail(`циферблат минут напоминания: значение «${pad(minute)}» не найдено`);
   }
   await sleep(300);
+
+  // Проверяем СВОЮ ЖЕ предпосылку, а не верим факту клика. Трижды подряд
+  // (`33923605802`, `33928070475`, `33937574899`) замена напоминания падала
+  // ровно тогда, когда менялся ЧАС, и смоук не мог различить два совершенно
+  // разных диагноза: «клик по циферблату не применился» и «применился, но
+  // приложение не сохранило». Локальный тест на тот же production-flow
+  // (`packages/app/test/screens/TaskDetail.test.tsx`, «меняет ЧАС») зелёный,
+  // то есть доказывать надо здесь, на устройстве, фактом, а не догадкой.
+  const hourSelection = JSON.parse(
+    await session.cdp.evaluate(readDialSelection(REMINDER_HOUR_DIAL)),
+  );
+  const minuteSelection = JSON.parse(
+    await session.cdp.evaluate(readDialSelection(REMINDER_MINUTE_DIAL)),
+  );
+  if (hourSelection.selected !== pad(hour) || minuteSelection.selected !== pad(minute)) {
+    fail(
+      `циферблаты не приняли выбранное время ${pad(hour)}:${pad(minute)} — часы: ` +
+        `${JSON.stringify(hourSelection)}, минуты: ${JSON.stringify(minuteSelection)}. Это состояние ` +
+        'САМОГО пикера до нажатия «Сохранить»: если здесь стоят прежние значения — не применился клик, ' +
+        'если новые, а карточка потом показывает старое время — не сохранило приложение.',
+    );
+  }
   return { hour, minute };
 }
 

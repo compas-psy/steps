@@ -246,6 +246,36 @@ export function selectDialOption(dialLabel, valueLabel) {
 }
 
 /**
+ * Значение, которое циферблат СЧИТАЕТ выбранным (`aria-selected="true"`),
+ * плюс диагностика на случай, когда выбранного нет вовсе.
+ *
+ * Нужна потому, что клик по опции и реально применённое значение — разные
+ * вещи, и смоук трижды падал (`33923605802`, `33928070475`, `33937574899`)
+ * на замене напоминания, не умея различить «клик не применился» и
+ * «применился, но приложение не сохранило». Локальный тест
+ * `packages/app/test/screens/TaskDetail.test.tsx` («меняет ЧАС») проходит
+ * тот же путь через настоящий production-flow и зелёный — значит доказывать
+ * надо на устройстве, а не предполагать.
+ */
+export function readDialSelection(dialLabel) {
+  return `
+    (() => {
+      const dial = Array.from(document.querySelectorAll('.shagi-modal [role="listbox"]')).find(
+        (node) => (node.getAttribute('aria-label') || '') === ${JSON.stringify(dialLabel)},
+      );
+      if (!dial) return JSON.stringify({ dial: null });
+      const options = Array.from(dial.querySelectorAll('[role="option"]'));
+      const selected = options.find((node) => node.getAttribute('aria-selected') === 'true');
+      return JSON.stringify({
+        dial: ${JSON.stringify(dialLabel)},
+        options: options.length,
+        selected: selected ? (selected.innerText || selected.textContent || '').trim() : null,
+      });
+    })()
+  `;
+}
+
+/**
  * Слепок состояния хранилища ПРЯМО В СТРАНИЦЕ: origin, список баз
  * IndexedDB с версиями, число задач в каждой и флаг пройденного онбординга.
  *
