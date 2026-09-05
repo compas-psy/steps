@@ -5,33 +5,16 @@
  * проходит через доменный командный слой (`createTaskCommand`,
  * `@shagi/core`), а не только через навигацию.
  *
- * --- Локальная идентичность (ownerScope/deviceId) ---------------------------
+ * --- Разбор введённой фразы ------------------------------------------------
  *
- * `createTaskCommand` требует `ownerScope` (`02§ownerScope`: «local profile
- * or account scope») и `deps.deviceId` (тай-брейк HLC, `hlc.ts`) — ни для
- * того, ни для другого в этом пакете работ ещё нет постоянного хранилища:
- * `packages/platform`/`packages/storage` пока не заводят порт
- * персистентности локального профиля/устройства (сам `identity/uuid-v7.ts`
- * прямо говорит про `device_id`: «создаётся один раз при первой установке и
- * затем хранится персистентно — хранение вне этого пакета»; этого «вне»
- * ещё не построено НИГДЕ в дереве пакетов). Изобретать такое хранилище
- * заранее — не территория этого пакета работ (M01–M05, presentational
- * экраны онбординга) и не то, что попросило задание.
- *
- * Поэтому здесь — намеренно узкий, задокументированный компромисс:
- * `getLocalIdentity()` генерирует `ownerScope`/`deviceId` один раз за время
- * жизни модуля (т.е. одной сессии этого экрана, не персистентно между
- * перезапусками оболочки) через уже существующие `generateUuidV7`/
- * `generateDeviceId` (`@shagi/core`). `ownerScope` и `deviceId` — две
- * отдельные генерации, не одно и то же значение с двумя именами: у
- * `deviceId` роль «это конкретное устройство» переживёт будущий вход в
- * аккаунт с несколькими устройствами на одном профиле, а `ownerScope` —
- * роль «эта задача принадлежит вот этому локальному профилю» — смешивать
- * их было бы случайным совпадением ролей, а не архитектурным решением.
- * Когда появится реальный порт персистентности локального профиля/
- * устройства (естественная территория будущего пакета работ, скорее всего
- * `@shagi/platform`), эта функция — единственное место, которое придётся
- * заменить.
+ * Этот экран ОБЯЗАН разбирать текст так же, как Quick Add, и по одной
+ * причине: маршрут свежей установки — `Launch → welcome → firstTask`, то
+ * есть первая фраза, которую печатает только что установивший человек,
+ * попадает именно сюда. Раньше здесь стоял `title: trimmed` и жёстко
+ * сегодняшняя дата — «9 сентября в 11:00 Сходить с мамой в МВД» целиком
+ * становилось названием, хотя `parseQuickAdd` на той же строке возвращал
+ * верные название/дату/время. Разбор и создание живут в общем модуле
+ * `../state/create-task-from-text.js` — см. его заголовок.
  *
  * --- Композиция: `Input`+`Button`, не компактный `QuickAdd` -----------------
  *
@@ -46,39 +29,45 @@
  * по-прежнему отправляет форму нативно (`<form onSubmit>`), тот же приём,
  * что и в `QuickAdd.tsx` (`@shagi/ui`, комментарий у её `<form>`).
  */
-import { useState, type FormEvent, type ReactElement } from 'react';
+import { useMemo, useState, type FormEvent, type ReactElement } from 'react';
 import { Temporal } from '@js-temporal/polyfill';
 
 import { t } from '@shagi/i18n';
-import { createTaskCommand, generateDeviceId, generateUuidV7, type Uuid } from '@shagi/core';
-import { Button, Input } from '@shagi/ui';
+import { Button, Input, ParsingPreview, type ParsingPreviewToken } from '@shagi/ui';
 
 import { useAppController, useStorage } from '../state/context.js';
+import { getLocalIdentity } from '../state/local-identity.js';
+import {
+  composerNow,
+  displayTitleForChips,
+  parseComposerText,
+  submitComposerTask,
+} from '../state/create-task-from-text.js';
+import { chipLabel } from './chip-label.js';
 import './FirstTask.css';
-
-interface LocalIdentity {
-  readonly ownerScope: Uuid;
-  readonly deviceId: Uuid;
-}
-
-let cachedLocalIdentity: LocalIdentity | null = null;
-
-/** См. заголовок файла — ленивая генерация, закэшированная на время жизни модуля. */
-function getLocalIdentity(): LocalIdentity {
-  cachedLocalIdentity ??= { ownerScope: generateUuidV7(), deviceId: generateDeviceId() };
-  return cachedLocalIdentity;
-}
 
 export function FirstTask(): ReactElement {
   const controller = useAppController();
   const storage = useStorage();
-  const [title, setTitle] = useState('');
+  const [text, setText] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(false);
 
+  // Снимок часов фиксируется на монтирование экрана, а не пересчитывается на
+  // каждое нажатие клавиши: иначе «сегодня» могло бы смениться посреди
+  // набора фразы, и превью разошлось бы с тем, что реально сохранится.
+  const now = useMemo(() => composerNow(), []);
+  const parsed = useMemo(() => parseComposerText({ text, now }), [text, now]);
+
+  const previewTitle = displayTitleForChips(text, parsed.chips);
+  const tokens: ParsingPreviewToken[] = parsed.chips.map((chip, index) => ({
+    id: `${chip.category}-${index}`,
+    kind: chip.category,
+    label: chipLabel(chip, null),
+  }));
+
   async function handleSubmit(): Promise<void> {
-    const trimmed = title.trim();
-    if (trimmed.length === 0 || submitting) return;
+    if (text.trim().length === 0 || submitting) return;
 
     setSubmitting(true);
     setError(false);
@@ -86,34 +75,26 @@ export function FirstTask(): ReactElement {
     const { ownerScope, deviceId } = getLocalIdentity();
     // `StoragePort` (`@shagi/storage`, что реально отдаёт `useStorage()`) —
     // структурный супертип `CommandStoragePort`, которого просит команда
-    // (ADR-0003 в `packages/core/src/commands/storage-port.ts`: методы
-    // объявлены method-синтаксисом, поэтому бивариантны и проходят проверку
-    // присваиваемости без адаптера) — передаём его напрямую, без каста.
-    const result = await createTaskCommand(
+    // (ADR-0003 в `packages/core/src/commands/storage-port.ts`).
+    const result = await submitComposerTask(
+      text,
+      parsed.chips,
       {
-        ownerScope,
-        title: trimmed,
         // `01§2`/`01§3`: онбординг First Task — сразу `processed` + сегодня,
-        // это не голый Inbox-захват без контекста.
+        // это не голый Inbox-захват без контекста. Сегодняшняя дата теперь
+        // ЗАПАСНАЯ: явно названную в фразе дату она не перебивает.
         captureState: 'processed',
-        plannedDate: Temporal.Now.plainDateISO(),
-        source: 'user',
-        sourceChannel: 'text',
+        fallbackDate: now.date,
         // Первая задача первого локального профиля — список Today пуст по
-        // определению (`rank-input.ts`: «явный признак "список пуст"»),
-        // соседей запрашивать не у кого.
+        // определению (`rank-input.ts`).
         rank: { placement: 'empty-list' },
       },
-      {
-        storage,
-        now: Temporal.Now.instant(),
-        deviceId,
-      },
+      { storage, now: Temporal.Now.instant(), deviceId, ownerScope },
     );
 
     setSubmitting(false);
 
-    if (result.status === 'rejected') {
+    if (result.status !== 'ok') {
       setError(true);
       return;
     }
@@ -132,9 +113,9 @@ export function FirstTask(): ReactElement {
       <p className="shagi-first-task__description">{t('onboarding', 'firstTask.description')}</p>
 
       <Input
-        value={title}
+        value={text}
         onChange={(event) => {
-          setTitle(event.target.value);
+          setText(event.target.value);
           setError(false);
         }}
         aria-label={t('onboarding', 'firstTask.inputLabel')}
@@ -145,6 +126,16 @@ export function FirstTask(): ReactElement {
         autoFocus
       />
 
+      {/* Владелец продукта: «дата и время должны быть показаны chips до
+       * создания» — человек обязан увидеть, ЧТО именно поймёт продукт, до
+       * того как нажмёт «Добавить», а не обнаружить это в списке задач. */}
+      <ParsingPreview
+        title={previewTitle}
+        tokens={tokens}
+        label={t('onboarding', 'firstTask.previewLabel')}
+        emptyState={<p>{t('onboarding', 'firstTask.previewEmpty')}</p>}
+      />
+
       <div className="shagi-first-task__footer">
         <Button
           type="submit"
@@ -152,7 +143,7 @@ export function FirstTask(): ReactElement {
           size="lg"
           block
           loading={submitting}
-          disabled={title.trim().length === 0}
+          disabled={text.trim().length === 0}
         >
           {t('onboarding', 'firstTask.submitLabel')}
         </Button>

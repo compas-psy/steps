@@ -136,10 +136,10 @@
  * импорт приватной функции `FirstTask.tsx`) — то же сознательное решение,
  * что уже задокументировано там.
  */
-import { useEffect, useMemo, useState, type ReactElement, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactElement } from 'react';
 import { Temporal } from '@js-temporal/polyfill';
 
-import { formatDate, formatTime, t, weekdayName } from '@shagi/i18n';
+import { t } from '@shagi/i18n';
 import {
   BottomSheet,
   Button,
@@ -149,48 +149,28 @@ import {
   QuickAdd as QuickAddInput,
   type ParsingPreviewToken,
 } from '@shagi/ui';
-import {
-  attachLabelToTaskCommand,
-  createLabelCommand,
-  createRecurringTaskCommand,
-  createTaskCommand,
-  generateDeviceId,
-  generateUuidV7,
-  normalizeLabelName,
-  type CreateTaskInput,
-  type NewRank,
-  type Project,
-  type Uuid,
-} from '@shagi/core';
-import {
-  parseQuickAdd,
-  type AnyAcceptedChip,
-  type ChipCategory,
-  type InheritedContext,
-  type NowContext,
-  type ParseQuickAddResult,
-  type RecurrenceChipValue,
-  type SourceSpan,
+import { normalizeLabelName, type NewRank, type Project } from '@shagi/core';
+import type {
+  AnyAcceptedChip,
+  InheritedContext,
+  NowContext,
+  ParseQuickAddResult,
 } from '@shagi/nlp';
 
 import { useAppController, useAppState, useStorage } from '../state/context.js';
+import { getLocalIdentity } from '../state/local-identity.js';
+import {
+  chipKey,
+  composerNow,
+  displayTitleForChips,
+  findDateChip,
+  parseComposerText,
+  submitComposerTask,
+} from '../state/create-task-from-text.js';
+import { chipLabel } from './chip-label.js';
 import './QuickAdd.css';
 
 const DRAFT_STORAGE_KEY = 'shagi:quickAdd:draft';
-
-// --- Локальная идентичность устройства (см. заголовок файла, п.7) -----------
-
-interface LocalIdentity {
-  readonly ownerScope: Uuid;
-  readonly deviceId: Uuid;
-}
-
-let cachedLocalIdentity: LocalIdentity | null = null;
-
-function getLocalIdentity(): LocalIdentity {
-  cachedLocalIdentity ??= { ownerScope: generateUuidV7(), deviceId: generateDeviceId() };
-  return cachedLocalIdentity;
-}
 
 // --- Draft safety (см. заголовок файла, п.6) --------------------------------
 // `localStorage` может бросить (приватный режим/заблокированное хранилище) —
@@ -227,138 +207,7 @@ function clearDraft(): void {
   }
 }
 
-// --- Ключ чипа для слоя accept/reject-решений (см. заголовок, п.5) ---------
-
-function chipKey(chip: AnyAcceptedChip): string {
-  return chip.span !== null
-    ? `${chip.category}:${chip.span.start}:${chip.span.end}`
-    : `${chip.category}:implied`;
-}
-
 const TODAY_BADGE_KEY = 'todayBadge:implied';
-
-/** Тот же алгоритм, что `internal/assemble.ts buildTitle` в `@shagi/nlp` —
- * см. заголовок файла, п.5, за полным обоснованием переиспользования. */
-function buildDisplayTitle(rawText: string, spans: readonly SourceSpan[]): string {
-  const sorted = [...spans].toSorted((a, b) => a.start - b.start);
-  let result = '';
-  let cursor = 0;
-  for (const span of sorted) {
-    result += rawText.slice(cursor, span.start);
-    cursor = span.end;
-  }
-  result += rawText.slice(cursor);
-  return result.replace(/\s+/g, ' ').trim();
-}
-
-/** Найденный чип даты (`date` ИЛИ `weekday` — обе категории несут
- * `DateChipValue`, `01§4`: только одна дата у задачи). */
-function findDateChip(chips: readonly AnyAcceptedChip[]): AnyAcceptedChip | undefined {
-  return chips.find((c) => c.category === 'date' || c.category === 'weekday');
-}
-
-function findChip<C extends ChipCategory>(
-  chips: readonly AnyAcceptedChip[],
-  category: C,
-): Extract<AnyAcceptedChip, { category: C }> | undefined {
-  return chips.find((c) => c.category === category) as
-    Extract<AnyAcceptedChip, { category: C }> | undefined;
-}
-
-// --- Recurrence-чип: человекочитаемая подпись (эпик E11.2) -------------------
-//
-// Тот же приём/то же обоснование формулировок, что `TaskDetail.tsx`
-// `recurrenceRuleLabel` (см. её заголовок за подробным разбором решений по
-// склонениям) — узкое дублирование между двумя экранами, не общий модуль.
-// `RecurrenceChipValue` (`@shagi/nlp`) уже — подмножество форм, которые
-// умеет распознать грамматика (`01§4`, шесть форм: день/будни/конкретный
-// день недели/число месяца/раз в.../каждые N) — `unit` здесь никогда не
-// `'year'` (NLP такую форму не производит), поэтому этот helper короче
-// `TaskDetail.tsx`-варианта на одну ветку.
-
-const QUICK_ADD_RECURRENCE_WEEKDAYS_MON_FRI: readonly number[] = [1, 2, 3, 4, 5];
-
-function isQuickAddRecurrenceWeekdaysMonFri(byWeekday: readonly number[]): boolean {
-  return (
-    byWeekday.length === QUICK_ADD_RECURRENCE_WEEKDAYS_MON_FRI.length &&
-    QUICK_ADD_RECURRENCE_WEEKDAYS_MON_FRI.every((day) => byWeekday.includes(day))
-  );
-}
-
-/** Каждая ветка — литеральный вызов `t()` (тот же приём, что `chipLabel`
- * ради статического гейта `check-i18n-catalog.mjs`). */
-function recurrenceChipLabel(value: RecurrenceChipValue): string {
-  switch (value.unit) {
-    case 'day':
-      return value.interval === 1
-        ? t('quickAdd', 'chips.recurrenceEveryDay')
-        : t('quickAdd', 'chips.recurrenceEveryNDays', { interval: value.interval });
-    case 'week': {
-      if (value.byWeekday !== undefined && value.byWeekday.length > 0) {
-        if (isQuickAddRecurrenceWeekdaysMonFri(value.byWeekday)) {
-          return t('quickAdd', 'chips.recurrenceWeekdays');
-        }
-        const days = value.byWeekday
-          .toSorted((a, b) => a - b)
-          .map((day) => weekdayName(day, 'long'))
-          .join(', ');
-        return t('quickAdd', 'chips.recurrenceWeeklyOnDays', { days });
-      }
-      return value.interval === 1
-        ? t('quickAdd', 'chips.recurrenceEveryWeek')
-        : t('quickAdd', 'chips.recurrenceEveryNWeeks', { interval: value.interval });
-    }
-    case 'month':
-      return value.byMonthDay !== undefined
-        ? t('quickAdd', 'chips.recurrenceMonthlyOnDay', { day: value.byMonthDay })
-        : value.interval === 1
-          ? t('quickAdd', 'chips.recurrenceEveryMonth')
-          : t('quickAdd', 'chips.recurrenceEveryNMonths', { interval: value.interval });
-  }
-}
-
-/** `switch` без `default` по `chip.category` — умышленно (тот же приём, что
- * `NlpOnboarding.tsx chipLabel`): если категория когда-нибудь вырастет, это
- * перестанет компилироваться, а не молча покажет пустой чип. */
-function chipLabel(chip: AnyAcceptedChip, resolvedProject: Project | null): ReactNode {
-  switch (chip.category) {
-    case 'date':
-    case 'weekday':
-      return formatDate(chip.value.date, { weekday: 'short' });
-    case 'time':
-      return formatTime(chip.value.time);
-    case 'deadline':
-      return chip.value.time === null
-        ? t('quickAdd', 'chips.deadlineDateOnly', {
-            date: formatDate(chip.value.date, { weekday: 'short' }),
-          })
-        : t('quickAdd', 'chips.deadlineWithTime', {
-            date: formatDate(chip.value.date, { weekday: 'short' }),
-            time: formatTime(chip.value.time),
-          });
-    case 'duration':
-      return t('quickAdd', 'chips.durationMinutes', { minutes: chip.value.minutes });
-    case 'recurrence':
-      return recurrenceChipLabel(chip.value);
-    case 'project':
-      return resolvedProject !== null
-        ? resolvedProject.title
-        : t('quickAdd', 'chips.projectNotFound', { name: chip.value.name });
-    case 'label':
-      return chip.value.name;
-    case 'priority':
-      switch (chip.value.priority) {
-        case 1:
-          return t('quickAdd', 'chips.priorityP1');
-        case 2:
-          return t('quickAdd', 'chips.priorityP2');
-        case 3:
-          return t('quickAdd', 'chips.priorityP3');
-        case 4:
-          return t('quickAdd', 'chips.priorityP4');
-      }
-  }
-}
 
 export function QuickAdd(): ReactElement | null {
   const { quickAdd } = useAppState();
@@ -389,21 +238,15 @@ export function QuickAdd(): ReactElement | null {
   // `now`/`inherited` — зафиксированы на момент открытия оверлея (`01§4`:
   // Composer получает `now` один раз при открытии), не пересчитываются на
   // каждое изменение текста — тот же приём, что `NlpOnboarding.tsx`.
-  const now: NowContext = useMemo(
-    () => ({
-      date: Temporal.Now.plainDateISO(),
-      time: Temporal.Now.plainTimeISO(),
-      timeZone: Temporal.Now.timeZoneId(),
-    }),
-    [],
-  );
+  const now: NowContext = useMemo(() => composerNow(), []);
   const inherited: InheritedContext | undefined = useMemo(
     () => (origin === 'today' ? { date: now.date } : undefined),
     [origin, now.date],
   );
 
   const parsed: ParseQuickAddResult = useMemo(
-    () => parseQuickAdd({ text: rawText, now, ...(inherited !== undefined ? { inherited } : {}) }),
+    () =>
+      parseComposerText({ text: rawText, now, ...(inherited !== undefined ? { inherited } : {}) }),
     [rawText, now, inherited],
   );
 
@@ -415,10 +258,7 @@ export function QuickAdd(): ReactElement | null {
   // `recurrence` больше не исключён (эпик E11.2, см. заголовок файла, п.4) —
   // теперь реально создаёт повтор, его текст вычищается из заголовка тем же
   // путём, что остальные категории.
-  const spansToStrip: SourceSpan[] = activeChips
-    .filter((chip) => chip.span !== null)
-    .map((chip) => chip.span as SourceSpan);
-  const displayTitle = buildDisplayTitle(rawText, spansToStrip);
+  const displayTitle = displayTitleForChips(rawText, activeChips);
 
   function handleChangeText(value: string): void {
     setRawText(value);
@@ -457,108 +297,42 @@ export function QuickAdd(): ReactElement | null {
 
     try {
       const identity = getLocalIdentity();
-      const deps = { storage, now: Temporal.Now.instant(), deviceId: identity.deviceId };
-
-      // --- Проект: только find (см. заголовок, п.3) ------------------------
-      const projectChip = findChip(activeChips, 'project');
-      const resolvedProject =
-        projectChip !== undefined
-          ? (projects.find(
-              (p) => normalizeLabelName(p.title) === normalizeLabelName(projectChip.value.name),
-            ) ?? null)
-          : null;
-
-      // --- Метки: find-or-create (см. заголовок, п.3) -----------------------
-      const labelChips = activeChips.filter((c) => c.category === 'label');
-      const labelIds: Uuid[] = [];
-      for (const labelChip of labelChips) {
-        const name = labelChip.category === 'label' ? labelChip.value.name : '';
-        const normalized = normalizeLabelName(name);
-        const found = await storage.labels.findByNormalizedName(normalized);
-        if (found !== null) {
-          labelIds.push(found.id);
-          continue;
-        }
-        const existingLabels = await storage.labels.listAll();
-        const lastLabel = existingLabels.at(-1);
-        const rank: NewRank =
-          lastLabel === undefined
-            ? { placement: 'empty-list' }
-            : { placement: 'end', lastRank: lastLabel.rank };
-        const createdLabel = await createLabelCommand(
-          { displayName: name, colorToken: null, rank },
-          deps,
-        );
-        if (createdLabel.status !== 'ok') {
-          throw new Error('label creation rejected');
-        }
-        labelIds.push(createdLabel.label.id);
-      }
-
-      // --- Значения из чипов -------------------------------------------------
-      const priorityChip = findChip(activeChips, 'priority');
-      const timeChip = findChip(activeChips, 'time');
-      const durationChip = findChip(activeChips, 'duration');
-      const deadlineChip = findChip(activeChips, 'deadline');
-      const recurrenceChip = findChip(activeChips, 'recurrence');
-
-      const plannedDate =
-        dateChip !== undefined
-          ? (dateChip.value as { date: Temporal.PlainDate }).date
-          : showTodayBadge
-            ? now.date
-            : null;
-
       const captureState = origin === 'today' ? 'processed' : 'inbox';
 
       const rankQueue = await storage.tasks.listByCaptureStateAndStatus(captureState, 'active');
       const lastTask = rankQueue.at(-1);
-      const rank: CreateTaskInput['rank'] =
+      const rank: NewRank =
         lastTask === undefined
           ? { placement: 'empty-list' }
           : { placement: 'end', lastRank: lastTask.rank };
 
-      const input: CreateTaskInput = {
-        ownerScope: identity.ownerScope,
-        title: displayTitle,
-        captureState,
-        source: 'user',
-        sourceChannel: 'text',
-        rank,
-        ...(priorityChip !== undefined ? { priority: priorityChip.value.priority } : {}),
-        ...(plannedDate !== null ? { plannedDate } : {}),
-        ...(timeChip !== undefined ? { plannedTime: timeChip.value.time } : {}),
-        ...(durationChip !== undefined ? { durationMin: durationChip.value.minutes } : {}),
-        ...(deadlineChip !== undefined
-          ? { deadlineDate: deadlineChip.value.date, deadlineTime: deadlineChip.value.time }
-          : {}),
-        ...(resolvedProject !== null
-          ? { projectId: resolvedProject.id, originalProjectNameSnapshot: resolvedProject.title }
-          : {}),
-      };
+      // Сборка команды из чипов живёт в `../state/create-task-from-text.js` —
+      // общем модуле всех точек входа (см. его заголовок за разбором того,
+      // почему у экранов больше нет своих версий этой логики).
+      const result = await submitComposerTask(
+        rawText,
+        activeChips,
+        {
+          captureState,
+          rank,
+          projects,
+          // `01§3`, таблица «Origin → Inherited values»: с Today задача
+          // заводится НА СЕГОДНЯ, если в самой фразе даты нет; человек мог
+          // снять и этот подразумеваемый бейдж.
+          fallbackDate: showTodayBadge ? now.date : null,
+        },
+        {
+          storage,
+          now: Temporal.Now.instant(),
+          deviceId: identity.deviceId,
+          ownerScope: identity.ownerScope,
+        },
+      );
 
-      // Активный чип `recurrence` → `createRecurringTaskCommand` вместо
-      // `createTaskCommand` (эпик E11.2, см. заголовок файла, п.4) — ровно
-      // те же поля `input`, плюс `anchorType`/`rule`. `anchorType:'scheduled'`
-      // — фиксированное умолчание (обоснование там же).
-      const created =
-        recurrenceChip !== undefined
-          ? await createRecurringTaskCommand(
-              { ...input, anchorType: 'scheduled', rule: recurrenceChip.value },
-              deps,
-            )
-          : await createTaskCommand(input, deps);
-      if (created.status !== 'ok') {
+      if (result.status !== 'ok') {
         setSubmitError(t('quickAdd', 'errors.submitFailed'));
         setSubmitting(false);
         return;
-      }
-
-      for (const labelId of labelIds) {
-        await attachLabelToTaskCommand(
-          { taskId: created.task.id, labelId },
-          { storage, taskStorage: storage, now: deps.now, deviceId: identity.deviceId },
-        );
       }
 
       clearDraft();
@@ -572,10 +346,8 @@ export function QuickAdd(): ReactElement | null {
       // на `bigint` в `patchJson` серии повтора — `@shagi/storage`) за
       // одинаковым «Не удалось создать задачу» для любой причины. Здесь —
       // не заголовок/описание задачи (SPEC/05 §6): каждый throw этой цепочки
-      // (`create-task.ts`/`create-recurring-task.ts`/`task-label-attach.ts`/
-      // `@shagi/storage` driver) — либо фиксированная строка, либо
-      // инфраструктурное сообщение драйвера/IPC, которое подставляет только
-      // ШАБЛОН SQL (`?`-плейсхолдеры), никогда не значения параметров.
+      // — либо фиксированная строка, либо инфраструктурное сообщение
+      // драйвера/IPC, которое подставляет только ШАБЛОН SQL.
       // eslint-disable-next-line no-console -- диагностика инфраструктурного сбоя команды, не пользовательский контент (см. комментарий выше)
       console.error('QuickAdd.handleSubmit', error instanceof Error ? error.message : error);
       setSubmitError(t('quickAdd', 'errors.submitFailed'));

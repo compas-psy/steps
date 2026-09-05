@@ -6,7 +6,6 @@
   "welcome.startLocal": "Начать",
   "welcome.signIn": "Войти",
   "welcome.footnote": "Работает офлайн. Аккаунт можно добавить позже.",
-
   "signIn.title": "Вход",
   "signIn.description": "Аккаунт нужен только для синхронизации между устройствами — без него ШАГИ работают полностью локально.",
   "signIn.emailLabel": "Электронная почта",
@@ -15,15 +14,13 @@
   "signIn.yandexLabel": "Войти через Яндекс",
   "signIn.continueLocalLabel": "Продолжить локально",
   "signIn.unavailableError": "Вход по аккаунту появится в одном из следующих обновлений. Пока доступен локальный режим.",
-
   "firstTask.title": "Первая задача",
   "firstTask.description": "Впишите то, что нужно сделать сегодня, — так вы сразу увидите ШАГИ в деле.",
   "firstTask.inputLabel": "Текст задачи",
   "firstTask.submitLabel": "Добавить задачу",
-  "firstTask.placeholder": "Например: позвонить маме",
+  "firstTask.placeholder": "Например: 9 сентября в 11:00 сходить к врачу",
   "firstTask.error": "Не удалось сохранить задачу. Проверьте текст и попробуйте снова.",
   "firstTask.footnote": "Так теперь будет выглядеть каждый день",
-
   "nlpOnboarding.title": "Обычный русский текст",
   "nlpOnboarding.description": "ШАГИ понимают дату, время, проект, метку, приоритет и длительность прямо в строке ввода — без подключения к интернету.",
   "nlpOnboarding.inputLabel": "Текст для разбора",
@@ -31,7 +28,6 @@
   "nlpOnboarding.previewLabel": "Распознанные фрагменты",
   "nlpOnboarding.emptyState": "Начните печатать — распознанные фрагменты появятся здесь.",
   "nlpOnboarding.continueLabel": "Понятно",
-
   "nlp.chip.deadlineDateOnly": "Срок: {date}",
   "nlp.chip.deadlineWithTime": "Срок: {date}, {time}",
   "nlp.chip.duration": "{minutes} мин",
@@ -40,5 +36,7 @@
   "nlp.chip.priority": "Приоритет P{level}",
   "nlp.chip.recurrence.day": "Каждые {interval, plural, one {# день} few {# дня} many {# дней} other {# дня}}",
   "nlp.chip.recurrence.week": "Каждые {interval, plural, one {# неделю} few {# недели} many {# недель} other {# недели}}",
-  "nlp.chip.recurrence.month": "Каждые {interval, plural, one {# месяц} few {# месяца} many {# месяцев} other {# месяца}}"
+  "nlp.chip.recurrence.month": "Каждые {interval, plural, one {# месяц} few {# месяца} many {# месяцев} other {# месяца}}",
+  "firstTask.previewLabel": "Что будет создано",
+  "firstTask.previewEmpty": "Дату, время, метку и повтор можно написать прямо в строке."
 }
