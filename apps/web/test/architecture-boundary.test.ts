@@ -217,3 +217,49 @@ describe('SPEC §3: в JSX оболочек нет пользовательск�
     });
   }
 });
+
+/**
+ * Оболочка, объявившая нативный SQLite, ОБЯЗАНА вызвать `prepareStorage()`
+ * до монтирования — `resolveStorageBackend` на `kind: 'sqlite'` бросает
+ * намеренно (ADR-0005: открытие базы, миграции схемы и перенос по природе
+ * async, а молчаливого отката на IndexedDB нет).
+ *
+ * Правило заведено по живой поломке. Десктопная оболочка объявила
+ * `kind: 'sqlite'` и передала его прямо в `<App/>`. Приложение при этом
+ * ЗАПУСКАЛОСЬ: WebView2 создавал полноценный профиль, Windows не писала ни
+ * одного отчёта о падении — но React падал на первом рендере, окно
+ * оставалось пустым, и база не создавалась никогда. Ни typecheck, ни 13
+ * тестов оболочки этого не видели: `main.tsx` в них не монтируется.
+ *
+ * Проверка идёт по исходнику оболочки, а не по поведению, ровно потому,
+ * что поведение здесь требует настоящего WebView2 и раннера — а класс
+ * ошибки («объявил нативный backend и забыл про подготовку») виден в двух
+ * строках текста и повторится на iOS/macOS, когда до них дойдёт черёд.
+ */
+describe('ADR-0005: нативный SQLite требует prepareStorage() в оболочке', () => {
+  const entryFiles = sourceFiles.filter((file) => file.endsWith('main.tsx'));
+
+  it('в дереве apps/*/src нашлись точки входа', () => {
+    expect(entryFiles.length).toBeGreaterThan(0);
+  });
+
+  for (const file of entryFiles) {
+    const relative = path.relative(APPS_ROOT, file);
+    it(`${relative}: объявляет kind:'sqlite' ⇒ вызывает prepareStorage`, () => {
+      // Комментарии срезаются ДО проверки. Первая версия правила этого не
+      // делала, и упоминание `prepareStorage()` в доксблоке засчитывалось
+      // за вызов: правило проходило на оболочке, где вызова уже не было.
+      // Поймано мутацией — ровно тем, ради чего мутации и ставят.
+      const source = readFileSync(file, 'utf8')
+        .replace(/\/\*[\s\S]*?\*\//g, '')
+        .replace(/^\s*\/\/.*$/gm, '');
+      const declaresNative = /kind:\s*'sqlite'/.test(source);
+      if (!declaresNative) return;
+      expect(
+        source.includes('prepareStorage('),
+        `${relative} объявляет нативный backend, но не вызывает prepareStorage() — ` +
+          'приложение смонтируется с пустым окном и не создаст базу',
+      ).toBe(true);
+    });
+  }
+});
