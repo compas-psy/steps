@@ -1143,6 +1143,27 @@ async function selectReminderDateToday(session, label, attempts = 12, delayMs = 
   );
 }
 
+/**
+ * Клик по тексту, которого может и не быть, — без падения.
+ *
+ * Ровно один случай: после M52-стирания приложение возвращается к первому
+ * запуску, и создание первой задачи снова показывает экран разбора
+ * русского текста с кнопкой «Понятно» (основной поток её кликает, а
+ * пост-стирание — нет). Прогон `33941441687` на этом и завис: задача в
+ * базе есть, а её строки на экране нет, потому что поверх стоит этот
+ * экран. Требовать кнопку жёстко нельзя — появление зависит от состояния
+ * онбординга, поэтому «есть — кликаем, нет — идём дальше», а
+ * ответственность за результат остаётся у следующего шага
+ * (`openTaskRow` по-прежнему обязан открыть строку).
+ */
+async function clickByTextIfPresent(session, text, attempts = 4, delayMs = 500) {
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    if ((await session.cdp.evaluate(clickByText(text))) === true) return true;
+    await sleep(delayMs);
+  }
+  return false;
+}
+
 async function saveReminder(session, label) {
   const state = JSON.parse(await session.cdp.evaluate(readButtonState('Сохранить')));
   if (state.found !== true) {
@@ -2876,6 +2897,14 @@ async function main() {
     fail(`после стирания база не принимает новые задачи: в ней ${JSON.stringify(reused.titles)}`);
   }
   console.log('После стирания база снова принимает записи.');
+  // См. `clickByTextIfPresent`: после стирания это снова ПЕРВЫЙ запуск, и
+  // экран разбора русского текста перекрывает список задач.
+  if (await clickByTextIfPresent(second, 'Понятно')) {
+    console.log(
+      'После стирания показался экран разбора русского текста — закрыт кнопкой «Понятно».',
+    );
+    await sleep(1200);
+  }
 
   // Task B8, Step 9 — «scheduler снова пригоден для работы» ПОСЛЕ M52,
   // сделано конкретным: не просто новая строка задачи (уже проверено выше),
