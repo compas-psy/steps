@@ -1048,6 +1048,30 @@ async function pickReminderTime(session, minutesAhead) {
   return { hour, minute };
 }
 
+/**
+ * Клик по видимому тексту, но с ОЖИДАНИЕМ его появления, а не одной
+ * попыткой после фиксированного `sleep`.
+ *
+ * Так было написано всё остальное ожидание в этом файле (`waitFor`), и
+ * только клики оставались одноразовыми: «подождали 1.5 с — кликнули —
+ * если не нашли, шаг провален». Прогон `33929233806` упал ровно на этом
+ * («кнопка «Понятно» … не найдена») в месте, которое проходило десятки
+ * раз до того: экран просто не успел отрисоваться в отведённые секунды.
+ *
+ * Проверка от этого не слабеет: кнопка по-прежнему ОБЯЗАНА появиться, и
+ * если её нет — вызывающий код падает своим прежним сообщением. Меняется
+ * только то, что «ещё не отрисовалось» перестаёт быть неотличимо от «нет
+ * вовсе». На успешном пути первая же попытка возвращает true, никакой
+ * лишней задержки не добавляется.
+ */
+async function clickByTextWhenReady(session, text, options = {}, attempts = 12, delayMs = 500) {
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    if ((await session.cdp.evaluate(clickByText(text, options))) === true) return true;
+    await sleep(delayMs);
+  }
+  return false;
+}
+
 async function main() {
   const taskTitle = 'Проверка сборки';
 
@@ -1143,7 +1167,7 @@ async function main() {
   let first = await launchAndAttach('первый запуск');
 
   console.log('── Онбординг: «Начать» ──');
-  if ((await first.cdp.evaluate(clickByText('Начать'))) !== true) {
+  if (!(await clickByTextWhenReady(first, 'Начать'))) {
     fail(
       `кнопка «Начать» не найдена. Экран показывает: ${JSON.stringify(first.screen.slice(0, 200))}`,
     );
@@ -1155,13 +1179,13 @@ async function main() {
     fail('поле ввода первой задачи не найдено');
   }
   await sleep(400);
-  if ((await first.cdp.evaluate(clickByText('Добавить задачу'))) !== true) {
+  if (!(await clickByTextWhenReady(first, 'Добавить задачу'))) {
     fail('кнопка «Добавить задачу» не найдена');
   }
   await sleep(1500);
 
   console.log('── Проход до Today ──');
-  if ((await first.cdp.evaluate(clickByText('Понятно'))) !== true) {
+  if (!(await clickByTextWhenReady(first, 'Понятно'))) {
     fail('кнопка «Понятно» (экран разбора русского текста) не найдена');
   }
   await sleep(1500);
@@ -1206,7 +1230,7 @@ async function main() {
         JSON.stringify(String(beforeAddText).slice(0, 300)),
     );
   }
-  if ((await first.cdp.evaluate(clickByText('Добавить напоминание'))) !== true) {
+  if (!(await clickByTextWhenReady(first, 'Добавить напоминание'))) {
     fail('кнопка «Добавить напоминание» не найдена');
   }
   await sleep(900);
@@ -1215,7 +1239,7 @@ async function main() {
   }
   await sleep(500);
   await pickReminderTime(first, 5);
-  if ((await first.cdp.evaluate(clickByText('Сохранить', { exact: true }))) !== true) {
+  if (!(await clickByTextWhenReady(first, 'Сохранить', { exact: true }))) {
     fail('кнопка «Сохранить» напоминания не найдена');
   }
 
@@ -1672,7 +1696,7 @@ async function main() {
   // Тот же онбординг-флоу, что Step 1 в самом начале файла — независимый
   // прогон означает независимую задачу, не переиспользование состояния.
   console.log('── Step 2d: онбординг и создание задачи (независимый прогон) ──');
-  if ((await first.cdp.evaluate(clickByText('Начать'))) !== true) {
+  if (!(await clickByTextWhenReady(first, 'Начать'))) {
     fail('Step 2d: кнопка «Начать» не найдена после reinstall');
   }
   await sleep(1200);
@@ -1680,11 +1704,11 @@ async function main() {
     fail('Step 2d: поле ввода первой задачи не найдено');
   }
   await sleep(400);
-  if ((await first.cdp.evaluate(clickByText('Добавить задачу'))) !== true) {
+  if (!(await clickByTextWhenReady(first, 'Добавить задачу'))) {
     fail('Step 2d: кнопка «Добавить задачу» не найдена');
   }
   await sleep(1500);
-  if ((await first.cdp.evaluate(clickByText('Понятно'))) !== true) {
+  if (!(await clickByTextWhenReady(first, 'Понятно'))) {
     fail('Step 2d: кнопка «Понятно» (экран разбора русского текста) не найдена');
   }
   await sleep(1500);
@@ -1693,7 +1717,7 @@ async function main() {
   }
   await sleep(1200);
 
-  if ((await first.cdp.evaluate(clickByText('Добавить напоминание'))) !== true) {
+  if (!(await clickByTextWhenReady(first, 'Добавить напоминание'))) {
     fail('Step 2d: кнопка «Добавить напоминание» не найдена');
   }
   await sleep(900);
@@ -1702,7 +1726,7 @@ async function main() {
   }
   await sleep(500);
   const firstReminderTime = await pickReminderTime(first, 30);
-  if ((await first.cdp.evaluate(clickByText('Сохранить', { exact: true }))) !== true) {
+  if (!(await clickByTextWhenReady(first, 'Сохранить', { exact: true }))) {
     fail('Step 2d: кнопка «Сохранить» напоминания не найдена');
   }
   await sleep(2000);
@@ -1768,7 +1792,7 @@ async function main() {
 
   // ─── Тот же reminder: изменить время и сохранить (atomic replace на
   // реальном Android) ────────────────────────────────────────────────────
-  if ((await first.cdp.evaluate(clickByText('Изменить напоминание'))) !== true) {
+  if (!(await clickByTextWhenReady(first, 'Изменить напоминание'))) {
     fail('Step 2d: кнопка «Изменить напоминание» не найдена перед проверкой atomic replace');
   }
   await sleep(900);
@@ -1776,7 +1800,7 @@ async function main() {
   // `firstReminderTime` — иначе «время не изменилось» и «изменилось на то
   // же самое» неразличимы.
   const replacedReminderTime = await pickReminderTime(first, 50);
-  if ((await first.cdp.evaluate(clickByText('Сохранить', { exact: true }))) !== true) {
+  if (!(await clickByTextWhenReady(first, 'Сохранить', { exact: true }))) {
     fail('Step 2d: кнопка «Сохранить» изменённого напоминания не найдена');
   }
   await sleep(2000);
@@ -1879,14 +1903,14 @@ async function main() {
   console.log('── Step 3: изменение времени заменяет alarm, не задваивает (claim #6) ──');
   const beforeUpdate = listRealSystemAlarms();
   const beforeUpdateSnapshots = beforeUpdate.flat().map(parseTriggerSnapshot);
-  if ((await first.cdp.evaluate(clickByText('Изменить напоминание'))) !== true) {
+  if (!(await clickByTextWhenReady(first, 'Изменить напоминание'))) {
     fail('кнопка «Изменить напоминание» не найдена перед Step 3');
   }
   await sleep(900);
   // Заметно другое время, не то же значение, что Step 2/2c — иначе
   // «время не изменилось» и «время изменилось на то же самое» неразличимы.
   await pickReminderTime(first, 25);
-  if ((await first.cdp.evaluate(clickByText('Сохранить', { exact: true }))) !== true) {
+  if (!(await clickByTextWhenReady(first, 'Сохранить', { exact: true }))) {
     fail('кнопка «Сохранить» изменённого напоминания не найдена');
   }
   await sleep(2000);
@@ -1948,7 +1972,7 @@ async function main() {
   }
 
   console.log('── Step 4: отмена снимает alarm (claim #7) ──');
-  if ((await first.cdp.evaluate(clickByText('Отменить напоминание'))) !== true) {
+  if (!(await clickByTextWhenReady(first, 'Отменить напоминание'))) {
     fail('кнопка «Отменить напоминание» не найдена');
   }
   const afterCancel = await waitFor('пустой `dumpsys alarm` после отмены', 15, 700, () => {
@@ -1962,7 +1986,7 @@ async function main() {
     );
   }
   console.log('Отмена подтверждена: `dumpsys alarm` для пакета пуст.');
-  if ((await first.cdp.evaluate(clickByText('Готово', { exact: true }))) !== true) {
+  if (!(await clickByTextWhenReady(first, 'Готово', { exact: true }))) {
     fail('кнопка «Готово» карточки не найдена после отмены напоминания (Step 4)');
   }
   await sleep(900);
@@ -1992,7 +2016,7 @@ async function main() {
   await sleep(1200);
 
   console.log('── Step 5.0: планирование напоминания для force-stop-сценария ──');
-  if ((await first.cdp.evaluate(clickByText('Добавить напоминание'))) !== true) {
+  if (!(await clickByTextWhenReady(first, 'Добавить напоминание'))) {
     fail('кнопка «Добавить напоминание» не найдена (Блок B)');
   }
   await sleep(900);
@@ -2001,7 +2025,7 @@ async function main() {
   }
   await sleep(500);
   await pickReminderTime(first, 10);
-  if ((await first.cdp.evaluate(clickByText('Сохранить', { exact: true }))) !== true) {
+  if (!(await clickByTextWhenReady(first, 'Сохранить', { exact: true }))) {
     fail('кнопка «Сохранить» не найдена (Блок B)');
   }
 
@@ -2024,7 +2048,7 @@ async function main() {
       `Строк reminders в базе: ${remindersRowCountBaseline}.`,
   );
 
-  if ((await first.cdp.evaluate(clickByText('Готово', { exact: true }))) !== true) {
+  if (!(await clickByTextWhenReady(first, 'Готово', { exact: true }))) {
     fail('кнопка «Готово» карточки не найдена (Блок B, до force-stop)');
   }
   await sleep(1000);
@@ -2482,7 +2506,7 @@ async function main() {
     await sleep(400);
     // Точное совпадение: «Добавить дату»/«Добавить заметку» стоят выше по
     // DOM и перехватили бы подстроку.
-    if ((await first.cdp.evaluate(clickByText('Добавить', { exact: true }))) !== true) {
+    if (!(await clickByTextWhenReady(first, 'Добавить', { exact: true }))) {
       fail(`кнопка добавления подзадачи «${subtask}» не найдена`);
     }
     await sleep(1200);
@@ -2491,7 +2515,7 @@ async function main() {
     fail(`кнопка удаления подзадачи «${DOOMED_SUBTASK}» не найдена`);
   }
   await sleep(1200);
-  if ((await first.cdp.evaluate(clickByText('Готово', { exact: true }))) !== true) {
+  if (!(await clickByTextWhenReady(first, 'Готово', { exact: true }))) {
     fail('кнопка «Готово» карточки задачи не найдена');
   }
   await sleep(1200);
@@ -2665,7 +2689,7 @@ async function main() {
     fail('кнопка «Настройки» не найдена на Today');
   }
   await sleep(1200);
-  if ((await second.cdp.evaluate(clickByText('Данные и конфиденциальность'))) !== true) {
+  if (!(await clickByTextWhenReady(second, 'Данные и конфиденциальность'))) {
     fail('строка «Данные и конфиденциальность» не найдена в настройках');
   }
   await sleep(1200);
@@ -2690,11 +2714,11 @@ async function main() {
   }
   console.log(`Перед стиранием: ${beforeEraseAlarms.length} будильник(ов) в dumpsys alarm.`);
 
-  if ((await second.cdp.evaluate(clickByText('Удалить', { exact: true }))) !== true) {
+  if (!(await clickByTextWhenReady(second, 'Удалить', { exact: true }))) {
     fail('кнопка удаления локальных данных не найдена');
   }
   await sleep(900);
-  if ((await second.cdp.evaluate(clickByText('Удалить всё'))) !== true) {
+  if (!(await clickByTextWhenReady(second, 'Удалить всё'))) {
     fail('подтверждение удаления не найдено');
   }
   await sleep(2500);
@@ -2753,7 +2777,7 @@ async function main() {
 
   // ── База остаётся пригодной к работе после стирания ──────────────────────
   console.log('── Работа после стирания ──');
-  if ((await second.cdp.evaluate(clickByText('Начать'))) !== true) {
+  if (!(await clickByTextWhenReady(second, 'Начать'))) {
     fail('после стирания приложение не показало приветствие с кнопкой «Начать»');
   }
   await sleep(1200);
@@ -2761,7 +2785,7 @@ async function main() {
     fail('после стирания поле первой задачи не найдено');
   }
   await sleep(400);
-  if ((await second.cdp.evaluate(clickByText('Добавить задачу'))) !== true) {
+  if (!(await clickByTextWhenReady(second, 'Добавить задачу'))) {
     fail('после стирания кнопка «Добавить задачу» не найдена');
   }
   await sleep(2000);
@@ -2781,7 +2805,7 @@ async function main() {
     fail(`строка задачи «${AFTER_ERASE_TASK}» не открылась после стирания`);
   }
   await sleep(1200);
-  if ((await second.cdp.evaluate(clickByText('Добавить напоминание'))) !== true) {
+  if (!(await clickByTextWhenReady(second, 'Добавить напоминание'))) {
     fail('кнопка «Добавить напоминание» не найдена после стирания (Step 9)');
   }
   await sleep(900);
@@ -2790,7 +2814,7 @@ async function main() {
   }
   await sleep(500);
   await pickReminderTime(second, 15);
-  if ((await second.cdp.evaluate(clickByText('Сохранить', { exact: true }))) !== true) {
+  if (!(await clickByTextWhenReady(second, 'Сохранить', { exact: true }))) {
     fail('кнопка «Сохранить» не найдена после стирания (Step 9)');
   }
 
@@ -2827,7 +2851,7 @@ async function main() {
   // здесь против РЕАЛЬНОГО `AlarmManager`, а не только против JS-вывода
   // `reconcileReminderSchedule`.
   console.log('── Step 9b: смена таймзоны — реконсиляция пересчитывает alarm (claim #9) ──');
-  if ((await second.cdp.evaluate(clickByText('Готово', { exact: true }))) !== true) {
+  if (!(await clickByTextWhenReady(second, 'Готово', { exact: true }))) {
     fail('кнопка «Готово» карточки не найдена перед Step 9b');
   }
   await sleep(900);
