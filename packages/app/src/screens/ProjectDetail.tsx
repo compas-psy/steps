@@ -118,6 +118,8 @@ import { Temporal } from '@js-temporal/polyfill';
 import { t } from '@shagi/i18n';
 import {
   completeOccurrenceCommand,
+  undoCompleteOccurrenceCommand,
+  undoDeleteTasksCommand,
   createSectionCommand,
   createTaskCommand,
   deleteSectionCommand,
@@ -158,6 +160,7 @@ import {
 import { isAvailable } from '@shagi/platform';
 
 import { useAppController, useHost, useStorage } from '../state/context.js';
+import { UndoToast, useCommonUndoToast } from '../state/undo-toast.js';
 import { reconcileReminderScheduleForTask } from '../state/reminder-reconciliation.js';
 import './ProjectDetail.css';
 
@@ -673,6 +676,8 @@ export function ProjectDetail(): ReactElement | null {
     new Map(),
   );
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  /** 6-секундное «Отменить» (ST §58) — см. `undo-toast.tsx`. */
+  const undoToast = useCommonUndoToast();
   const [viewOverride, setViewOverride] = useState<Project['defaultView'] | null>(null);
   const [openMenuTaskId, setOpenMenuTaskId] = useState<Uuid | null>(null);
   const [moveDialogTask, setMoveDialogTask] = useState<Task | null>(null);
@@ -958,13 +963,35 @@ export function ProjectDetail(): ReactElement | null {
   // закрыт у `handleDelete` ниже отдельным путём).
   function handleComplete(task: Task): void {
     setOpenMenuTaskId(null);
-    void runCommand(
-      completeOccurrenceCommand(
+    void (async () => {
+      const result = await completeOccurrenceCommand(
         { id: task.id, occurrenceLocalDate: Temporal.Now.plainDateISO() },
         commandDeps(),
-      ),
-      () => reconcileTaskReminders(task.id),
-    );
+      );
+      if (result.status !== 'ok') {
+        setErrorMessage(t('projectDetail', 'errors.actionFailed'));
+        return;
+      }
+      setErrorMessage(null);
+      await loadAll();
+      await reconcileTaskReminders(task.id);
+
+      const generatedId = result.generatedTask?.id ?? null;
+      undoToast.offerUndo({
+        message: t('common', 'undo.taskCompleted'),
+        undo: async () => {
+          const undone = await undoCompleteOccurrenceCommand(
+            { occurrenceId: task.id, generatedOccurrenceId: generatedId },
+            commandDeps(),
+          );
+          if (undone.status !== 'ok') return 'failed';
+          await loadAll();
+          await reconcileTaskReminders(task.id);
+          if (generatedId !== null) await reconcileTaskReminders(generatedId);
+          return undone.generatedOutcome === 'preserved_conflict' ? 'conflict' : 'ok';
+        },
+      });
+    })();
   }
 
   /** Не через общий `runCommand` (см. её комментарий выше) — реконсиляции
@@ -981,6 +1008,26 @@ export function ProjectDetail(): ReactElement | null {
         for (const subtaskId of result.affectedSubtaskIds) {
           await reconcileTaskReminders(subtaskId);
         }
+        undoToast.offerUndo({
+          message: t('common', 'undo.taskDeleted'),
+          undo: async () => {
+            const undone = await undoDeleteTasksCommand(
+              {
+                ids: [task.id],
+                subtaskIds: result.affectedSubtaskIds,
+                checklistItems: result.affectedChecklistItems,
+              },
+              commandDeps(),
+            );
+            if (undone.status !== 'ok') return 'failed';
+            await loadAll();
+            await reconcileTaskReminders(task.id);
+            for (const subtaskId of result.affectedSubtaskIds) {
+              await reconcileTaskReminders(subtaskId);
+            }
+            return 'ok';
+          },
+        });
         return;
       }
       setErrorMessage(t('projectDetail', 'errors.actionFailed'));
@@ -1107,6 +1154,8 @@ export function ProjectDetail(): ReactElement | null {
           dismissLabel={t('projectDetail', 'errors.dismiss')}
         />
       )}
+
+      <UndoToast controller={undoToast} />
 
       <SegmentedControl<Project['defaultView']>
         className="shagi-project-detail__view"

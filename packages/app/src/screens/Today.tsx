@@ -291,6 +291,9 @@ import {
   completeManyCommand,
   completeOccurrenceCommand,
   deleteTaskCommand,
+  undoCompleteOccurrenceCommand,
+  undoCompleteTasksCommand,
+  undoDeleteTasksCommand,
   detachLabelFromTaskCommand,
   generateDeviceId,
   makePriority,
@@ -299,6 +302,7 @@ import {
   previewBulkProjectMove,
   selectTodayTasks,
   updateTaskCommand,
+  type ChecklistItem,
   type Label,
   type Priority,
   type Project,
@@ -327,6 +331,7 @@ import {
 import { isAvailable } from '@shagi/platform';
 
 import { useAppController, useAppState, useHost, useStorage } from '../state/context.js';
+import { UndoToast, useCommonUndoToast } from '../state/undo-toast.js';
 import { reconcileReminderScheduleForTask } from '../state/reminder-reconciliation.js';
 import './Today.css';
 
@@ -853,6 +858,9 @@ export function Today(): ReactElement {
   const [focusConfirm, setFocusConfirm] = useState<FocusConfirmState | null>(null);
   const [focusReplace, setFocusReplace] = useState<FocusReplaceState | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  /** 6-секундное «Отменить» (ST §58). Восстанавливают доменные команды —
+   * здесь только предложение, его окно и защита от двойного нажатия. */
+  const undoToast = useCommonUndoToast();
   /** Режим множественного выбора экрана (M37, см. заголовок файла) —
    * `selectedIds` пуст, пока `active === false`; вход и выход всегда идут
    * через `toggleSelectionMode`, которая сама следит, чтобы выбор не
@@ -1106,21 +1114,27 @@ export function Today(): ReactElement {
   /** Массовое удаление. `deleteTaskCommand` сама каскадирует подзадачи и
    * чек-лист (`01§7`), поэтому здесь только перебор выбранного.
    *
-   * Вызывается ТОЛЬКО после подтверждения. В ТЗ страховкой удаления
-   * назначен Undo (`01§9`, «one Undo restores graph», ST §58), но Undo в
-   * R1 ещё не реализован, а каскад по выбору из нескольких родителей
-   * уносит и невидимые в списке подзадачи. Пока страховки нет, спрашиваем
-   * — необратимое действие без единого барьера хуже лишнего диалога.
-   * Диалог снимается, когда появится Undo. */
+   * Вызывается ТОЛЬКО после подтверждения. Undo теперь есть (ST §58,
+   * `undoDeleteTasksCommand` ниже), но подтверждение остаётся: `01§20`
+   * требует ЕДИНСТВЕННОГО агрегированного подтверждения на массовое
+   * действие само по себе, а каскад по выбору из нескольких родителей
+   * уносит и невидимые в списке подзадачи — их число человек видит только
+   * в этом диалоге. Undo страхует ошибку, диалог предотвращает её. */
   async function runBulkDelete(ids: readonly Uuid[]): Promise<void> {
     setBulkDelete(null);
     let anyFailed = false;
+    const deletedIds: Uuid[] = [];
+    const deletedSubtaskIds: Uuid[] = [];
+    const deletedChecklistItems: ChecklistItem[] = [];
     for (const id of ids) {
       const result = await deleteTaskCommand({ id }, commandDeps());
       if (result.status !== 'ok') {
         anyFailed = true;
         continue;
       }
+      deletedIds.push(id);
+      deletedSubtaskIds.push(...result.affectedSubtaskIds);
+      deletedChecklistItems.push(...result.affectedChecklistItems);
       // Реконсиляция ПОСЛЕ каждого удаления (00§7 шаг 5) — саму удалённую
       // задачу и её каскадированные subtasks (`affectedSubtaskIds`,
       // `DeleteTaskResult`), у каждой из которых мог быть собственный
@@ -1133,6 +1147,29 @@ export function Today(): ReactElement {
     await refreshGroups();
     setSelection({ active: false, selectedIds: new Set() });
     setErrorMessage(anyFailed ? t('today', 'errors.bulkPartialFailure') : null);
+    if (deletedIds.length === 0) return;
+    // Один тост на весь набор, а не по одному на задачу: пользователь
+    // сделал ОДНО действие (ST §58), и отменяться оно должно так же —
+    // одной обратной мутацией на весь граф.
+    undoToast.offerUndo({
+      message: t('common', 'undo.tasksDeleted', { count: deletedIds.length }),
+      undo: async () => {
+        const undone = await undoDeleteTasksCommand(
+          {
+            ids: deletedIds,
+            subtaskIds: deletedSubtaskIds,
+            checklistItems: deletedChecklistItems,
+          },
+          commandDeps(),
+        );
+        if (undone.status !== 'ok') return 'failed';
+        await refreshGroups();
+        for (const id of [...deletedIds, ...deletedSubtaskIds]) {
+          await reconcileTaskReminders(id);
+        }
+        return 'ok';
+      },
+    });
   }
 
   /** Шаг 1 массового завершения: СЧИТАЕТ план и, если каскад что-то
@@ -1182,6 +1219,26 @@ export function Today(): ReactElement {
     await refreshGroups();
     setSelection({ active: false, selectedIds: new Set() });
     setErrorMessage(anyFailed ? t('today', 'errors.bulkPartialFailure') : null);
+
+    // Откат предлагается только для обычных задач набора. Пропущенные
+    // повторы (`skippedRecurringIds`) завершались своей командой, каждая со
+    // своим сгенерированным next occurrence, и один общий откат для них —
+    // это уже не инверсия, а догадка; `01§20` их и в прямом действии держит
+    // отдельно.
+    const completedIds = result.status === 'ok' ? result.completedIds : [];
+    if (completedIds.length === 0) return;
+    undoToast.offerUndo({
+      message: t('common', 'undo.tasksCompleted', { count: completedIds.length }),
+      undo: async () => {
+        const undone = await undoCompleteTasksCommand({ ids: completedIds }, commandDeps());
+        if (undone.status !== 'ok') return 'failed';
+        await refreshGroups();
+        for (const id of completedIds) {
+          await reconcileTaskReminders(id);
+        }
+        return 'ok';
+      },
+    });
   }
 
   const handlers: RowActionHandlers = {
@@ -1195,13 +1252,42 @@ export function Today(): ReactElement {
     // никогда бы не генерировали следующий occurrence — только
     // `completeOccurrenceCommand` ветвится на `RecurrenceSeries`.
     onComplete: (id) => {
-      void runCommand(
-        completeOccurrenceCommand(
+      void (async () => {
+        const result = await completeOccurrenceCommand(
           { id, occurrenceLocalDate: Temporal.Now.plainDateISO() },
           commandDeps(),
-        ),
-        () => reconcileTaskReminders(id),
-      );
+        );
+        if (result.status !== 'ok') {
+          setErrorMessage(t('today', 'errors.actionFailed'));
+          return;
+        }
+        setErrorMessage(null);
+        await refreshGroups();
+        await reconcileTaskReminders(id);
+
+        // Откат идёт через `undoCompleteOccurrenceCommand` и для обычной
+        // задачи тоже: у неё `generatedOccurrenceId === null`, команда
+        // просто не ветвится на серию. Отдельная развилка «recurring или
+        // нет» здесь означала бы, что экран решает то, что уже решает
+        // команда (`01§11.9`).
+        const generatedId = result.generatedTask?.id ?? null;
+        undoToast.offerUndo({
+          message: t('common', 'undo.taskCompleted'),
+          undo: async () => {
+            const undone = await undoCompleteOccurrenceCommand(
+              { occurrenceId: id, generatedOccurrenceId: generatedId },
+              commandDeps(),
+            );
+            if (undone.status !== 'ok') return 'failed';
+            await refreshGroups();
+            await reconcileTaskReminders(id);
+            if (generatedId !== null) await reconcileTaskReminders(generatedId);
+            // `01§11.9`: следующий occurrence изменён независимо — он
+            // сохранён, и делать вид, что откат прошёл целиком, нельзя.
+            return undone.generatedOutcome === 'preserved_conflict' ? 'conflict' : 'ok';
+          },
+        });
+      })();
     },
     onRescheduleToday: (id) => {
       const plannedDate = Temporal.Now.plainDateISO();
@@ -1352,6 +1438,8 @@ export function Today(): ReactElement {
           dismissLabel={t('today', 'errors.dismiss')}
         />
       )}
+
+      <UndoToast controller={undoToast} />
 
       {groups !== null && isEveryGroupEmpty(groups) && (
         <EmptyState

@@ -3,5 +3,14 @@
   "inbox.cleared": "Входящие разобраны.",
   "list.empty": "Здесь пока нет задач.",
   "sync.offline": "Нет соединения. Изменения сохранятся на устройстве.",
-  "task.postponeConfirm": "Перенести на завтра?"
+  "task.postponeConfirm": "Перенести на завтра?",
+  "undo.action": "Отменить",
+  "undo.dismiss": "Закрыть",
+  "undo.taskCompleted": "Задача завершена.",
+  "undo.taskDeleted": "Задача удалена.",
+  "undo.tasksCompleted": "{count, plural, one {Завершена # задача} few {Завершены # задачи} many {Завершено # задач} other {Завершено # задачи}}.",
+  "undo.tasksDeleted": "{count, plural, one {Удалена # задача} few {Удалены # задачи} many {Удалено # задач} other {Удалено # задачи}}.",
+  "undo.occurrenceSkipped": "Повторение пропущено.",
+  "undo.conflict": "Следующее повторение изменено на другом устройстве — оно сохранено, отменена только эта задача.",
+  "undo.failed": "Не удалось отменить действие. Попробуйте ещё раз."
 }

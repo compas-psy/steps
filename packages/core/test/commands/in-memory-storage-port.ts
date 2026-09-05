@@ -100,6 +100,18 @@ export class InMemoryCommandStoragePort implements CommandStoragePort {
    * набор проверяется этим счётчиком. */
   transactionCount = 0;
 
+  /** Сорвать СЛЕДУЮЩИЙ `applyMutation` (пакет работ Undo/Restore R1).
+   * Нужен там, где команда трогает несколько сущностей: «одна транзакция»
+   * проверяется не только счётчиком выше, но и тем, что при срыве не
+   * остаётся ПОЛОВИНЫ записи. Настоящее хранилище откатывает транзакцию
+   * само; эта тень имитирует тот же контракт — мутация применяется целиком
+   * либо не применяется вовсе. */
+  failNextMutation(reason = 'фиктивный сбой транзакции'): void {
+    this.pendingFailure = reason;
+  }
+
+  private pendingFailure: string | null = null;
+
   async runTransaction<T>(run: (tx: CommandStorageWriteTransaction) => Promise<T>): Promise<T> {
     this.transactionCount += 1;
     const tx: CommandStorageWriteTransaction = {
@@ -107,6 +119,13 @@ export class InMemoryCommandStoragePort implements CommandStoragePort {
       checklistItems: this.checklistItems,
       recurrenceSeries: this.recurrenceSeries,
       applyMutation: (mutation: CommandDomainMutation): Promise<void> => {
+        if (this.pendingFailure !== null) {
+          const reason = this.pendingFailure;
+          this.pendingFailure = null;
+          // Ни одной записи до броска — именно это и проверяет тест: после
+          // срыва граф остаётся ровно таким, каким был.
+          return Promise.reject(new Error(reason));
+        }
         for (const write of mutation.writes) {
           if (write.entity === 'task') {
             this.byId.set(write.value.id, write.value);

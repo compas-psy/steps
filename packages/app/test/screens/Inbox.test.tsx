@@ -360,6 +360,34 @@ describe('Inbox — действия карточки', () => {
     expect(stored?.deletedAt).not.toBeNull();
   });
 
+  it('после удаления показан тост «Отменить», и он возвращает задачу во Входящие (ST §58 U2)', async () => {
+    const user = userEvent.setup();
+    const task = makeTask({ title: 'Случайно удалённая', captureState: 'inbox' });
+    const { getStorage } = renderInboxCapturingStorage([task]);
+
+    await waitFor(() => expect(screen.getByText('Случайно удалённая')).toBeInTheDocument());
+    await enterProcessMode(user);
+    await user.click(screen.getByRole('button', { name: t('inbox', 'actions.delete') }));
+
+    // Дословный UI-контракт ST §58: «<сообщение>  Отменить».
+    await waitFor(() =>
+      expect(screen.getByText(t('common', 'undo.taskDeleted'))).toBeInTheDocument(),
+    );
+    expect(await getStorage().tasks.findById(task.id)).not.toBeNull();
+    expect((await getStorage().tasks.findById(task.id))?.deletedAt).not.toBeNull();
+
+    await user.click(screen.getByRole('button', { name: t('common', 'undo.action') }));
+
+    // Проверяется ХРАНИЛИЩЕ, а не исчезновение тоста: откат обязан быть
+    // доменной мутацией, а не откатом состояния экрана.
+    await waitFor(async () => {
+      const restored = await getStorage().tasks.findById(task.id);
+      expect(restored?.deletedAt).toBeNull();
+      expect(restored?.status).toBe('active');
+    });
+    expect(screen.queryByText(t('common', 'undo.taskDeleted'))).not.toBeInTheDocument();
+  });
+
   it('«Пропустить» НЕ вызывает команду — задача остаётся inbox, фокус переходит к следующей карточке', async () => {
     const user = userEvent.setup();
     const first = makeTask({ title: 'Первая', captureState: 'inbox' });

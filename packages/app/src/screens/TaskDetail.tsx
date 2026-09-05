@@ -152,6 +152,8 @@ import {
   resolveNextWeekMonday,
   resolveWeekend,
   skipOccurrenceCommand,
+  undoCompleteOccurrenceCommand,
+  undoDeleteTasksCommand,
   updateChecklistItemCommand,
   updateRecurringOccurrencePlanningCommand,
   updateTaskCommand,
@@ -206,6 +208,7 @@ import {
 import { isAvailable, type NotificationPrecision } from '@shagi/platform';
 
 import { useAppController, useHost, useStorage } from '../state/context.js';
+import { UndoToast, useCommonUndoToast } from '../state/undo-toast.js';
 import { reconcileReminderScheduleForTask } from '../state/reminder-reconciliation.js';
 import './TaskDetail.css';
 
@@ -872,6 +875,8 @@ export function TaskDetail(): ReactElement | null {
   const [titleDraft, setTitleDraft] = useState('');
   const [descriptionDraft, setDescriptionDraft] = useState('');
   const [notice, setNotice] = useState<Notice | null>(null);
+  /** 6-секундное «Отменить» (ST §58) — см. `undo-toast.tsx`. */
+  const undoToast = useCommonUndoToast();
   const [priorityPickerOpen, setPriorityPickerOpen] = useState(false);
   const [projectPickerOpen, setProjectPickerOpen] = useState(false);
   const [sectionPickerOpen, setSectionPickerOpen] = useState(false);
@@ -1509,8 +1514,7 @@ export function TaskDetail(): ReactElement | null {
    * та же генерация следующего occurrence, что и завершение, но текущий
    * получает `completionKind:'skipped'` вместо `'done'` (см. её
    * комментарий). Без подтверждения — обратимо тем же способом, что и
-   * обычное завершение (Undo-тост UI вне охвата этого пакета работ, см.
-   * заголовок файла). */
+   * обычное завершение: 6-секундный Undo-тост (ST §58), см. ниже. */
   // Реконсиляция ПОСЛЕ пропуска — тот же пробел и тот же фикс, что у
   // `handleComplete` выше (Task B5): «Пропустить» тоже переводит текущий
   // occurrence в неактивное состояние (`completionKind:'skipped'`), и без
@@ -1519,17 +1523,38 @@ export function TaskDetail(): ReactElement | null {
   function handleSkipOccurrence(): void {
     if (task === null) return;
     const id = task.id;
-    void runAndRefresh(
-      skipOccurrenceCommand(
-        { id, occurrenceLocalDate: Temporal.Now.plainDateISO() },
-        commandDeps(),
-      ),
-      async () => {
-        await refreshOk();
-        await reconcileTaskReminders(id);
-      },
-      showError,
-    );
+    void (async () => {
+      const result = await runAndRefresh(
+        skipOccurrenceCommand(
+          { id, occurrenceLocalDate: Temporal.Now.plainDateISO() },
+          commandDeps(),
+        ),
+        async () => {
+          await refreshOk();
+          await reconcileTaskReminders(id);
+        },
+        showError,
+      );
+      if (result.status !== 'ok') return;
+      // `01§11.5`: пропуск — обычное завершение с `completion_kind='skipped'`,
+      // значит и Undo у него ровно тот же (ST §58 U3), включая снятие
+      // сгенерированного следующего occurrence.
+      const generatedId = result.generatedTask?.id ?? null;
+      undoToast.offerUndo({
+        message: t('common', 'undo.occurrenceSkipped'),
+        undo: async () => {
+          const undone = await undoCompleteOccurrenceCommand(
+            { occurrenceId: id, generatedOccurrenceId: generatedId },
+            commandDeps(),
+          );
+          if (undone.status !== 'ok') return 'failed';
+          await refreshOk();
+          await reconcileTaskReminders(id);
+          if (generatedId !== null) await reconcileTaskReminders(generatedId);
+          return undone.generatedOutcome === 'preserved_conflict' ? 'conflict' : 'ok';
+        },
+      });
+    })();
   }
 
   /** «Удалить всю серию» (`01§11.8`) — подтверждение обязательно (тот же
@@ -1683,7 +1708,25 @@ export function TaskDetail(): ReactElement | null {
         refreshOk,
         showError,
       );
-      if (result.status === 'ok') await reconcileTaskReminders(subtask.id);
+      if (result.status !== 'ok') return;
+      await reconcileTaskReminders(subtask.id);
+      undoToast.offerUndo({
+        message: t('common', 'undo.taskDeleted'),
+        undo: async () => {
+          const undone = await undoDeleteTasksCommand(
+            {
+              ids: [subtask.id],
+              subtaskIds: result.affectedSubtaskIds,
+              checklistItems: result.affectedChecklistItems,
+            },
+            commandDeps(),
+          );
+          if (undone.status !== 'ok') return 'failed';
+          await refreshOk();
+          await reconcileTaskReminders(subtask.id);
+          return 'ok';
+        },
+      });
     })();
   }
 
@@ -1790,6 +1833,8 @@ export function TaskDetail(): ReactElement | null {
           dismissLabel={t('taskDetail', 'errors.dismiss')}
         />
       )}
+
+      <UndoToast controller={undoToast} />
 
       {/* --- 1. Заголовок/контекст --------------------------------------- */}
       {/* Верхняя полоса по макету `[R1][M][24]`: стрелка возврата слева,

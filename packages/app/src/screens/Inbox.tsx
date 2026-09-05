@@ -178,6 +178,8 @@ import {
   completeTaskCommand,
   deleteTaskCommand,
   generateDeviceId,
+  undoCompleteTasksCommand,
+  undoDeleteTasksCommand,
   updateTaskCommand,
   type Project,
   type Task,
@@ -201,6 +203,7 @@ import {
 import { isAvailable } from '@shagi/platform';
 
 import { useAppController, useHost, useStorage } from '../state/context.js';
+import { UndoToast, useCommonUndoToast } from '../state/undo-toast.js';
 import { reconcileReminderScheduleForTask } from '../state/reminder-reconciliation.js';
 import './Inbox.css';
 
@@ -296,6 +299,10 @@ export function Inbox(): ReactElement {
    * разбора, то есть состояние M12 не существовало вовсе. */
   const [mode, setMode] = useState<'list' | 'process'>('list');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  /** 6-секундное «Отменить» (ST §58). Восстановление делают доменные
+   * команды `undoCompleteTasksCommand`/`undoDeleteTasksCommand`, здесь
+   * только предложение и его окно. */
+  const undoToast = useCommonUndoToast();
   const [datePicker, setDatePicker] = useState<DatePickerState | null>(null);
   const [projectMenuOpen, setProjectMenuOpen] = useState(false);
 
@@ -370,9 +377,19 @@ export function Inbox(): ReactElement {
    * команда, что на Today; список перезапрашивается через общий
    * `runCommand`. */
   function handleComplete(task: Task): void {
-    void runCommand(completeTaskCommand({ id: task.id }, commandDeps()), () =>
-      reconcileTaskReminders(task.id),
-    );
+    void runCommand(completeTaskCommand({ id: task.id }, commandDeps()), async () => {
+      await reconcileTaskReminders(task.id);
+      undoToast.offerUndo({
+        message: t('common', 'undo.taskCompleted'),
+        undo: async () => {
+          const undone = await undoCompleteTasksCommand({ ids: [task.id] }, commandDeps());
+          if (undone.status !== 'ok') return 'failed';
+          await refreshTasks();
+          await reconcileTaskReminders(task.id);
+          return 'ok';
+        },
+      });
+    });
   }
 
   function handleToday(task: Task): void {
@@ -435,6 +452,30 @@ export function Inbox(): ReactElement {
         for (const subtaskId of result.affectedSubtaskIds) {
           await reconcileTaskReminders(subtaskId);
         }
+        // `01§9`: «Корзины» в R1 нет, Undo — единственная страховка. Откат
+        // получает ровно то, что снёс каскад (`affected*`), а не
+        // пересчитанный заново граф: подзадачи-tombstone уже не вернёт ни
+        // один запрос списка.
+        undoToast.offerUndo({
+          message: t('common', 'undo.taskDeleted'),
+          undo: async () => {
+            const undone = await undoDeleteTasksCommand(
+              {
+                ids: [task.id],
+                subtaskIds: result.affectedSubtaskIds,
+                checklistItems: result.affectedChecklistItems,
+              },
+              commandDeps(),
+            );
+            if (undone.status !== 'ok') return 'failed';
+            await refreshTasks();
+            await reconcileTaskReminders(task.id);
+            for (const subtaskId of result.affectedSubtaskIds) {
+              await reconcileTaskReminders(subtaskId);
+            }
+            return 'ok';
+          },
+        });
         return;
       }
       setErrorMessage(t('inbox', 'errors.actionFailed'));
@@ -525,6 +566,8 @@ export function Inbox(): ReactElement {
           dismissLabel={t('inbox', 'errors.dismiss')}
         />
       )}
+
+      <UndoToast controller={undoToast} />
 
       {isEmpty && (
         <EmptyState

@@ -120,3 +120,70 @@ describe('undoDeleteTasksCommand — Undo удаления (ST §58 U2)', () => 
     expect(storage.outboxEntries().length).toBe(outboxAfterFirst);
   });
 });
+
+/**
+ * Срыв транзакции на многосущностной операции (ST §58: «Добавь rollback/
+ * fault-injection там, где операция затрагивает несколько сущностей»).
+ * Проверяется не сообщение об ошибке, а то, ЧТО ОСТАЛОСЬ в хранилище:
+ * половина снесённого графа — состояние, которого не должно существовать,
+ * и вернуть его одним Undo нечем.
+ */
+describe('каскад удаления — срыв транзакции не оставляет полуснесённый граф', () => {
+  it('delete родителя падает целиком: ни родитель, ни подзадача, ни checklist не тронуты', async () => {
+    const storage = new InMemoryCommandStoragePort();
+    const parent = existingTask({ id: uuid('de0000000040'), title: 'Родитель' });
+    const child = existingTask({
+      id: uuid('de0000000041'),
+      title: 'Подзадача',
+      parentTaskId: parent.id,
+    });
+    storage.seedTask(parent);
+    storage.seedTask(child);
+    await createChecklistItemCommand(
+      { taskId: parent.id, text: 'Пункт', rank: { placement: 'empty-list' } },
+      deps(storage),
+    );
+    const outboxBefore = storage.outboxEntries().length;
+
+    storage.failNextMutation();
+    await expect(deleteTaskCommand({ id: parent.id }, deps(storage))).rejects.toThrow();
+
+    expect((await storage.tasks.findById(parent.id))?.deletedAt).toBeNull();
+    expect((await storage.tasks.findById(child.id))?.deletedAt).toBeNull();
+    expect(await storage.checklistItems.listByTask(parent.id)).toHaveLength(1);
+    expect(storage.outboxEntries().length).toBe(outboxBefore);
+  });
+
+  it('undo падает целиком: граф остаётся удалённым, повторный undo снова возможен', async () => {
+    const storage = new InMemoryCommandStoragePort();
+    const parent = existingTask({ id: uuid('de0000000050'), title: 'Родитель' });
+    const child = existingTask({
+      id: uuid('de0000000051'),
+      title: 'Подзадача',
+      parentTaskId: parent.id,
+    });
+    storage.seedTask(parent);
+    storage.seedTask(child);
+    const deleted = await deleteTaskCommand({ id: parent.id }, deps(storage));
+    if (deleted.status !== 'ok') throw new Error('удаление не прошло — предпосылка теста');
+
+    storage.failNextMutation();
+    await expect(
+      undoDeleteTasksCommand(
+        { ids: [parent.id], subtaskIds: deleted.affectedSubtaskIds },
+        deps(storage),
+      ),
+    ).rejects.toThrow();
+    expect((await storage.tasks.findById(parent.id))?.deletedAt).not.toBeNull();
+    expect((await storage.tasks.findById(child.id))?.deletedAt).not.toBeNull();
+
+    // Сорванный откат не «израсходовал» право на откат: повтор проходит.
+    const retry = await undoDeleteTasksCommand(
+      { ids: [parent.id], subtaskIds: deleted.affectedSubtaskIds },
+      deps(storage),
+    );
+    expect(retry.status).toBe('ok');
+    expect((await storage.tasks.findById(parent.id))?.deletedAt).toBeNull();
+    expect((await storage.tasks.findById(child.id))?.deletedAt).toBeNull();
+  });
+});
