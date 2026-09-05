@@ -52,6 +52,7 @@ import {
   READ_STORAGE_STATE,
   READ_TASK_ROW_TITLES,
   selectDialOption,
+  readButtonState,
   readDialSelection,
   selectDayAfterTodayInDateGrid,
   selectTodayInDateGrid,
@@ -1103,6 +1104,64 @@ async function clickByTextWhenReady(session, text, options = {}, attempts = 12, 
  * не ослаблено: действие обязано удаться, иначе вызывающий код падает
  * прежним сообщением.
  */
+/**
+ * Нажать «Сохранить» в модалке напоминания, предварительно убедившись, что
+ * кнопка вообще активна.
+ *
+ * Клик по ЗАБЛОКИРОВАННОЙ кнопке проходит «успешно» и не делает ничего:
+ * прогон `33940513500` так и получил карточку «Нет напоминания» без единой
+ * ошибки в консоли — модалка была открыта, циферблаты приняли время
+ * (проверка ниже это подтвердила), а `Сохранить` осталась заблокированной,
+ * потому что дата в сетке не выбралась. Отличать «не нажалось» от
+ * «нажалось, но приложение не сохранило» обязательно, иначе следующий шаг
+ * винит продукт за проблему харнеса.
+ */
+/**
+ * Выбрать «сегодня» в сетке дат напоминания и дождаться ЭФФЕКТА выбора, а
+ * не просто факта клика: кнопка «Сохранить» разблокируется ровно тогда,
+ * когда дата действительно попала в состояние экрана
+ * (`disabled={reminderPicker?.date === null}`).
+ *
+ * Тот же принцип, что и с циферблатами: смоук проверяет результат своего
+ * действия, а не верит, что оно применилось. Прогон `33940513500` показал,
+ * зачем: клик прошёл, дата не выбралась, «Сохранить» осталась
+ * заблокированной, нажатие ничего не сделало молча — и шаг обвинил
+ * приложение в том, что оно «не показало уведомление ST10», хотя
+ * напоминания просто не существовало.
+ */
+async function selectReminderDateToday(session, label, attempts = 12, delayMs = 500) {
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    await session.cdp.evaluate(selectTodayInDateGrid);
+    await sleep(delayMs);
+    const state = JSON.parse(await session.cdp.evaluate(readButtonState('Сохранить')));
+    if (state.found === true && state.disabled !== true) return;
+  }
+  const lastState = await session.cdp.evaluate(readButtonState('Сохранить'));
+  fail(
+    `${label}: ячейка «сегодня» в сетке дат напоминания не выбралась — «Сохранить» так и осталась ` +
+      `недоступной за ${attempts} попыток. Состояние кнопки: ${String(lastState)}`,
+  );
+}
+
+async function saveReminder(session, label) {
+  const state = JSON.parse(await session.cdp.evaluate(readButtonState('Сохранить')));
+  if (state.found !== true) {
+    fail(
+      `${label}: кнопка «Сохранить» напоминания не найдена. Состояние: ${JSON.stringify(state)}`,
+    );
+  }
+  if (state.disabled === true) {
+    fail(
+      `${label}: кнопка «Сохранить» напоминания ЗАБЛОКИРОВАНА — значит дата в сетке не выбралась ` +
+        '(`disabled={reminderPicker?.date === null}` в `TaskDetail.tsx`), и клик по ней ничего бы не ' +
+        'сделал молча. Это дефект взаимодействия смоука, а не приложения.',
+    );
+  }
+  if (!(await clickByTextWhenReady(session, 'Сохранить', { exact: true }))) {
+    fail(`${label}: кнопка «Сохранить» напоминания не нажалась`);
+  }
+}
+
 async function actWhenReady(session, script, attempts = 12, delayMs = 500) {
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     if ((await session.cdp.evaluate(script)) === true) return true;
@@ -1273,14 +1332,10 @@ async function main() {
     fail('кнопка «Добавить напоминание» не найдена');
   }
   await sleep(900);
-  if (!(await actWhenReady(first, selectTodayInDateGrid))) {
-    fail('ячейка «сегодня» в сетке дат напоминания не найдена');
-  }
+  await selectReminderDateToday(first, 'Step 2 (первое напоминание)');
   await sleep(500);
   await pickReminderTime(first, 5);
-  if (!(await clickByTextWhenReady(first, 'Сохранить', { exact: true }))) {
-    fail('кнопка «Сохранить» напоминания не найдена');
-  }
+  await saveReminder(first, 'Step 2 (первое напоминание)');
 
   const scheduledAfterAdd = await waitFor(
     'OS-level alarm после создания напоминания',
@@ -1760,14 +1815,10 @@ async function main() {
     fail('Step 2d: кнопка «Добавить напоминание» не найдена');
   }
   await sleep(900);
-  if (!(await actWhenReady(first, selectTodayInDateGrid))) {
-    fail('Step 2d: ячейка «сегодня» в сетке дат напоминания не найдена');
-  }
+  await selectReminderDateToday(first, 'Step 2d (первое напоминание, capability=false)');
   await sleep(500);
   const firstReminderTime = await pickReminderTime(first, 30);
-  if (!(await clickByTextWhenReady(first, 'Сохранить', { exact: true }))) {
-    fail('Step 2d: кнопка «Сохранить» напоминания не найдена');
-  }
+  await saveReminder(first, 'Step 2d (первое напоминание, capability=false)');
   await sleep(2000);
 
   const firstNoticeText = await waitFor(
@@ -1839,9 +1890,7 @@ async function main() {
   // `firstReminderTime` — иначе «время не изменилось» и «изменилось на то
   // же самое» неразличимы.
   const replacedReminderTime = await pickReminderTime(first, 50);
-  if (!(await clickByTextWhenReady(first, 'Сохранить', { exact: true }))) {
-    fail('Step 2d: кнопка «Сохранить» изменённого напоминания не найдена');
-  }
+  await saveReminder(first, 'Step 2d (atomic replace)');
   await sleep(2000);
 
   const replacedTimeLabel = `${pad2(replacedReminderTime.hour)}:${pad2(replacedReminderTime.minute)}`;
@@ -1949,9 +1998,7 @@ async function main() {
   // Заметно другое время, не то же значение, что Step 2/2c — иначе
   // «время не изменилось» и «время изменилось на то же самое» неразличимы.
   await pickReminderTime(first, 25);
-  if (!(await clickByTextWhenReady(first, 'Сохранить', { exact: true }))) {
-    fail('кнопка «Сохранить» изменённого напоминания не найдена');
-  }
+  await saveReminder(first, 'Step 3 (изменение времени)');
   await sleep(2000);
 
   const afterUpdate = await waitFor(
@@ -2059,14 +2106,10 @@ async function main() {
     fail('кнопка «Добавить напоминание» не найдена (Блок B)');
   }
   await sleep(900);
-  if (!(await actWhenReady(first, selectTodayInDateGrid))) {
-    fail('ячейка «сегодня» не найдена (Блок B)');
-  }
+  await selectReminderDateToday(first, 'Step 5.0 (Блок B)');
   await sleep(500);
   await pickReminderTime(first, 10);
-  if (!(await clickByTextWhenReady(first, 'Сохранить', { exact: true }))) {
-    fail('кнопка «Сохранить» не найдена (Блок B)');
-  }
+  await saveReminder(first, 'Step 5.0 (Блок B)');
 
   const baseline = await waitFor('OS-level alarm второй задачи', 20, 1000, () => {
     const blocks = listRealSystemAlarms();
@@ -2848,14 +2891,10 @@ async function main() {
     fail('кнопка «Добавить напоминание» не найдена после стирания (Step 9)');
   }
   await sleep(900);
-  if (!(await actWhenReady(second, selectTodayInDateGrid))) {
-    fail('ячейка «сегодня» не найдена после стирания (Step 9)');
-  }
+  await selectReminderDateToday(second, 'Step 9 (после стирания)');
   await sleep(500);
   await pickReminderTime(second, 15);
-  if (!(await clickByTextWhenReady(second, 'Сохранить', { exact: true }))) {
-    fail('кнопка «Сохранить» не найдена после стирания (Step 9)');
-  }
+  await saveReminder(second, 'Step 9 (после стирания)');
 
   const afterEraseAlarm = await waitFor('OS-level alarm после стирания', 20, 1000, () => {
     const blocks = listRealSystemAlarms();

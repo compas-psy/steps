@@ -246,6 +246,30 @@ export function selectDialOption(dialLabel, valueLabel) {
 }
 
 /**
+ * Состояние кнопки по видимому тексту: есть ли она и не заблокирована ли.
+ *
+ * Кнопка «Сохранить» в модалке напоминания заблокирована, пока не выбрана
+ * дата (`TaskDetail.tsx`, `disabled={reminderPicker?.date === null}`), а
+ * клик по заблокированной кнопке проходит «успешно» и не делает ничего —
+ * именно так прогон `33940513500` получил экран «Нет напоминания» без
+ * единой ошибки в консоли. Проверять состояние ДО клика дешевле, чем
+ * потом гадать по пустой карточке.
+ */
+export function readButtonState(text) {
+  return `
+    (() => {
+      const nodes = Array.from(document.querySelectorAll('button, [role="button"]'));
+      const match = nodes.find((node) => (node.innerText || node.textContent || '').trim() === ${JSON.stringify(text)});
+      if (!match) return JSON.stringify({ found: false });
+      return JSON.stringify({
+        found: true,
+        disabled: match.hasAttribute('disabled') || match.getAttribute('aria-disabled') === 'true',
+      });
+    })()
+  `;
+}
+
+/**
  * Значение, которое циферблат СЧИТАЕТ выбранным (`aria-selected="true"`),
  * плюс диагностика на случай, когда выбранного нет вовсе.
  *
