@@ -1,3 +1,12 @@
+/**
+ * `SignIn` (M03) — экран об аккаунте и синхронизации.
+ *
+ * Тесты переписаны вместе с самим экраном: раньше они проверяли, что форма
+ * входа честно показывает ошибку ПОСЛЕ попытки. Это и было дефектом —
+ * продукт предлагал действие, заведомо зная, что оно не сработает. Теперь
+ * проверяется то, что действительно важно для человека: он узнаёт правду
+ * до всякого действия и не может попасть в тупик.
+ */
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createUnavailablePlatform } from '@shagi/platform';
@@ -13,62 +22,43 @@ function testHost(): AppHost {
   return { platform: createUnavailablePlatform(), storageBackend: { kind: 'memory' } };
 }
 
+function renderSignIn(): ReturnType<typeof createAppController> {
+  const controller = createAppController({ screen: 'signIn' });
+  render(
+    <AppProvider host={testHost()} controller={controller}>
+      <SignIn />
+    </AppProvider>,
+  );
+  return controller;
+}
+
 describe('SignIn (M03)', () => {
-  it('попытка входа по email показывает честную ошибку «функция появится позже», не притворяется загрузкой', async () => {
-    const user = userEvent.setup();
-    const controller = createAppController({ screen: 'signIn' });
-    render(
-      <AppProvider host={testHost()} controller={controller}>
-        <SignIn />
-      </AppProvider>,
-    );
-
-    await user.type(
-      screen.getByLabelText(t('onboarding', 'signIn.emailLabel')),
-      'user@example.com',
-    );
-    await user.click(screen.getByRole('button', { name: t('onboarding', 'signIn.continueLabel') }));
-
-    expect(screen.getByText(t('onboarding', 'signIn.unavailableError'))).toBeInTheDocument();
-    // Никуда не перешли — реальной аутентификации нет.
-    expect(controller.getState().screen).toBe('signIn');
+  it('говорит об отсутствии аккаунта сразу, не дожидаясь попытки входа', () => {
+    renderSignIn();
+    expect(screen.getByText(t('onboarding', 'signIn.description'))).toBeInTheDocument();
   });
 
-  it('попытка входа через Яндекс тоже честно показывает ошибку, а не молчит', async () => {
-    const user = userEvent.setup();
-    const controller = createAppController({ screen: 'signIn' });
-    render(
-      <AppProvider host={testHost()} controller={controller}>
-        <SignIn />
-      </AppProvider>,
-    );
-
-    await user.click(screen.getByRole('button', { name: t('onboarding', 'signIn.yandexLabel') }));
-
-    expect(screen.getByText(t('onboarding', 'signIn.unavailableError'))).toBeInTheDocument();
+  it('не показывает нерабочую форму входа: ни поля почты, ни кнопки «Войти через Яндекс»', () => {
+    renderSignIn();
+    // Ровно то, что владелец назвал недопустимым: элементы управления,
+    // которые выглядят как рабочая авторизация, но ею не являются.
+    expect(screen.queryByRole('textbox')).toBeNull();
+    expect(screen.queryByText(t('onboarding', 'signIn.yandexLabel'))).toBeNull();
+    expect(screen.queryByText(t('onboarding', 'signIn.continueLabel'))).toBeNull();
   });
 
-  it('«Продолжить локально» реально работает и не блокируется состоянием формы', async () => {
+  it('объясняет, что данные локальны и переносятся экспортом', () => {
+    renderSignIn();
+    expect(screen.getByText(t('onboarding', 'signIn.whatWorks'))).toBeInTheDocument();
+  });
+
+  it('единственное действие экрана уводит в локальный режим — тупика нет', async () => {
     const user = userEvent.setup();
-    const controller = createAppController({ screen: 'signIn' });
-    render(
-      <AppProvider host={testHost()} controller={controller}>
-        <SignIn />
-      </AppProvider>,
-    );
+    const controller = renderSignIn();
 
-    await user.click(
-      screen.getByRole('button', { name: t('onboarding', 'signIn.continueLocalLabel') }),
-    );
+    await user.click(screen.getByRole('button', { name: t('onboarding', 'signIn.backLabel') }));
 
-    expect(controller.getState()).toEqual({
-      screen: 'firstTask',
-      localMode: true,
-      selectedProjectId: null,
-      selectedTaskId: null,
-      returnScreen: null,
-      settingsReturnScreen: null,
-      quickAdd: null,
-    });
+    expect(controller.getState().screen).toBe('firstTask');
+    expect(controller.getState().localMode).toBe(true);
   });
 });
