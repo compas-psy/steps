@@ -137,7 +137,7 @@ function listSystemAlarms() {
 /**
  * Как `listSystemAlarms()`, но вместо отдельных строк, буквально содержащих
  * `APPLICATION_ID`, возвращает ПОЛНЫЙ вложенный блок каждой записи будильника
- * (Task B8 — второй живой прогон, TODO(B8-controller) выявил: `window=`/
+ * (Task B8 — второй живой прогон выявил: `window=`/
  * триггерное время печатаются на дочерних строках БЕЗ буквального имени
  * пакета — реальный дамп на этой сборке: заголовок `RTC_WAKEUP #N:
  * Alarm{... ru.cmpas.shagi}` содержит пакет, но следующая строка с
@@ -474,11 +474,12 @@ async function attachConsoleCapture(cdp) {
  * той же величины, но абсолютная и относительная формы НЕ смешиваются
  * между двумя снимками одного прогона (`compareTriggerSnapshots` ниже).
  *
- * // TODO(B8-controller): оба regexp — лучшее обоснованное предположение
- * // по документированному/общеизвестному формату `AlarmManagerService`,
- * // НЕ вычитаны из реального дампа (нет эмулятора в этой песочнице).
- * // После Step 11 — подставить реально увиденную строку сюда одной
- * // правкой (и в `parseAlarmWindow` выше).
+ * ПОДТВЕРЖДЕНО живыми прогонами (Step 11 закрыт): реальный дамп на этом
+ * образе содержит обе формы одновременно, и обе разбираются —
+ * `type=RTC_WAKEUP origWhen=2026-09-05 03:05:00.000 window=0 …`
+ * (абсолютная) и `whenElapsed=+13m2s419ms` (относительная). На них
+ * прошли Step 3 («триггерное время действительно изменилось») и Step 9b
+ * («триггерное время в dumpsys пересчитано»), прогон `33946210645`.
  */
 function parseTriggerSnapshot(line) {
   const absolute = /(\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2})/.exec(line);
@@ -526,13 +527,12 @@ function triggerChanged(before, after) {
  * (`fnv1a32` — чистая функция того UUID, см. комментарий у неё). Эта
  * функция — дополнительная, необязательная сверка с текстом дампа.
  *
- * // TODO(B8-controller): НЕ подтверждено, что `PendingIntent.requestCode`
- * // (наш `id32`) вообще печатается в `toString()`/дампе современных версий
- * // Android — начиная с определённых версий AOSP `PendingIntent` намеренно
- * // скрывает часть внутренностей из соображений приватности. Если после
- * // живого прогона выяснится, что id никогда не встречается в тексте —
- * // это ОЖИДАЕМО и не проблема: `assertSameReminderRow`/сравнение счётчика
- * // остаются главным доказательством claim #8, эта проверка — бонус.
+ * ПОДТВЕРЖДЕНО живыми прогонами (Step 11 закрыт): нативный id в тексте
+ * дампа НЕ печатается — современный AOSP не показывает
+ * `PendingIntent.requestCode` в `toString()`. Это ровно тот ожидаемый
+ * исход, который здесь и предполагался: доказательством claim #8 остаётся
+ * неизменный UUID в SQLite (`assertSameReminderRow`), а эта функция —
+ * необязательная сверка, которая ничего не утверждает.
  */
 function linesWithNativeId(lines, nativeId) {
   const needle = String(nativeId);
@@ -1498,7 +1498,7 @@ async function main() {
   if (windowsAfterAdd.length === 0) {
     fail(
       'ни один полный блок записи `dumpsys alarm` не содержит поле `window=` — маркер exact/inexact из Step 2b ' +
-        'брифа не удалось прочитать НИ ОДНИМ способом (TODO(B8-controller), см. `alarmWindowMs`; гипотеза о ' +
+        'брифа не удалось прочитать НИ ОДНИМ способом (см. `alarmWindowMs`; гипотеза о ' +
         'дочерней строке без имени пакета не подтвердилась — полные блоки залогированы выше). ' +
         `Блоки: ${JSON.stringify(blocksAfterAdd)}`,
     );
@@ -2140,7 +2140,7 @@ async function main() {
   if (allInconclusive) {
     console.warn(
       '::warning::Step 3 (claim #6): не удалось распарсить триггерное время ни в одной строке dumpsys — ' +
-        'TODO(B8-controller), см. `parseTriggerSnapshot`. Число строк НЕ выросло (задвоение исключено — реальная ' +
+        'см. `parseTriggerSnapshot`. Число будильников НЕ выросло (задвоение исключено — реальная ' +
         'проверка пройдена), но смена момента срабатывания текстово не подтверждена. ' +
         `До: ${JSON.stringify(beforeUpdate)}. После: ${JSON.stringify(afterUpdate)}`,
     );
@@ -2614,10 +2614,9 @@ async function main() {
   }
   const idLines1 = linesWithNativeId(afterBoot1.flat(), reminderB.nativeId);
   if (idLines1.length === 0) {
-    console.warn(
-      `::warning::TODO(B8-controller): нативный id ${reminderB.nativeId} НЕ найден буквально ни в одной строке ` +
-        'dumpsys после BOOT_COMPLETED #1 — см. комментарий у `linesWithNativeId` (best-effort, не главное ' +
-        'доказательство claim #8 — им остаётся неизменный UUID в SQLite, проверенный ниже).',
+    console.log(
+      `Нативный id ${reminderB.nativeId} в тексте dumpsys не печатается (ожидаемо, см. ` +
+        '`linesWithNativeId`): доказательство claim #8 — неизменный UUID в SQLite, проверенный ниже.',
     );
   }
   console.log(
@@ -2647,8 +2646,8 @@ async function main() {
     assertSameReminderRow(cycleDbPath, REMINDER_TASK_B, reminderB, label);
     const idLines = linesWithNativeId(lines, reminderB.nativeId);
     if (idLines.length === 0) {
-      console.warn(
-        `::warning::TODO(B8-controller): нативный id не найден в тексте dumpsys (${label}).`,
+      console.log(
+        `Нативный id в тексте dumpsys не печатается (${label}) — ожидаемо, см. \`linesWithNativeId\`.`,
       );
     }
   }
@@ -3156,7 +3155,7 @@ async function main() {
   if (tzChangeInconclusive) {
     console.warn(
       '::warning::Step 9b (claim #9): не удалось распарсить триггерное время dumpsys ни до, ни после смены ' +
-        'часового пояса — TODO(B8-controller), см. `parseTriggerSnapshot`. Задвоение исключено (число строк ' +
+        'часового пояса — см. `parseTriggerSnapshot`. Задвоение исключено (число будильников ' +
         `не выросло), но сам пересчёт instant текстово не подтверждён. До: ${JSON.stringify(beforeTzChange)}. ` +
         `После: ${JSON.stringify(afterTzChange)}`,
     );

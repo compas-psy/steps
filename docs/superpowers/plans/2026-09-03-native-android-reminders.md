@@ -1935,20 +1935,30 @@ UI (проверяется отсутствием DevTools-сокета; отк�
 
 ### Что осталось
 
-- [ ] **Step 11 (продолжение): ОДИН целевой смоук после патчей №1/№2** —
-      ключевой шаг прогона — новый Step 6c (round-trip + boot-restore без UI).
-      PASS → сразу полный B8 acceptance на том же SHA, без новых
-      диагностических раундов. Провал Step 6c → STOP и отчёт с фактом, а не
-      попытка «дочинить» вслепую.
-- [ ] **Полный B8 acceptance на exact SHA:** зелёный `Сборка Android` +
-      зелёный `Безопасность` на одном и том же коммите.
-- [ ] **Зафиксировать manual RC checks** (не автоматизируются на CI emulator
+- [x] **Step 11: живой прогон** — закрыт. Полный B8 acceptance получен на
+      exact SHA `18a8811`: `Сборка Android` `33946210645` (включая job
+      «Дымовой тест на эмуляторе»), CI `33946210621` и `Безопасность`
+      `33946210630` — все три зелёные на одном коммите. Финал смоука
+      дословно: «Step 9b подтверждён: триггерное время в dumpsys
+      пересчитано, alarm не задвоен» → «Дымовой тест пройден».
+- [x] **Полный B8 acceptance на exact SHA** — достигнут (см. выше).
+- [ ] **Manual RC checks (release acceptance, не blocker разработки)** (не автоматизируются на CI emulator
       image, проверяются вручную на физическом устройстве перед RC):
       настоящий Settings-revoke `SCHEDULE_EXACT_ALARM`; recovery после
       OS-side уничтожения alarm.
-- [ ] **После полного B8 PASS:** reminders объявляются CLOSED/FROZEN, дальше —
-      Task #16 (финальное ревью всей ветки + `finishing-a-development-branch`)
-      и переход к Undo/ST §58.
+- [x] **После полного B8 PASS:** статус зафиксирован (см. блок ниже) —
+      архитектура напоминаний заморожена: домен, `NotificationSchedulerPort`,
+      детерминированные native id, cancel-before-batch, SQLite как source of
+      truth (A6) и вендоренный `tauri-plugin-notification` с тремя патчами
+      меняются только по отдельному решению владельца. Дальше — Undo
+      (`01_PRODUCT_BEHAVIOR_R1` §8/§9/§11.8/§11.9–11.11), затем Task #16.
+
+```text
+Task B8 — CLOSED
+Native Android reminders — CLOSED / FROZEN
+A6 narrow reopen — CLOSED
+P0 pending()/NotificationStorage/AlarmManager — CLOSED
+```
 
 ### Остаётся в R1 gap audit (не расширяется этим пакетом работ)
 

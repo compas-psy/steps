@@ -616,3 +616,30 @@ Kotlin/JVM-тестового контура в этом репозитории 
 Именно Step 6c исполняет ОБА мапper-пути разом: `get_pending` читает мапper'ом
 плагина, ресивер — строгим по умолчанию. Асимметрия, найденная на JVM-зеркале,
 краснеет здесь по-настоящему.
+
+### Статус: CLOSED / FROZEN (2026-09-05)
+
+Полный B8 acceptance получен на exact SHA `18a8811`: `Сборка Android`
+`33946210645` (включая эмулятор-смоук), CI `33946210621` и `Безопасность`
+`33946210630` — три зелёных workflow на одном коммите.
+
+Приёмка reboot-recovery (Step 6c) прошла целиком и дословно:
+
+```
+Step 6c: persisted-запись валидна (852 байт, native id 760652170 на месте, литерала «null» нет).
+Step 6c: round-trip подтверждён — id=760652170, title совпал, at.date=2026-09-05T03:05:00.000Z, allowWhileIdle=true.
+Step 6c: пост-reboot состояние выставлено — alarm нет, persisted-запись цела, приложение не запущено.
+Step 6c: ресивер восстановил ровно 1 alarm БЕЗ запуска UI … window=0 exactAllowReason=permission
+Step 6c: повторный BOOT_COMPLETED не создал дубль — ровно 1 alarm.
+```
+
+С этого момента архитектура напоминаний заморожена: доменная модель,
+`NotificationSchedulerPort`, детерминированные native id, cancel-before-batch,
+SQLite как source of truth (A6) и вендоренный `tauri-plugin-notification`
+2.4.0 с тремя патчами изменяются только отдельным решением владельца и новым
+дополнением к этому ADR.
+
+Открытым остаётся release acceptance на физическом устройстве (не
+автоматизируется на CI emulator image, разработку не держит): настоящий
+Settings-revoke `SCHEDULE_EXACT_ALARM` → возврат в ШАГИ → inexact-disclosure;
+recovery после OS-side уничтожения alarm.
