@@ -26,7 +26,7 @@ tauri-plugin-notification = "2.4.0"
 tauri-plugin-alarm-capability = { path = "plugins/alarm-capability" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-rusqlite = { version = "0.40.2", features = ["bundled"] }
+shagi-sqlite = { path = "../../../crates/shagi-sqlite" }
 
 [features]
 default = ["custom-protocol"]
@@ -46,5 +46,3 @@ custom-protocol = ["tauri/custom-protocol"]
 [patch.crates-io]
 tauri-plugin-notification = { path = "vendor/tauri-plugin-notification-2.4.0" }
 
-[dev-dependencies]
-tempfile = "3.27.0"

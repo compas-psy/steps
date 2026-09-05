@@ -1,0 +1,138 @@
+name: Сборка Windows
+
+# Сборка ШАГОВ под Windows (Tauri 2, targets `nsis` + `msi`).
+#
+# ЗАЧЕМ ЭТОТ ФАЙЛ СУЩЕСТВУЕТ.
+#   MASTER §1.1 называет Windows 10 22H2+ / 11 x64 платформой публичного
+#   релиза наравне с Android и Web. До этого workflow десктопная оболочка не
+#   собиралась НИ РАЗУ ни на одной машине: `tauri.conf.json` объявлял
+#   инсталляторы, но ни один из них не существовал. Найдено финальным
+#   R1/MVP gap-аудитом (ledger).
+#
+# ЧТО ЗДЕСЬ ПРОВЕРЯЕТСЯ, А ЧТО НЕТ.
+#   Проверяется: оболочка компилируется, инсталлятор собирается, ставится
+#   тихой установкой, приложение запускается, СОЗДАЁТ СВОЮ БАЗУ на диске и
+#   не падает в первые секунды, после чего чисто удаляется.
+#
+#   Именно база — суть проверки, а не факт запуска. До профиля
+#   `MVP 1.0-local` (ADR-0009) десктопная оболочка работала на
+#   `storageBackend: { kind: 'memory' }` и теряла все данные при
+#   перезапуске. Смоук, который проверял бы только «окно открылось», прошёл
+#   бы и на такой сборке — то есть не проверял бы ничего из того, ради чего
+#   продукт называется local-first.
+#
+#   НЕ проверяется: подпись Authenticode (сертификата у продукта пока нет —
+#   это отдельное решение владельца и отдельные секреты, ровно как с
+#   Android-ключом), обновление поверх установленной версии (updater не
+#   настроен, см. `docs/dev/release-plan-mvp-1-0-local.md`) и поведение UI
+#   (это делают e2e веба на том же `packages/app`).
+
+on:
+  push:
+    branches: [main, claude/model-distribution-workflow-gi49ya]
+    tags: ['shagi-v*']
+  pull_request:
+    branches: [main, claude/model-distribution-workflow-gi49ya]
+    paths:
+      - 'apps/desktop/**'
+      - 'crates/**'
+      - 'packages/**'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/build-windows.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+jobs:
+  build:
+    name: Сборка и установка
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+
+      - name: Установить pnpm
+        uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
+
+      - name: Установить Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version-file: '.nvmrc'
+          cache: pnpm
+
+      - name: pnpm install --frozen-lockfile
+        run: pnpm install --frozen-lockfile
+
+      # Всё дешёвое — до получасовой компиляции Rust, чтобы падение
+      # случилось на понятном шаге (тот же принцип, что в build-android.yml).
+      - name: Typecheck и тесты оболочки
+        run: |
+          pnpm --filter @shagi/desktop typecheck
+          pnpm --filter @shagi/desktop test
+
+      - name: Rust stable
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+          rustup show
+
+      - name: Кэш cargo
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            apps/desktop/src-tauri/target
+          key: windows-cargo-${{ hashFiles('apps/desktop/src-tauri/Cargo.lock', 'crates/shagi-sqlite/Cargo.lock') }}
+          restore-keys: windows-cargo-
+
+      # Общий крейт моста к SQLite тестируется здесь, а не только в
+      # Android-workflow: его 21 тест — единственное, что проверяет WAL,
+      # внешние ключи, FTS5 и защиту токена снимка, и оба магазина везут
+      # именно этот код.
+      - name: Тесты общего крейта shagi-sqlite
+        working-directory: crates/shagi-sqlite
+        run: cargo test
+
+      - name: Сборка фронтенда
+        run: pnpm --filter @shagi/desktop build:vite
+
+      - name: Сборка инсталляторов (nsis + msi)
+        run: pnpm --filter @shagi/desktop exec tauri build
+
+      - name: Найти собранные артефакты
+        id: artifacts
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $bundle = 'apps/desktop/src-tauri/target/release/bundle'
+          $nsis = Get-ChildItem -Path "$bundle/nsis" -Filter '*-setup.exe' -ErrorAction SilentlyContinue | Select-Object -First 1
+          $msi  = Get-ChildItem -Path "$bundle/msi"  -Filter '*.msi'       -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $nsis) { throw 'NSIS-инсталлятор не собран' }
+          if (-not $msi)  { throw 'MSI-инсталлятор не собран' }
+          Write-Host "NSIS: $($nsis.FullName) ($($nsis.Length) байт)"
+          Write-Host "MSI:  $($msi.FullName) ($($msi.Length) байт)"
+          "nsis=$($nsis.FullName)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "msi=$($msi.FullName)"   | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      # ─────────────────────────────────────────────────────────────────
+      # Install smoke. Тихая установка → запуск → БАЗА НА ДИСКЕ → удаление.
+      # ─────────────────────────────────────────────────────────────────
+      - name: Установка, запуск и проверка базы
+        shell: pwsh
+        run: node apps/desktop/scripts/windows-install-smoke.mjs "${{ steps.artifacts.outputs.nsis }}"
+
+      - name: Артефакты установщиков
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: shagi-windows-installers
+          path: |
+            apps/desktop/src-tauri/target/release/bundle/nsis/*-setup.exe
+            apps/desktop/src-tauri/target/release/bundle/msi/*.msi
+          retention-days: 7

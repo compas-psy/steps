@@ -155,14 +155,15 @@ jobs:
       # ID транзитивных GTK/glib-advisory `tauri`, без фикса без смены его
       # мажорной версии — разбор целиком в самом `.osv-scanner.toml`. Новая
       # уязвимость в любом другом пакете по-прежнему валит job.
-      - name: Скан pnpm-lock.yaml и Cargo.lock (mobile, desktop)
+      - name: Скан pnpm-lock.yaml и Cargo.lock (mobile, desktop, shagi-sqlite)
         run: |
           set -euo pipefail
           "$(go env GOPATH)/bin/osv-scanner" scan source \
             --config .osv-scanner.toml \
             --lockfile=pnpm-lock.yaml \
             --lockfile=apps/mobile/src-tauri/Cargo.lock \
-            --lockfile=apps/desktop/src-tauri/Cargo.lock
+            --lockfile=apps/desktop/src-tauri/Cargo.lock \
+            --lockfile=crates/shagi-sqlite/Cargo.lock
 
   # ─────────────────────────────────────────────────────────────────────
   # Лицензии зависимостей — allowlist, «не в списке» падает и требует

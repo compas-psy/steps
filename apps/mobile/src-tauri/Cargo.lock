@@ -3283,15 +3283,24 @@ dependencies = [
 name = "shagi-mobile"
 version = "0.1.0"
 dependencies = [
- "rusqlite",
  "serde",
  "serde_json",
+ "shagi-sqlite",
  "tauri",
  "tauri-build",
  "tauri-plugin-alarm-capability",
  "tauri-plugin-deep-link",
  "tauri-plugin-notification",
- "tempfile",
+]
+
+[[package]]
+name = "shagi-sqlite"
+version = "0.1.0"
+dependencies = [
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "tauri",
 ]
 
 [[package]]

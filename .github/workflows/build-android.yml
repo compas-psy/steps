@@ -375,6 +375,15 @@ jobs:
       - name: Сборка фронтенда
         run: pnpm --filter @shagi/mobile build:vite
 
+      # Мост к SQLite переехал в общий крейт `crates/shagi-sqlite` (его же
+      # использует десктопная оболочка), и `cargo test` оболочки его тесты
+      # больше НЕ запускает: тесты path-зависимости не входят в прогон
+      # зависящего крейта. Без этого шага 21 тест WAL/внешних ключей/FTS5/
+      # токена снимка тихо выпал бы из CI.
+      - name: Тесты общего крейта shagi-sqlite
+        working-directory: crates/shagi-sqlite
+        run: cargo test
+
       - name: Тесты Rust-части оболочки
         working-directory: apps/mobile/src-tauri
         run: cargo test

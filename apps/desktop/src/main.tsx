@@ -11,18 +11,31 @@ import { App, type AppHost } from '@shagi/app';
 import '@shagi/ui/tokens.css';
 
 import { createDesktopPlatform } from './platform.js';
+import { createNativeSqlBridge } from './sqlite-bridge.js';
 
-// `storageBackend: { kind: 'memory' }` — временно, пока не поставлен
-// Tauri SQL-плагин (нет Rust-тулчейна в среде разработки этого пакета
-// работ — `.ultraplan/research/04-android-release.md`). Честно: данные НЕ
-// переживают перезапуск оболочки, это не притворство, что персистентность
-// уже есть. `@shagi/app` сама решает, какой адаптер `@shagi/storage`
-// строить — оболочке запрещено видеть этот пакет напрямую (SPEC §3,
-// `apps/web/test/architecture-boundary.test.ts` сканирует все три
-// оболочки одним и тем же правилом).
+// Нативная SQLite, тот же общий крейт `shagi-sqlite`, что у Android
+// (ADR-0005). До профиля `MVP 1.0-local` (ADR-0009) здесь стоял
+// `kind: 'memory'`, и данные не переживали перезапуск оболочки — для
+// local-first продукта это не «временное упрощение», а отсутствие продукта
+// на этой платформе.
+//
+// `migrateFromIndexedDb: null` — в отличие от Android: у десктопной
+// оболочки никогда не было релиза на IndexedDB, переносить нечего. Поле
+// обязательное и не имеет умолчания намеренно: «мигрировать неоткуда» —
+// это решение оболочки, и оно должно быть написано, а не подразумеваться.
+//
+// `@shagi/app` сама решает, какой адаптер `@shagi/storage` строить —
+// оболочке запрещено видеть этот пакет напрямую (SPEC §3,
+// `apps/web/test/architecture-boundary.test.ts` сканирует все три оболочки
+// одним и тем же правилом).
 const host: AppHost = {
   platform: createDesktopPlatform(),
-  storageBackend: { kind: 'memory' },
+  storageBackend: {
+    kind: 'sqlite',
+    databaseName: 'shagi.db',
+    bridge: createNativeSqlBridge(),
+    migrateFromIndexedDb: null,
+  },
 };
 
 const container = document.getElementById('root');

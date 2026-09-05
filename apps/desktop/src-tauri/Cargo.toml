@@ -23,6 +23,10 @@ tauri = { version = "2", features = [] }
 tauri-plugin-global-shortcut = "2"
 tauri-plugin-deep-link = "2"
 tauri-plugin-clipboard-manager = "2"
+# Персистентность Windows-оболочки (ADR-0005). Тот же мост, что у Android:
+# один крейт на две оболочки, а не две копии одного контракта, которые
+# разойдутся на первом же исправлении.
+shagi-sqlite = { path = "../../../crates/shagi-sqlite" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
