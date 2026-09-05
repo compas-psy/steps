@@ -15,6 +15,7 @@ describe('AppController', () => {
       returnScreen: null,
       settingsReturnScreen: null,
       quickAdd: null,
+      dataVersion: 0,
     });
   });
 
@@ -42,6 +43,7 @@ describe('AppController', () => {
       returnScreen: null,
       settingsReturnScreen: null,
       quickAdd: null,
+      dataVersion: 0,
     });
   });
 
@@ -66,6 +68,7 @@ describe('AppController', () => {
       returnScreen: null,
       settingsReturnScreen: null,
       quickAdd: null,
+      dataVersion: 0,
     });
   });
 
@@ -85,6 +88,7 @@ describe('AppController', () => {
       returnScreen: null,
       settingsReturnScreen: null,
       quickAdd: null,
+      dataVersion: 0,
     });
     expect(listener).toHaveBeenCalledWith(
       expect.objectContaining({ screen: 'projectDetail', selectedProjectId: projectId }),
@@ -107,6 +111,7 @@ describe('AppController', () => {
       returnScreen: 'inbox',
       settingsReturnScreen: null,
       quickAdd: null,
+      dataVersion: 0,
     });
     expect(listener).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -133,6 +138,7 @@ describe('AppController', () => {
       returnScreen: null,
       settingsReturnScreen: null,
       quickAdd: null,
+      dataVersion: 0,
     });
   });
 
@@ -149,6 +155,7 @@ describe('AppController', () => {
       returnScreen: null,
       settingsReturnScreen: null,
       quickAdd: null,
+      dataVersion: 0,
     });
   });
 
@@ -167,6 +174,7 @@ describe('AppController', () => {
       returnScreen: null,
       settingsReturnScreen: null,
       quickAdd: { origin: 'today' },
+      dataVersion: 0,
     });
     expect(listener).toHaveBeenCalledWith(
       expect.objectContaining({ quickAdd: { origin: 'today' } }),
@@ -188,6 +196,7 @@ describe('AppController', () => {
       returnScreen: null,
       settingsReturnScreen: null,
       quickAdd: null,
+      dataVersion: 0,
     });
     expect(listener).toHaveBeenCalledWith(expect.objectContaining({ screen: 'plan' }));
   });
@@ -207,6 +216,7 @@ describe('AppController', () => {
       returnScreen: null,
       settingsReturnScreen: null,
       quickAdd: null,
+      dataVersion: 0,
     });
     expect(listener).toHaveBeenCalledWith(expect.objectContaining({ screen: 'search' }));
   });
@@ -225,6 +235,7 @@ describe('AppController', () => {
       returnScreen: null,
       settingsReturnScreen: null,
       quickAdd: null,
+      dataVersion: 0,
     });
   });
 });

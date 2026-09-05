@@ -94,7 +94,7 @@
  * замыслу — человек ещё не в продукте. На мобильном же множество остаётся
  * прежним (`MAIN_TAB_SCREENS`), чтобы не менять Android-раскладку.
  */
-import type { ReactElement, ReactNode } from 'react';
+import { Fragment, type ReactElement, type ReactNode } from 'react';
 
 import { t } from '@shagi/i18n';
 import {
@@ -277,11 +277,13 @@ function inspectorBackdropScreen(screen: ScreenId, returnScreen: ScreenId | null
 function DesktopShell({
   screen,
   returnScreen,
+  dataVersion,
   controller,
   children,
 }: {
   readonly screen: ScreenId;
   readonly returnScreen: ScreenId | null;
+  readonly dataVersion: number;
   readonly controller: AppController;
   readonly children: ReactNode;
 }): ReactElement {
@@ -329,8 +331,22 @@ function DesktopShell({
         }
       />
       <main className="shagi-app-shell__main">
+        {/* `key` обязателен, и это не перестраховка. Когда панель
+         * закрывается, на этой позиции стоит ТОТ ЖЕ компонент экрана
+         * (`SCREENS[returnScreen]` и `children` — оба, например, `Today`),
+         * и React обновляет его на месте, сохраняя состояние. А экраны
+         * читают хранилище один раз при монтировании: список оставался со
+         * старыми данными. Проверено в браузере — правка названия в панели
+         * не появлялась в списке ни при открытой панели, ни после её
+         * закрытия, только после перезагрузки приложения. Разные `key`
+         * заставляют React перемонтировать экран, и тот перечитывает
+         * хранилище. */}
         <div className="shagi-app-shell__column">
-          {inspectorOpen && BackdropScreen !== undefined ? <BackdropScreen /> : children}
+          {inspectorOpen && BackdropScreen !== undefined ? (
+            <BackdropScreen key={`inspector-backdrop-${dataVersion}`} />
+          ) : (
+            <Fragment key="inspector-closed">{children}</Fragment>
+          )}
         </div>
         {inspectorOpen && (
           <aside className="shagi-app-shell__inspector" aria-label={t('shell', 'inspector.label')}>
@@ -343,7 +359,7 @@ function DesktopShell({
 }
 
 export function AppShell({ children }: { children: ReactNode }): ReactElement {
-  const { screen, returnScreen } = useAppState();
+  const { screen, returnScreen, dataVersion } = useAppState();
   const controller = useAppController();
   const desktop = useIsDesktopViewport();
 
@@ -352,7 +368,12 @@ export function AppShell({ children }: { children: ReactNode }): ReactElement {
 
   if (desktop) {
     return (
-      <DesktopShell screen={screen} returnScreen={returnScreen} controller={controller}>
+      <DesktopShell
+        screen={screen}
+        returnScreen={returnScreen}
+        dataVersion={dataVersion}
+        controller={controller}
+      >
         {children}
       </DesktopShell>
     );

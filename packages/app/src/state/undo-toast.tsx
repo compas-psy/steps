@@ -13,6 +13,9 @@ import {
 import { t } from '@shagi/i18n';
 import { Button, Toast } from '@shagi/ui';
 
+// eslint-disable-next-line import/no-unassigned-import -- CSS-побочный эффект, не значение
+import './undo-toast.css';
+
 /**
  * 6-секундное окно «Отменить» (ST §58, UI contract; `01§8` "Undo",
  * `01§9` "Delete"). Один общий хук на все экраны — иначе каждый экран
@@ -54,6 +57,20 @@ export interface UndoToastController {
    * `offer` собой: показывается ПОСЛЕ того, как тост закрылся. */
   readonly notice: string | null;
   offerUndo(offer: UndoOffer): void;
+  /**
+   * Показать простое уведомление без кнопки отката.
+   *
+   * Появилось по разбору walkthrough: человек на экране «Сегодня» писал
+   * «9 сентября в 11:00 Сходить с мамой в МВД», нажимал «Добавить» — и
+   * видел ровно тот же экран. Задача создавалась и лежала на 9 сентября,
+   * но на «Сегодня» её нет по определению, а никакого отклика не было
+   * вовсе. Измерено в браузере: `bodyHasTitle: false`, ни строки, ни
+   * сообщения.
+   *
+   * Канал `notice` (в отличие от `offer`) уже существует и уже
+   * отрисовывается — здесь ему просто дан публичный вход.
+   */
+  showNotice(message: string): void;
   runUndo(): Promise<void>;
   dismiss(): void;
   dismissNotice(): void;
@@ -135,7 +152,12 @@ export function useUndoToast(messages: UndoToastMessages): UndoToastController {
     return () => clearTimeout(timer);
   }, [offer]);
 
-  return { offer, running, notice, offerUndo, runUndo, dismiss, dismissNotice };
+  /** См. `showNotice` в описании интерфейса. */
+  function showNotice(message: string): void {
+    setNotice(message);
+  }
+
+  return { offer, running, notice, offerUndo, runUndo, dismiss, dismissNotice, showNotice };
 }
 
 /**
@@ -210,7 +232,18 @@ export function UndoToastProvider({ children }: { readonly children: ReactNode }
   return (
     <UndoToastContext.Provider value={controller}>
       {children}
-      <UndoToast controller={controller} />
+      {/* Обёртка нужна ради позиционирования — см. `undo-toast.css`: без
+       * неё тост рисовался последним элементом дерева и оказывался за
+       * нижней границей окна, то есть не виден вовсе. */}
+      {/* Рендерится ТОЛЬКО когда есть что показать: пустая обёртка — это
+       * видимый контент на экране, который обязан быть пустым (M01 Launch,
+       * «никакого фейкового лоадера»), и лишний фиксированный прямоугольник
+       * поверх страницы. */}
+      {(controller.offer !== null || controller.notice !== null) && (
+        <div className="shagi-undo-toast-host">
+          <UndoToast controller={controller} />
+        </div>
+      )}
     </UndoToastContext.Provider>
   );
 }

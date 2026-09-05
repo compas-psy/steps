@@ -1080,6 +1080,10 @@ export function TaskDetail(): ReactElement | null {
   async function refreshOk(): Promise<void> {
     setNotice(null);
     await loadAll();
+    // Единственная точка «мутация удалась» этого экрана. Отсюда о правке
+    // узнаёт список, который на десктопе стоит рядом в рабочей колонке и
+    // сам хранилище не перечитывает (`state/store.ts`, `dataVersion`).
+    controller.notifyDataChanged();
   }
 
   if (taskId === null) return null;

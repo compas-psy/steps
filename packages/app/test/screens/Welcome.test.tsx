@@ -33,6 +33,7 @@ describe('Welcome (M02)', () => {
       returnScreen: null,
       settingsReturnScreen: null,
       quickAdd: null,
+      dataVersion: 0,
     });
   });
 
@@ -55,6 +56,7 @@ describe('Welcome (M02)', () => {
       returnScreen: null,
       settingsReturnScreen: null,
       quickAdd: null,
+      dataVersion: 0,
     });
   });
 });

@@ -31,5 +31,7 @@
   "chips.projectNotFound": "«{name}» — проект не найден",
   "rejected.label": "Не распознано",
   "rejected.item": "«{text}» — распознано, но не принято",
-  "errors.submitFailed": "Не удалось создать задачу. Попробуйте ещё раз."
+  "errors.submitFailed": "Не удалось создать задачу. Попробуйте ещё раз.",
+  "created.onDate": "Задача добавлена на {date}",
+  "created.toInbox": "Задача добавлена во «Входящие»"
 }

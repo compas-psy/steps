@@ -2873,12 +2873,17 @@ async function main() {
   // логику возврата и ловушку в истории (`test/state/back-navigation.test.ts`),
   // но не то, что WebView Tauri вообще отдаёт `popstate` по системной
   // кнопке. До этой правки «Назад» закрывала приложение с любого экрана.
-  // `openTaskRow`, а не `clickByTextWhenReady`: у строки задачи есть
-  // собственный способ открытия (`page-actions.mjs`), а клик «по тексту»
-  // попадает не в ту точку строки — проверено прогоном `33965961322`,
-  // где карточка так и не открылась.
-  if (!(await actWhenReady(first, openTaskRow(CONTROL_TITLE)))) {
-    fail('карточка контрольной задачи не открылась для проверки «Назад»');
+  // Открывается ЗАДАЧА НА СЕГОДНЯ, а не контрольная. Причина найдена
+  // измерением на веб-сборке: контрольная строка ставит дату «9 сентября»,
+  // и на экране «Сегодня» такой задачи нет по определению — строки для неё
+  // не существует, открывать нечего. Два прогона (`33965961322`,
+  // `33968027288`) упали здесь именно поэтому: дефект был в утверждении, а
+  // не в продукте.
+  //
+  // Проверке «Назад» всё равно, какая задача открыта, — ей нужна ЛЮБАЯ
+  // открытая карточка.
+  if (!(await actWhenReady(first, openTaskRow(taskTitle)))) {
+    fail(`карточка задачи «${taskTitle}» не открылась для проверки «Назад»`);
   }
   await sleep(1200);
   screenshot('05-task-detail');
@@ -2903,7 +2908,7 @@ async function main() {
   const afterBack = await waitFor('возврат в список после «Назад»', 15, 500, async () => {
     const text = await first.cdp.evaluate(READ_APP_TEXT);
     if (typeof text !== 'string') return null;
-    return text.includes(CONTROL_TITLE) && !text.includes('Готово') ? text : null;
+    return text.includes(taskTitle) && !text.includes('Готово') ? text : null;
   });
   if (afterBack === null) {
     const last = await first.cdp.evaluate(READ_APP_TEXT);

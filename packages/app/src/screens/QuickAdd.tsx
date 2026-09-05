@@ -139,7 +139,7 @@
 import { useEffect, useMemo, useState, type ReactElement } from 'react';
 import { Temporal } from '@js-temporal/polyfill';
 
-import { t } from '@shagi/i18n';
+import { formatDate, t } from '@shagi/i18n';
 import {
   BottomSheet,
   Button,
@@ -158,6 +158,7 @@ import type {
 } from '@shagi/nlp';
 
 import { useAppController, useAppState, useStorage } from '../state/context.js';
+import { useUndoHost } from '../state/undo-toast.js';
 import { getLocalIdentity } from '../state/local-identity.js';
 import {
   chipKey,
@@ -213,6 +214,7 @@ export function QuickAdd(): ReactElement | null {
   const { quickAdd } = useAppState();
   const controller = useAppController();
   const storage = useStorage();
+  const toast = useUndoHost();
 
   // См. заголовок файла, п.6 — читается ДО первого рендера, не в эффекте.
   const [pendingDraftText] = useState<string | null>(() => readDraft());
@@ -333,6 +335,26 @@ export function QuickAdd(): ReactElement | null {
         setSubmitError(t('quickAdd', 'errors.submitFailed'));
         setSubmitting(false);
         return;
+      }
+
+      // Отклик о том, КУДА ушла задача. Найдено разбором walkthrough:
+      // человек на «Сегодня» писал «9 сентября в 11:00 Сходить с мамой в
+      // МВД», нажимал «Добавить» и видел ровно тот же экран — задача
+      // создавалась на 9 сентября, а на «Сегодня» её по определению нет.
+      // Никакого сообщения при этом не было (измерено в браузере). Молчание
+      // после действия человек читает как «не сработало».
+      //
+      // Сообщение показывается ТОЛЬКО когда задачи не видно здесь и сейчас:
+      // подтверждать то, что человек и так видит появившимся в списке, —
+      // лишний шум.
+      const createdDate = result.task.plannedDate;
+      const today = Temporal.Now.plainDateISO();
+      if (createdDate !== null && !createdDate.equals(today)) {
+        toast.showNotice(
+          t('quickAdd', 'created.onDate', { date: formatDate(createdDate, { weekday: 'short' }) }),
+        );
+      } else if (createdDate === null && captureState === 'inbox' && origin !== 'inbox') {
+        toast.showNotice(t('quickAdd', 'created.toInbox'));
       }
 
       clearDraft();

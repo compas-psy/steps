@@ -189,6 +189,19 @@ export interface AppState {
   /** Оверлей Quick Add — см. блок про `quickAdd` в заголовке файла. `null`,
    * пока оверлей закрыт. НЕ влияет на `screen` — экран под низом не меняется. */
   readonly quickAdd: { readonly origin: QuickAddOrigin } | null;
+  /**
+   * Счётчик подтверждённых изменений данных. Растёт после каждой успешной
+   * мутации из карточки задачи.
+   *
+   * Зачем: на десктопе карточка живёт в панели СПРАВА, а список остаётся
+   * слева смонтированным (SPEC/04 §9). Экраны читают хранилище один раз при
+   * монтировании, поэтому список не узнавал о правках в панели — человек
+   * переименовывал задачу и видел рядом старое название. Оболочка включает
+   * этот счётчик в `key` экрана-подложки, и тот перечитывает данные.
+   *
+   * Счётчик, а не флаг: важно КАЖДОЕ изменение, а не факт «что-то было».
+   */
+  readonly dataVersion: number;
 }
 
 export type AppStateListener = (state: AppState) => void;
@@ -201,6 +214,7 @@ const INITIAL_STATE: AppState = {
   returnScreen: null,
   settingsReturnScreen: null,
   quickAdd: null,
+  dataVersion: 0,
 };
 
 /**
@@ -300,6 +314,11 @@ export class AppController {
    * этот метод его не трогает и не обязан ничего о нём знать. */
   closeQuickAdd = (): void => {
     this.#setState({ quickAdd: null });
+  };
+
+  /** Сообщить оболочке, что данные изменились — см. `dataVersion`. */
+  notifyDataChanged = (): void => {
+    this.#setState({ dataVersion: this.#state.dataVersion + 1 });
   };
 
   /**
