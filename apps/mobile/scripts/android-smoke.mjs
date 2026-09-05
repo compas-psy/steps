@@ -2964,17 +2964,43 @@ async function main() {
   await sleep(900);
   const beforeTzChange = listRealSystemAlarms();
   const beforeTzSnapshots = beforeTzChange.flat().map(parseTriggerSnapshot);
-  const originalTimezone = adbSoft(['shell', 'settings', 'get', 'global', 'time_zone']).trim();
+  // Пояс меняется через `persist.sys.timezone`, а НЕ через
+  // `settings put global time_zone`: на этом образе последняя настройка
+  // попросту отсутствует — прогон `33942250857` (rerun) сам это и напечатал
+  // («`settings get global time_zone` вернул пусто/null»), а потом обвинил
+  // приложение в том, что оно «не пересчитало alarm». На деле пояс не
+  // менялся вовсе, и приложение правильно сохранило тот же instant.
+  //
+  // Поэтому: меняем свойство (нужен root — он теперь запрашивается явно в
+  // `android-smoke.sh`), затем ПРОВЕРЯЕМ, что смещение устройства реально
+  // изменилось (`date +%z`). Если не изменилось — claim #9 проверять
+  // нечем, и шаг честно падает с фактами, а не выдаёт отсутствие смены
+  // пояса за дефект реконсиляции.
   const NEW_TIMEZONE = 'Asia/Tokyo';
-  if (originalTimezone === '' || originalTimezone === 'null') {
-    console.warn(
-      '::warning::Step 9b: не удалось прочитать текущий часовой пояс устройства ' +
-        '(`adb shell settings get global time_zone` вернул пусто/null) — восстановление в конце шага пропущено, ' +
-        'TODO(B8-controller): проверить вручную на живом прогоне, что это не оставляет эмулятор в ' +
-        `${NEW_TIMEZONE} для последующих прогонов CI.`,
+  const originalTimezone = adbSoft(['shell', 'getprop', 'persist.sys.timezone']).trim();
+  const offsetBeforeTzChange = adbSoft(['shell', 'date', '+%z']).trim();
+  adb(['shell', 'setprop', 'persist.sys.timezone', NEW_TIMEZONE], { stdio: 'inherit' });
+  adbSoft(['shell', 'settings', 'put', 'global', 'time_zone', NEW_TIMEZONE]);
+  const offsetAfterTzChange = await waitFor(
+    `смену часового пояса устройства на ${NEW_TIMEZONE}`,
+    20,
+    500,
+    () => {
+      const current = adbSoft(['shell', 'date', '+%z']).trim();
+      return current !== '' && current !== offsetBeforeTzChange ? current : null;
+    },
+  );
+  if (offsetAfterTzChange === null) {
+    fail(
+      `Step 9b: часовой пояс устройства НЕ сменился (смещение осталось ${JSON.stringify(offsetBeforeTzChange)} ` +
+        `после \`setprop persist.sys.timezone ${NEW_TIMEZONE}\`) — проверять claim #9 нечем. Это дефект ` +
+        'постановки эксперимента, а не реконсиляции: без реальной смены пояса приложение обязано оставить ' +
+        'тот же instant.',
     );
   }
-  adb(['shell', 'settings', 'put', 'global', 'time_zone', NEW_TIMEZONE], { stdio: 'inherit' });
+  console.log(
+    `Часовой пояс устройства сменился: ${offsetBeforeTzChange} → ${offsetAfterTzChange} (${NEW_TIMEZONE}).`,
+  );
   await sleep(1000);
 
   second.cdp.close();
@@ -3042,9 +3068,8 @@ async function main() {
   }
 
   if (originalTimezone !== '' && originalTimezone !== 'null') {
-    adb(['shell', 'settings', 'put', 'global', 'time_zone', originalTimezone], {
-      stdio: 'inherit',
-    });
+    adb(['shell', 'setprop', 'persist.sys.timezone', originalTimezone], { stdio: 'inherit' });
+    adbSoft(['shell', 'settings', 'put', 'global', 'time_zone', originalTimezone]);
     console.log(`Часовой пояс восстановлен: ${originalTimezone}.`);
   }
 
