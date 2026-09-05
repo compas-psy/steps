@@ -608,7 +608,16 @@ jobs:
           # шага production без ключа уже упал. Дорога «production → нет
           # секретов → --debug» в этом файле отсутствует физически.
           if [ "${{ steps.keystore.outputs.build_type }}" = 'release' ]; then
-            pnpm --filter @shagi/mobile exec tauri android build --apk \
+            # `--apk` и `--aab` одним вызовом: Rust-библиотеки компилируются
+            # один раз, Gradle переиспользует их для обеих упаковок. Двумя
+            # вызовами это стоило бы второго получаса компиляции.
+            #
+            # AAB собирается только на release. Отладочный bundle отгружать
+            # некуда — Google Play принимает только release, — а собирать
+            # файл, которому некуда поехать, значит платить временем за
+            # ничто (то же решение закреплено сигнатурой `aabName`, у неё
+            # нет параметра `debug`).
+            pnpm --filter @shagi/mobile exec tauri android build --apk --aab \
               --target aarch64 --target armv7
           else
             pnpm --filter @shagi/mobile exec tauri android build --apk --debug \
@@ -616,7 +625,8 @@ jobs:
           fi
 
           echo '── что собралось ──'
-          find apps/mobile/src-tauri/gen/android/app/build/outputs -name '*.apk' -type f -printf '%p\t%s байт\n'
+          find apps/mobile/src-tauri/gen/android/app/build/outputs \
+            \( -name '*.apk' -o -name '*.aab' \) -type f -printf '%p\t%s байт\n'
 
       # ── Подпись ───────────────────────────────────────────────────────────
       # Подписываем сами, а не конфигом Gradle: сгенерированный
@@ -686,6 +696,99 @@ jobs:
             --expected "${EXPECTED_SIGNER_SHA256}" \
             --exit-code "${code}"
 
+      # ── AAB: подпись и НАСТОЯЩАЯ проверка ────────────────────────────────
+      #
+      # `apksigner` к AAB неприменим — он про APK. Bundle подписывается
+      # JAR-подписью (`jarsigner` из JDK) тем же ключом, что и APK: Google
+      # Play принимает загружаемый bundle, подписанный ключом загрузки.
+      #
+      # Проверка НЕ сводится к «файл существует». Bundle проверяется двумя
+      # инструментами Android:
+      #
+      #   1. `bundletool validate` — структура bundle, модули, манифест;
+      #   2. `bundletool build-apks` — bundle реально разворачивается в
+      #      устанавливаемые APK. Это и есть настоящая проверка: файл может
+      #      быть корректным zip'ом с правильным манифестом и при этом не
+      #      давать ни одного APK. Полученный универсальный APK потом
+      #      проверяется тем же `apksigner`, что и основной, — то есть
+      #      отпечаток сверяется с EXPECTED_SIGNER на файле, который
+      #      действительно поставится на устройство.
+      - name: Подписать и проверить AAB
+        id: aab
+        if: steps.keystore.outputs.signed == 'true'
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          EXPECTED_SIGNER_SHA256: ${{ steps.keystore.outputs.expected_signer_sha256 }}
+          BUNDLETOOL_VERSION: '1.18.1'
+        run: |
+          set -euo pipefail
+          mapfile -t found < <(find 'apps/mobile/src-tauri/gen/android/app/build/outputs/bundle' \
+            -name '*.aab' -type f | sort)
+          [ "${#found[@]}" -gt 0 ] || { echo 'AAB не найден после сборки' >&2; exit 1; }
+          unsigned="${found[0]}"
+          echo "Подписываем ${unsigned}"
+
+          signed="${RUNNER_TEMP}/signed.aab"
+          # `-sigalg`/`-digestalg` названы явно: умолчания jarsigner зависят
+          # от версии JDK, а подпись артефакта, который поедет в магазин, не
+          # должна меняться от того, какой образ раннера сегодня.
+          jarsigner -keystore "${RUNNER_TEMP}/signing/shagi.jks" \
+            -storepass "${ANDROID_KEYSTORE_PASSWORD}" \
+            -keypass "${ANDROID_KEY_PASSWORD}" \
+            -sigalg SHA256withRSA -digestalg SHA-256 \
+            -signedjar "${signed}" "${unsigned}" "${ANDROID_KEY_ALIAS}"
+
+          jarsigner -verify -verbose:summary "${signed}" | tail -5
+
+          # Отпечаток подписи самого bundle — из сертификата в его JAR-подписи.
+          aab_signer="$(LANG=C keytool -printcert -jarfile "${signed}" \
+            | awk -F'SHA256: ' '/SHA256:/ { gsub(":", "", $2); print tolower($2); exit }')"
+          [ -n "${aab_signer}" ] || { echo 'не удалось прочитать отпечаток AAB' >&2; exit 1; }
+          if [ "${aab_signer}" != "${EXPECTED_SIGNER_SHA256}" ]; then
+            echo "::error::AAB подписан не тем ключом: ${aab_signer} ≠ ${EXPECTED_SIGNER_SHA256}"
+            exit 1
+          fi
+          echo "AAB signer SHA-256: ${aab_signer} — совпадает с EXPECTED_SIGNER"
+
+          # ── bundletool ────────────────────────────────────────────────
+          curl -fsSL -o "${RUNNER_TEMP}/bundletool.jar" \
+            "https://github.com/google/bundletool/releases/download/${BUNDLETOOL_VERSION}/bundletool-all-${BUNDLETOOL_VERSION}.jar"
+
+          echo '── bundletool validate ──'
+          java -jar "${RUNNER_TEMP}/bundletool.jar" validate --bundle "${signed}"
+
+          echo '── bundletool build-apks (bundle реально разворачивается) ──'
+          java -jar "${RUNNER_TEMP}/bundletool.jar" build-apks \
+            --bundle "${signed}" \
+            --output "${RUNNER_TEMP}/from-bundle.apks" \
+            --mode universal \
+            --ks "${RUNNER_TEMP}/signing/shagi.jks" \
+            --ks-pass "pass:${ANDROID_KEYSTORE_PASSWORD}" \
+            --ks-key-alias "${ANDROID_KEY_ALIAS}" \
+            --key-pass "pass:${ANDROID_KEY_PASSWORD}"
+
+          unzip -o -q "${RUNNER_TEMP}/from-bundle.apks" -d "${RUNNER_TEMP}/from-bundle"
+          universal="${RUNNER_TEMP}/from-bundle/universal.apk"
+          [ -s "${universal}" ] || { echo 'bundletool не дал universal.apk' >&2; exit 1; }
+          echo "universal.apk из bundle: $(stat -c%s "${universal}") байт"
+
+          # Тот же `apksigner`, что и для основного APK: отпечаток
+          # проверяется на файле, который реально ставится на устройство.
+          set +e
+          '${{ steps.sign.outputs.apksigner }}' verify --verbose --print-certs "${universal}" \
+            > "${RUNNER_TEMP}/aab-apksigner.txt" 2>&1
+          code=$?
+          set -e
+          cat "${RUNNER_TEMP}/aab-apksigner.txt"
+          node apps/mobile/scripts/android-release-gate.mjs verify \
+            --output "${RUNNER_TEMP}/aab-apksigner.txt" \
+            --expected "${EXPECTED_SIGNER_SHA256}" \
+            --exit-code "${code}"
+
+          echo 'signed_aab=true' >> "$GITHUB_OUTPUT"
+
       # ── Сторож разрешений ГОТОВОГО пакета ────────────────────────────────
       # Проверяется по СОБРАННОМУ файлу, а не по шаблону манифеста: Tauri
       # генерирует манифест сам, и разрешение может приехать из зависимости,
@@ -741,6 +844,21 @@ jobs:
             cp "${found[0]}" "artifacts/${name}"
           fi
 
+          # AAB — только на подписанном release: на debug-канале его не
+          # существует (см. шаг сборки), и его отсутствие там не ошибка.
+          if [ '${{ steps.aab.outputs.signed_aab }}' = 'true' ]; then
+            aab="$(printf '%s\n' "${names}" | sed -n 's/^aab=//p')"
+            [ -n "${aab}" ] || { echo 'расчёт имени AAB ничего не дал' >&2; exit 1; }
+            cp "${RUNNER_TEMP}/signed.aab" "artifacts/${aab}"
+            aab_sha256="$(sha256sum "artifacts/${aab}" | cut -d' ' -f1)"
+            echo "aab_sha256=${aab_sha256}" >> "$GITHUB_OUTPUT"
+            echo "AAB: ${aab}, $(stat -c%s "artifacts/${aab}") байт, SHA-256: ${aab_sha256}"
+            # Имя AAB — по тому же правилу СИМПАС; проверяется расчётом, не
+            # глазами: `--clobber` на публикации затёр бы неверное имя молча.
+            node apps/mobile/scripts/android-release-gate.mjs names \
+              --version "${version}" --artifact "${name}" --aab "${aab}" --debug "${debug}"
+          fi
+
           size="$(stat -c%s "artifacts/${name}")"
           apk_sha256="$(sha256sum "artifacts/${name}" | cut -d' ' -f1)"
           echo "apk_sha256=${apk_sha256}" >> "$GITHUB_OUTPUT"
@@ -791,6 +909,7 @@ jobs:
           name: ${{ steps.collect.outputs.bundle }}
           path: |
             artifacts/*.apk
+            artifacts/*.aab
             artifacts/*.json
           if-no-files-found: error
           retention-days: 7
@@ -809,7 +928,10 @@ jobs:
 
       - name: Убрать ключ подписи
         if: always()
-        run: rm -rf "${RUNNER_TEMP}/signing" "${RUNNER_TEMP}/signed.apk" "${RUNNER_TEMP}/aligned.apk"
+        run: |
+          rm -rf "${RUNNER_TEMP}/signing" "${RUNNER_TEMP}/signed.apk" \
+            "${RUNNER_TEMP}/aligned.apk" "${RUNNER_TEMP}/signed.aab" \
+            "${RUNNER_TEMP}/from-bundle" "${RUNNER_TEMP}/from-bundle.apks"
 
   # ─────────────────────────────────────────────────────────────────────────
   # SMOKE — приложение реально запускается на живом Android и по нему реально
@@ -925,7 +1047,17 @@ jobs:
           node apps/mobile/scripts/android-release-gate.mjs names \
             --version '${{ needs.build.outputs.version }}' --print
 
-      - name: Забрать APK
+      # ── Юридический стоп-кран публикации ─────────────────────────────────
+      # Стоит в job `release`, а НЕ в сборочном: `status: draft` блокирует
+      # отгрузку и публикацию, но не сборку. Артефакты к этому моменту уже
+      # собраны, подписаны, проверены и лежат во вкладке Actions — если
+      # документы ещё черновые, падает именно публикация, и это правильное
+      # место для отказа: пользователь читает опубликованное, а Google Play
+      # требует действующую политику независимо от наличия сервера.
+      - name: Готовность юридических документов к публикации
+        run: node scripts/check-store-release-readiness.mjs
+
+      - name: Забрать APK и AAB
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: ${{ steps.names.outputs.bundle }}
@@ -938,9 +1070,9 @@ jobs:
           set -euo pipefail
           tag="${GITHUB_REF_NAME}"
           if gh release view "${tag}" >/dev/null 2>&1; then
-            gh release upload "${tag}" artifacts/*.apk artifacts/*.json --clobber
+            gh release upload "${tag}" artifacts/*.apk artifacts/*.aab artifacts/*.json --clobber
           else
-            gh release create "${tag}" artifacts/*.apk artifacts/*.json \
+            gh release create "${tag}" artifacts/*.apk artifacts/*.aab artifacts/*.json \
               --title "ШАГИ ${{ needs.build.outputs.version }}" \
               --generate-notes
           fi

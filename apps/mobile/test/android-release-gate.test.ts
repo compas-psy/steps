@@ -17,8 +17,10 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  aabName,
   artifactName,
   bundleName,
+  checkAabName,
   checkArtifactName,
   checkReleaseTag,
   expectedSignerGate,
@@ -444,5 +446,42 @@ describe('паспорт сборки', () => {
 
   it('у debug-сборки честно стоит debug_signed', () => {
     expect(provenance({ buildType: 'debug' } as never).debug_signed).toBe(true);
+  });
+});
+
+/**
+ * AAB — второй распространяемый артефакт релиза (шаг 3 критического пути
+ * `MVP 1.0-local`, ADR-0009): Google Play принимает только его, APK
+ * остаётся для прямой установки мимо магазина.
+ *
+ * Имя считается тем же правилом СИМПАС, что и у APK, — здесь проверяется
+ * именно это, потому что разъехавшиеся имена ловятся только глазами, а
+ * `--clobber` в релизном шаге затрёт файл с неверным именем молча.
+ */
+describe('имя AAB — по тому же правилу СИМПАС, что и APK', () => {
+  it('считается из версии и отличается от APK только расширением', () => {
+    expect(aabName({ version: '0.1.0' })).toBe('simpas-shagi-0.1.0.aab');
+    expect(aabName({ version: '0.1.0' }).replace(/\.aab$/, '.apk')).toBe(
+      artifactName({ version: '0.1.0' }),
+    );
+  });
+
+  it('у AAB нет debug-варианта: магазин принимает только release', () => {
+    // Утверждение проверяется ТИПАМИ, а не значением: попытка попросить
+    // отладочный bundle не должна компилироваться вовсе. `@ts-expect-error`
+    // сам падает, если ошибки не будет, — то есть тест покраснеет и когда
+    // кто-то добавит `debug` в сигнатуру.
+    // @ts-expect-error — отладочного bundle не существует: отгружать его некуда
+    expect(aabName({ version: '0.1.0', debug: true })).toBe('simpas-shagi-0.1.0.aab');
+  });
+
+  it('чужое имя отклоняется с объяснением', () => {
+    const verdict = checkAabName('app-release.aab', { version: '0.1.0' });
+    expect(verdict.ok).toBe(false);
+    expect(verdict.problems.join(' ')).toContain('simpas-shagi-0.1.0.aab');
+  });
+
+  it('правильное имя принимается', () => {
+    expect(checkAabName('simpas-shagi-0.1.0.aab', { version: '0.1.0' }).ok).toBe(true);
   });
 });

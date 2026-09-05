@@ -480,6 +480,19 @@ export function artifactName({ product = PRODUCT, version = '', debug = false } 
   return `${SYSTEM}-${product}-${version}${debug ? '-debug' : ''}.apk`;
 }
 
+/**
+ * Имя AAB — того же правила СИМПАС, что и APK, только расширение другое.
+ *
+ * Отдельная функция, а не `replace('.apk','.aab')` у вызывающего: правило
+ * именования живёт в одном месте, и менять его придётся тоже в одном.
+ * Debug-варианта у AAB нет намеренно: bundle нужен магазину, а магазин
+ * принимает только release — собирать отладочный `.aab` значило бы делать
+ * файл, которому некуда поехать.
+ */
+export function aabName({ product = PRODUCT, version = '' } = {}) {
+  return `${SYSTEM}-${product}-${version}.aab`;
+}
+
 export function releaseTag({ product = PRODUCT, version = '' } = {}) {
   return `${product}-v${version}`;
 }
@@ -508,6 +521,12 @@ export function checkArtifactName(
     `имя артефакта «${name}» не по правилу СИМПАС — ожидалось «${expected}» ` +
       '(simpas-<продукт>-<версия>.apk, без хеша коммита и номера прогона)',
   ]);
+}
+
+export function checkAabName(name = '', { product = PRODUCT, version = '' } = {}) {
+  const expected = aabName({ product, version });
+  if (name === expected) return verdict([]);
+  return verdict([`имя AAB «${name}» не по правилу СИМПАС — ожидалось «${expected}»`]);
 }
 
 export function checkReleaseTag(tag = '', { product = PRODUCT, version = '' } = {}) {
@@ -667,10 +686,13 @@ if (isMain) {
     if (has('print')) {
       if (version === '') fail('--print без --version: печатать нечего');
       emit(`apk=${artifactName({ version, debug })}`);
+      emit(`aab=${aabName({ version })}`);
       emit(`bundle=${bundleName({ version, debug })}`);
       emit(`tag=${releaseTag({ version })}`);
     } else {
       const problems = [...checkArtifactName(flag('artifact', ''), { version, debug }).problems];
+      const aab = flag('aab', '');
+      if (aab !== '') problems.push(...checkAabName(aab, { version }).problems);
       const tag = flag('tag', '');
       if (tag !== '') problems.push(...checkReleaseTag(tag, { version }).problems);
       if (problems.length > 0) fail(problems.join('; '));
