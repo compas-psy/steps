@@ -1,0 +1,29 @@
+{
+  "$comment": "Реестр версий юридических документов (05§14: отдельные неизменяемые версии и хеши). Правило: изменил текст — добавь НОВУЮ запись с новой версией и новым хешем. Существующие записи не переписываются: опубликованная редакция должна оставаться проверяемой. Гейт scripts/check-legal-documents.mjs сверяет фактический sha256 файла с последней записью.",
+  "documents": [
+    {
+      "id": "privacy-policy",
+      "file": "privacy-policy.ru-RU.md",
+      "status": "draft",
+      "history": [
+        {
+          "version": "1.0.0",
+          "effectiveDate": "2026-09-05",
+          "sha256": "41b4fa1a41916b17844751f560bfd496a68f8c33773db0f98077027bd99513f1"
+        }
+      ]
+    },
+    {
+      "id": "user-agreement",
+      "file": "user-agreement.ru-RU.md",
+      "status": "draft",
+      "history": [
+        {
+          "version": "1.0.0",
+          "effectiveDate": "2026-09-05",
+          "sha256": "9082043db695d37e075b6d38d8c4bbb83df2404bee3579c47148678552566909"
+        }
+      ]
+    }
+  ]
+}

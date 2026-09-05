@@ -44,6 +44,7 @@ import { ImportData } from './ImportData.js';
 import { FirstTask } from './FirstTask.js';
 import { Inbox } from './Inbox.js';
 import { Launch } from './Launch.js';
+import { PrivacyPolicyScreen, UserAgreementScreen } from './LegalDocument.js';
 import { NlpOnboarding } from './NlpOnboarding.js';
 import { Plan } from './Plan.js';
 import { ProjectDetail } from './ProjectDetail.js';
@@ -63,6 +64,7 @@ export { ImportData } from './ImportData.js';
 export { FirstTask } from './FirstTask.js';
 export { Inbox } from './Inbox.js';
 export { Launch } from './Launch.js';
+export { PrivacyPolicyScreen, UserAgreementScreen } from './LegalDocument.js';
 export { NlpOnboarding } from './NlpOnboarding.js';
 export { Plan } from './Plan.js';
 export { ProjectDetail } from './ProjectDetail.js';
@@ -89,6 +91,8 @@ export const SCREENS: Partial<Record<ScreenId, ComponentType>> = {
   plan: Plan,
   completed: Completed,
   dataPrivacy: DataPrivacy,
+  legalPrivacyPolicy: PrivacyPolicyScreen,
+  legalUserAgreement: UserAgreementScreen,
   importData: ImportData,
   exportData: ExportData,
   settings: Settings,

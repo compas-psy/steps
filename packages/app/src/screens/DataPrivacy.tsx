@@ -22,8 +22,10 @@
  *     по умолчанию, — «сбора нет вовсе» этому не противоречит, а является
  *     его предельным случаем, и сказать это прямым текстом честнее, чем
  *     нарисовать выключенный переключатель.
- *   * Юридические документы — в репозитории их нет ни одного (ни текста, ни
- *     адреса), ссылаться не на что.
+ *   * Юридические документы — ЕСТЬ с шага 4 критического пути
+ *     (`docs/legal/`, пакет `@shagi/legal`): две строки ниже открывают их
+ *     из бандла, офлайн. До этого шага их не было ни одного, и строки не
+ *     существовало — ссылаться было не на что.
  *   * `Удалить аккаунт` — аккаунтов в R1 нет вовсе (сервера нет).
  *
  * Тот же принцип, по которому `Settings.tsx` держит ровно одну строку:
@@ -212,6 +214,38 @@ export function DataPrivacy(): ReactElement {
                 label: t('settings', 'dataPrivacy.export.action'),
                 variant: 'secondary',
                 onClick: () => controller.goTo('exportData'),
+              }}
+            />
+          </CardBody>
+        </Card>
+
+        {/* Юридические документы (`05§14`). Открываются ИЗ БАНДЛА
+         * (`@shagi/legal`), а не по ссылке в браузер: приложение
+         * local-first, и «нет соединения» вместо политики
+         * конфиденциальности — не тот ответ. Веб-версии тех же текстов
+         * порождаются из одного исходника генератором
+         * `scripts/build-legal.mjs` и лежат в `apps/web/public/legal/`
+         * для карточки магазина. */}
+        <Card>
+          <CardBody padding="none" className="shagi-data-privacy__rows">
+            <DataPrivacyRow
+              title={t('settings', 'dataPrivacy.legal.privacy')}
+              description={t('settings', 'dataPrivacy.legal.description')}
+              action={{
+                kind: 'button',
+                label: t('settings', 'dataPrivacy.legal.title'),
+                variant: 'secondary',
+                onClick: () => controller.goTo('legalPrivacyPolicy'),
+              }}
+            />
+            <DataPrivacyRow
+              title={t('settings', 'dataPrivacy.legal.agreement')}
+              description={t('settings', 'dataPrivacy.legal.description')}
+              action={{
+                kind: 'button',
+                label: t('settings', 'dataPrivacy.legal.title'),
+                variant: 'secondary',
+                onClick: () => controller.goTo('legalUserAgreement'),
               }}
             />
           </CardBody>

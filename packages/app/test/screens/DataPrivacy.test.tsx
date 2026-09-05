@@ -261,11 +261,13 @@ describe('DataPrivacy (M51)', () => {
     // нет — их не должно быть и на экране: тест обязан покраснеть на первой
     // же строке, дописанной «чтобы было как в макете».
     //
-    // Кнопок ровно четыре, и каждая ведёт к работающему действию: «Назад»,
-    // «Импортировать» (M46), «Открыть» экспорт (M49) и «Удалить». Экспорт
-    // и импорт добавлены пакетом работ M46–M49 — до него их здесь не было
-    // именно потому, что вести им было некуда.
-    expect(screen.getAllByRole('button')).toHaveLength(4);
+    // Кнопок ровно шесть, и каждая ведёт к работающему действию: «Назад»,
+    // «Импортировать» (M46), «Открыть» экспорт (M49), два юридических
+    // документа (`05§14`, шаг 4 критического пути) и «Удалить». Экспорт и
+    // импорт добавлены пакетом работ M46–M49, документы — шагом 4; до
+    // своих пакетов работ ни тех, ни других здесь не было именно потому,
+    // что вести им было некуда.
+    expect(screen.getAllByRole('button')).toHaveLength(6);
     expect(screen.queryByRole('switch')).not.toBeInTheDocument();
     expect(
       screen.getByRole('button', { name: t('settings', 'dataPrivacy.import.action') }),
@@ -273,6 +275,30 @@ describe('DataPrivacy (M51)', () => {
     expect(
       screen.getByRole('button', { name: t('settings', 'dataPrivacy.export.action') }),
     ).toBeInTheDocument();
+  });
+
+  it('открывает оба юридических документа — по отдельному маршруту на каждый (05§14)', async () => {
+    const user = userEvent.setup();
+    const controller = createAppController({ screen: 'dataPrivacy' });
+    render(
+      <AppProvider host={testHost(INDEXEDDB)} controller={controller}>
+        <DataPrivacy />
+      </AppProvider>,
+    );
+
+    const buttons = screen.getAllByRole('button', {
+      name: t('settings', 'dataPrivacy.legal.title'),
+    });
+    expect(buttons).toHaveLength(2);
+
+    await user.click(buttons[0]!);
+    expect(controller.getState().screen).toBe('legalPrivacyPolicy');
+
+    controller.goTo('dataPrivacy');
+    await user.click(
+      screen.getAllByRole('button', { name: t('settings', 'dataPrivacy.legal.title') })[1]!,
+    );
+    expect(controller.getState().screen).toBe('legalUserAgreement');
   });
 
   it('«Назад» возвращает в хаб настроек', async () => {

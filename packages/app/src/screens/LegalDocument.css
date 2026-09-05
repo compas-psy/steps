@@ -1,0 +1,53 @@
+/**
+ * Экран юридического документа (`05§14`). Токены — те же, что на соседних
+ * экранах (`DataPrivacy.css`/`ExportData.css`): `--space-*`, `--text-*`,
+ * `--fw-*`, `--foreground`/`--muted-foreground`, `--font-mono`.
+ */
+
+.shagi-legal {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-5) var(--space-5) var(--space-10);
+  /* Длинный юридический текст без ограничения ширины нечитаем на
+   * десктопе: строка уезжает на всю ширину окна. */
+  max-width: 46rem;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.shagi-legal__header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.shagi-legal__title {
+  font-size: var(--text-mobile-heading);
+  font-weight: var(--fw-bold);
+  color: var(--foreground);
+  margin: 0;
+}
+
+.shagi-legal__meta,
+.shagi-legal__hash {
+  margin: 0;
+  font-size: var(--text-body-secondary);
+  color: var(--muted-foreground);
+}
+
+/* Хеш — длинная неразрывная строка: без переноса растягивает экран. */
+.shagi-legal__hash {
+  font-family: var(--font-mono);
+  overflow-wrap: anywhere;
+}
+
+.shagi-legal__body {
+  margin: var(--space-4) 0 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: var(--font-sans);
+  font-size: var(--text-body);
+  line-height: var(--lh-body-secondary);
+  color: var(--foreground);
+}

@@ -35,5 +35,12 @@
   "dataPrivacy.export.description": "Полный бэкап одним файлом, отдельный проект таблицей и восстановление из бэкапа.",
   "dataPrivacy.export.action": "Открыть",
   "dataPrivacy.storage.sqlite.badge": "База на устройстве",
-  "dataPrivacy.storage.sqlite.description": "Задачи лежат в базе SQLite в приватном каталоге приложения — там же, куда её кладёт сама система. Никуда не отправляются: сервера у этой версии нет."
+  "dataPrivacy.storage.sqlite.description": "Задачи лежат в базе SQLite в приватном каталоге приложения — там же, куда её кладёт сама система. Никуда не отправляются: сервера у этой версии нет.",
+  "legal.back.label": "Назад",
+  "legal.meta": "Версия {version} от {date}",
+  "legal.hash": "SHA-256: {hash}",
+  "dataPrivacy.legal.title": "Документы",
+  "dataPrivacy.legal.description": "Политика конфиденциальности и пользовательское соглашение — доступны без интернета.",
+  "dataPrivacy.legal.privacy": "Политика конфиденциальности",
+  "dataPrivacy.legal.agreement": "Пользовательское соглашение"
 }

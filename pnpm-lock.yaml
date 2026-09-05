@@ -206,6 +206,9 @@ importers:
       '@shagi/importer':
         specifier: workspace:*
         version: link:../importer
+      '@shagi/legal':
+        specifier: workspace:*
+        version: link:../legal
       '@shagi/nlp':
         specifier: workspace:*
         version: link:../nlp
@@ -311,6 +314,18 @@ importers:
       fflate:
         specifier: 0.8.3
         version: 0.8.3
+    devDependencies:
+      '@types/node':
+        specifier: ^24.13.3
+        version: 24.13.3
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^4.1.11
+        version: 4.1.11(@types/node@24.13.3)(happy-dom@20.12.0)(vite@8.2.2(@types/node@24.13.3))
+
+  packages/legal:
     devDependencies:
       '@types/node':
         specifier: ^24.13.3

@@ -19,6 +19,7 @@
     "@shagi/core": "workspace:*",
     "@shagi/i18n": "workspace:*",
     "@shagi/importer": "workspace:*",
+    "@shagi/legal": "workspace:*",
     "@shagi/nlp": "workspace:*",
     "@shagi/platform": "workspace:*",
     "@shagi/storage": "workspace:*",

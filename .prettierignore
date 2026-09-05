@@ -22,3 +22,10 @@ apps/mobile/src-tauri/plugins/*/permissions/schemas
 # нашим prettier'ом значило бы зашумить diff против апстрима ровно там, где
 # он обязан оставаться минимальным и обозримым при следующем обновлении.
 apps/mobile/src-tauri/vendor
+
+# Артефакты генератора юридических документов (scripts/build-legal.mjs).
+# Форматированием владеет генератор: prettier переписывал их по-своему, и
+# `build-legal.mjs --check` начинал падать на файле, который никто не
+# трогал руками. Один владелец формата вместо двух спорящих.
+packages/legal/src/documents.generated.ts
+apps/web/public/legal/
