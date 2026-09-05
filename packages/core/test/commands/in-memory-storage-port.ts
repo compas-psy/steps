@@ -107,10 +107,35 @@ export class InMemoryCommandStoragePort implements CommandStoragePort {
    * само; эта тень имитирует тот же контракт — мутация применяется целиком
    * либо не применяется вовсе. */
   failNextMutation(reason = 'фиктивный сбой транзакции'): void {
+    this.failMutationAfter(0, reason);
+  }
+
+  /** Сорвать мутацию, пропустив `applied` успешных. Нужен, чтобы тест на
+   * атомарность не был самоисполняющимся: каскад пишет детей первыми, и
+   * срыв ПЕРВОЙ же мутации не оставил бы половины графа даже у неатомарной
+   * реализации — такой тест не смог бы покраснеть на том, ради чего написан
+   * (найдено ревью пакета работ Undo/Restore R1). Пропустив первую мутацию,
+   * тест ловит именно цепочку транзакций. */
+  failMutationAfter(applied: number, reason = 'фиктивный сбой транзакции'): void {
     this.pendingFailure = reason;
+    this.failureSkip = applied;
+  }
+
+  /** Взведён ли ещё запланированный сбой. Это и есть проверка «второй
+   * мутации не было»: если команда прошла целиком, а сбой так и не
+   * сработал, значит записи ушли одним `applyMutation`. */
+  isFailureArmed(): boolean {
+    return this.pendingFailure !== null;
+  }
+
+  /** Снять невыстреливший сбой, чтобы он не сработал в следующей команде. */
+  disarmFailure(): void {
+    this.pendingFailure = null;
+    this.failureSkip = 0;
   }
 
   private pendingFailure: string | null = null;
+  private failureSkip = 0;
 
   async runTransaction<T>(run: (tx: CommandStorageWriteTransaction) => Promise<T>): Promise<T> {
     this.transactionCount += 1;
@@ -119,7 +144,9 @@ export class InMemoryCommandStoragePort implements CommandStoragePort {
       checklistItems: this.checklistItems,
       recurrenceSeries: this.recurrenceSeries,
       applyMutation: (mutation: CommandDomainMutation): Promise<void> => {
-        if (this.pendingFailure !== null) {
+        if (this.pendingFailure !== null && this.failureSkip > 0) {
+          this.failureSkip -= 1;
+        } else if (this.pendingFailure !== null) {
           const reason = this.pendingFailure;
           this.pendingFailure = null;
           // Ни одной записи до броска — именно это и проверяет тест: после

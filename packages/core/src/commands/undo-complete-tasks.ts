@@ -94,13 +94,23 @@ export async function undoCompleteTasksCommand(
   const completedTargets = targets.filter((task) => task.status === 'completed');
   if (completedTargets.length === 0) return { status: 'not_completed' };
 
+  // Родители раньше детей — зеркало прямого действия: `completeManyCommand`
+  // применяет каскад ДЕТЬМИ раньше родителей (`bulk-completion-plan.ts`), и
+  // вызывающий код передаёт сюда её `completedIds` как есть. В одной
+  // транзакции хранилищу порядок безразличен, но журнал outbox будущий
+  // сервер читает последовательно, и обратный порядок дал бы в нём
+  // промежуточное «активный ребёнок под завершённым родителем» (`01§8`) —
+  // ровно то, от чего защищается `undo-delete-tasks.ts`. Найдено ревью
+  // пакета работ Undo/Restore R1.
+  const orderedTargets = completedTargets.toReversed();
+
   const revertedIds = new Set(completedTargets.map((task) => task.id));
 
   const writes: CommandEntityWrite[] = [];
   const outbox: SyncOutboxEntry[] = [];
   let lastValidation: ValidationResult = { valid: true, issues: [] };
 
-  for (const current of completedTargets) {
+  for (const current of orderedTargets) {
     // Родитель, который ОСТАЁТСЯ завершённым, — запрещённое состояние для
     // возвращаемого в active ребёнка (`01§8`). Проверяется до сборки
     // мутации: половина отката хуже честного отказа.

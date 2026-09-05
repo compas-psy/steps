@@ -76,6 +76,11 @@ export function useUndoToast(messages: UndoToastMessages): UndoToastController {
    * состоянию их не разделила бы — состояние обновится только к
    * следующему рендеру, а инверсия успела бы уйти в хранилище дважды. */
   const consumed = useRef(false);
+  /** Актуальное предложение для чтения из асинхронного хвоста `runUndo` —
+   * замыкание там видит значение на момент нажатия, а решение «моё ли ещё
+   * окно» нужно принимать по текущему. */
+  const offerRef = useRef<UndoOffer | null>(null);
+  offerRef.current = offer;
 
   const offerUndo = useCallback((next: UndoOffer): void => {
     consumed.current = false;
@@ -93,18 +98,28 @@ export function useUndoToast(messages: UndoToastMessages): UndoToastController {
 
   const runUndo = useCallback(async (): Promise<void> => {
     if (offer === null || consumed.current) return;
+    const applied = offer;
     consumed.current = true;
     setRunning(true);
-    try {
-      const outcome = await offer.undo();
-      setOffer(null);
+    /** Закрыть тост и показать уведомление — но ТОЛЬКО если за время отката
+     * не появилось новое предложение. Откат идёт сотни миллисекунд (внутри
+     * него `refreshGroups` и реконсиляция напоминаний по каждой задаче), и
+     * пользователь успевает сделать следующее действие. Безусловный
+     * `setOffer(null)` гасил бы уже ЧУЖОЙ тост, отнимая у него окно Undo, а
+     * при `conflict` вешал бы поверх него чужое уведомление. Найдено ревью
+     * пакета работ Undo/Restore R1. */
+    const settle = (outcome: UndoOutcome): void => {
+      setOffer((currentOffer) => (currentOffer === applied ? null : currentOffer));
+      if (offerRef.current !== applied) return;
       if (outcome === 'conflict') setNotice(messages.conflict);
       else if (outcome === 'failed') setNotice(messages.failed);
+    };
+    try {
+      settle(await applied.undo());
     } catch {
       // Исключение обратной мутации — тот же случай, что честный `failed`:
       // пользователю нельзя показать закрывшийся тост как успех.
-      setOffer(null);
-      setNotice(messages.failed);
+      settle('failed');
     } finally {
       setRunning(false);
     }

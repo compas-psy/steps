@@ -93,7 +93,7 @@ describe('Undo повторов (ST §58 U3)', () => {
     expect(undone.series?.nextOccurrenceSeq).toBe(2n);
   });
 
-  it('7: независимо изменённый next сохраняется, исход — preserved_conflict', async () => {
+  it('7: изменённый и всё ещё активный next блокирует откат — двух активных occurrence не создаётся', async () => {
     const storage = new InMemoryCommandStoragePort();
     const current = occurrence(1n);
     storage.seedTask(current);
@@ -117,25 +117,28 @@ describe('Undo повторов (ST §58 U3)', () => {
     );
     expect(edited.status).toBe('ok');
 
+    const outboxBefore = storage.outboxEntries().length;
     const undone = await undoCompleteOccurrenceCommand(
       { occurrenceId: current.id, generatedOccurrenceId: generatedId },
       deps(storage),
     );
-    expect(undone.status).toBe('ok');
-    if (undone.status !== 'ok') return;
-    // Не `absent`: UI обязан различить «удалять было нечего» и «чужая
-    // работа сохранена» — второе показывает уведомление о конфликте.
-    expect(undone.generatedOutcome).toBe('preserved_conflict');
-    expect(undone.removedGeneratedTask).toBe(false);
+
+    // `01§11.9` требует сохранить чужую работу и показать конфликт. Откат
+    // текущего при живом изменённом next дал бы ДВА активных occurrence
+    // одной серии (`01§11.10`), поэтому не пишется ничего.
+    expect(undone.status).toBe('next_occurrence_changed');
+    expect(storage.outboxEntries().length).toBe(outboxBefore);
 
     const generated = storage.allTasks().find((task) => task.id === generatedId);
     expect(generated?.deletedAt).toBeNull();
     expect(generated?.title).toBe('Изменено на другом устройстве');
-    // Граница серии НЕ откатывается: следующий occurrence уже живёт своей
-    // жизнью, и повторная генерация того же id создала бы второй активный.
-    expect(undone.series?.nextOccurrenceSeq).toBe(3n);
-    // Текущий всё равно откатывается — данные не теряются ни с одной стороны.
-    expect(undone.task.status).toBe('active');
+    expect(
+      storage
+        .allTasks()
+        .filter(
+          (task) => task.seriesId !== null && task.deletedAt === null && task.status === 'active',
+        ),
+    ).toHaveLength(1);
   });
 
   it('8: «Пропустить это повторение» откатывается тем же Undo', async () => {

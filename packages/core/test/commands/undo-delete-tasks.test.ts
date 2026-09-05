@@ -154,6 +154,37 @@ describe('каскад удаления — срыв транзакции не �
     expect(storage.outboxEntries().length).toBe(outboxBefore);
   });
 
+  it('второй мутации не существует: сбой, взведённый на неё, не срабатывает вовсе', async () => {
+    const storage = new InMemoryCommandStoragePort();
+    const parent = existingTask({ id: uuid('de0000000060'), title: 'Родитель' });
+    const child = existingTask({
+      id: uuid('de0000000061'),
+      title: 'Подзадача',
+      parentTaskId: parent.id,
+    });
+    storage.seedTask(parent);
+    storage.seedTask(child);
+    await createChecklistItemCommand(
+      { taskId: parent.id, text: 'Пункт', rank: { placement: 'empty-list' } },
+      deps(storage),
+    );
+
+    // Сбой на ВТОРОЙ мутации каскада. У атомарной реализации второй мутации
+    // нет: удаление проходит целиком, а сбой остаётся взведённым. У прежней
+    // цепочки транзакций он выстрелил бы и оставил полуснесённый граф —
+    // именно это и отличает одну проверку от другой (проверка на срыв
+    // ПЕРВОЙ мутации проходит у обеих реализаций, потому что каскад пишет
+    // детей раньше корня; найдено ревью пакета работ Undo/Restore R1).
+    storage.failMutationAfter(1);
+    const deleted = await deleteTaskCommand({ id: parent.id }, deps(storage));
+    expect(deleted.status).toBe('ok');
+    expect(storage.isFailureArmed()).toBe(true);
+    storage.disarmFailure();
+
+    expect((await storage.tasks.findById(parent.id))?.deletedAt).not.toBeNull();
+    expect((await storage.tasks.findById(child.id))?.deletedAt).not.toBeNull();
+  });
+
   it('undo падает целиком: граф остаётся удалённым, повторный undo снова возможен', async () => {
     const storage = new InMemoryCommandStoragePort();
     const parent = existingTask({ id: uuid('de0000000050'), title: 'Родитель' });

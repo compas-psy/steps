@@ -38,13 +38,17 @@ export interface UndoCompleteOccurrenceInput {
  *  - `removed` — был найден, "нетронут" (см. `isUntouchedGeneratedTask`) и
  *    tombstone-нут этой же мутацией, `nextOccurrenceSeq` серии откачен;
  *  - `absent` — удалять было нечего (не генерировался, либо уже удалён);
- *  - `preserved_conflict` — СУЩЕСТВУЕТ и был независимо изменён, поэтому
- *    сохранён как есть. `01§11.9` требует здесь не «тихо ничего не делать»,
- *    а показать пользователю уведомление о конфликте синхронизации: чужая
- *    работа не удаляется и не теряется, но и вид, что Undo прошёл целиком,
- *    делать нельзя. Раньше этот случай был неотличим от `absent` (общий
- *    `removedGeneratedTask: false`), и UI физически не мог показать
- *    требуемое уведомление — пакет работ Undo/Restore R1 разделил их.
+ *  - `preserved_conflict` — СУЩЕСТВУЕТ, был независимо изменён и при этом
+ *    УЖЕ НЕ АКТИВЕН (завершён или удалён на другом устройстве), поэтому
+ *    сохранён как есть, а текущий occurrence всё же откачен: двух активных
+ *    occurrence это не создаёт. `01§11.9` требует показать уведомление о
+ *    конфликте синхронизации — чужая работа не удаляется и не теряется, но
+ *    и вид, что Undo прошёл целиком, делать нельзя. Раньше этот случай был
+ *    неотличим от `absent` (общий `removedGeneratedTask: false`), и UI
+ *    физически не мог показать требуемое уведомление.
+ *
+ * Случай «изменён И всё ещё активен» сюда НЕ попадает — он отдельный исход
+ * `next_occurrence_changed`, см. ниже.
  *
  * `removedGeneratedTask` сохранён как производное поле: вызывающий код
  * (`packages/app`), типизированный на прежнюю форму, продолжает
@@ -66,7 +70,28 @@ export type UndoCompleteOccurrenceResult =
   | { readonly status: 'not_found' }
   /** Цель существует, но не была завершена/пропущена — нечего откатывать
    * (отдельный исход, не смешивается с `not_found`: адрес валиден). */
-  | { readonly status: 'not_completed' };
+  | { readonly status: 'not_completed' }
+  /** Сгенерированный next occurrence независимо изменён и ВСЁ ЕЩЁ АКТИВЕН.
+   * Мутации нет вовсе.
+   *
+   * Почему не «откатить текущий, а next сохранить»: это дало бы ДВА
+   * активных occurrence одной серии — состояние, которое `01§11.10` прямо
+   * запрещает и которое `restoreTaskCommand` отказывается создавать
+   * (`recurring_next_exists`). Разрешить его здесь означало бы, что одна
+   * команда домена запрещает то, что вторая молча создаёт. `01§11.9`
+   * требует сохранить чужую работу и показать уведомление о конфликте — он
+   * не требует откатить текущий любой ценой, а сохранить данные обеих
+   * сторон можно только не трогая ни одну.
+   *
+   * Найдено ревью диффа пакета работ Undo/Restore R1: до этого исхода
+   * команда коммитила ровно те два активных occurrence, против которых сама
+   * же и предупреждает в комментарии `buildSeriesRollback`. */
+  | { readonly status: 'next_occurrence_changed'; readonly generatedOccurrenceId: Uuid }
+  /** Откатываемый occurrence — подзадача, чей родитель остаётся завершённым.
+   * Тот же рубеж `01§8`, что явно держит `undoCompleteTasksCommand`; здесь
+   * его не было, и команда вернула бы активного ребёнка под завершённым
+   * родителем. Асимметрия найдена ревью пакета работ Undo/Restore R1. */
+  | { readonly status: 'parent_still_completed'; readonly parentId: Uuid };
 
 /**
  * "Нетронут с момента генерации" (решение этого пакета работ, обоснование —
@@ -162,6 +187,13 @@ export async function undoCompleteOccurrenceCommand(
     return { status: 'not_completed' };
   }
 
+  if (current.parentTaskId !== null) {
+    const parent = await deps.storage.tasks.findById(current.parentTaskId);
+    if (parent !== null && parent.deletedAt === null && parent.status === 'completed') {
+      return { status: 'parent_still_completed', parentId: parent.id };
+    }
+  }
+
   const validationInput: TaskValidationInput = {
     ...flattenTask(current),
     status: 'active',
@@ -204,11 +236,11 @@ export async function undoCompleteOccurrenceCommand(
   ];
 
   // Сначала выясняем судьбу сгенерированного next occurrence и только потом
-  // пишем — всё тремя частями (откат текущего, tombstone next, откат
-  // границы серии) уходит ОДНОЙ транзакцией. Пока это были три транзакции
-  // подряд, между первой и второй существовало состояние «оба occurrence
-  // серии активны», запрещённое `01§11.10`, и падение на середине оставляло
-  // его навсегда.
+  // пишем — все три части (откат текущего, tombstone next, откат границы
+  // серии) уходят ОДНОЙ транзакцией. Пока это были три транзакции подряд,
+  // между первой и второй существовало состояние «оба occurrence серии
+  // активны», запрещённое `01§11.10`, и падение на середине оставляло его
+  // навсегда.
   let series: RecurrenceSeries | null = null;
   let generatedOutcome: UndoGeneratedOutcome = 'absent';
 
@@ -242,11 +274,23 @@ export async function undoCompleteOccurrenceCommand(
       outbox.push(...acc.outbox, rollback.outbox);
       series = rollback.series;
       generatedOutcome = 'removed';
-    } else if (generatedTask !== null && generatedTask.deletedAt === null) {
-      // Существует и независимо изменён — `01§11.9` "preserve remote work":
-      // не удаляем и не теряем чужую правку, но и не делаем вид, что Undo
-      // прошёл целиком. Вызывающий UI обязан показать уведомление о
-      // конфликте синхронизации по этому исходу.
+    } else if (
+      generatedTask !== null &&
+      generatedTask.deletedAt === null &&
+      generatedTask.status === 'active'
+    ) {
+      // Изменён И всё ещё активен: откатить текущий значило бы получить два
+      // активных occurrence одной серии (`01§11.10`). Не пишем НИЧЕГО и
+      // говорим об этом честно — см. комментарий исхода.
+      return {
+        status: 'next_occurrence_changed',
+        generatedOccurrenceId: generatedTask.id,
+      };
+    } else if (generatedTask !== null) {
+      // Изменён, но уже неактивен (завершён/удалён на другом устройстве):
+      // чужая работа сохраняется как есть, текущий откатывается — активным
+      // остаётся ровно один occurrence. `01§11.9` "preserve remote work"
+      // плюс уведомление о конфликте.
       generatedOutcome = 'preserved_conflict';
     }
   }

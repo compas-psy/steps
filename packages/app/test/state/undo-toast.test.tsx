@@ -63,6 +63,13 @@ describe('useUndoToast — 6-секундное окно «Отменить» (S
     vi.useRealTimers();
   });
 
+  it('окно Undo — это ровно 6 секунд из ST §58, а не любое число', () => {
+    // Иначе проверка ниже самореферентна: она двигает таймеры на ту же
+    // константу, которую использует реализация, и осталась бы зелёной при
+    // подмене её на 60 секунд. Найдено ревью пакета работ Undo/Restore R1.
+    expect(UNDO_WINDOW_MS).toBe(6_000);
+  });
+
   it('предложение живёт ровно 6 секунд и снимается само', async () => {
     await setup(() => Promise.resolve('ok'));
     expect(screen.getByText('Задача удалена')).toBeInTheDocument();
@@ -108,6 +115,35 @@ describe('useUndoToast — 6-секундное окно «Отменить» (S
     await click('Отменить');
 
     expect(screen.getByRole('alert')).toHaveTextContent('Не удалось отменить.');
+  });
+
+  it('медленный откат не гасит НОВОЕ предложение, появившееся за время его выполнения', async () => {
+    // Реальный сценарий: откат внутри себя перезапрашивает список и
+    // реконсилирует напоминания по каждой задаче — это сотни миллисекунд,
+    // и пользователь успевает сделать следующее действие. Безусловное
+    // закрытие тоста по завершении старого отката отняло бы у нового его
+    // окно Undo. Найдено ревью пакета работ Undo/Restore R1.
+    let releaseFirst: ((outcome: UndoOutcome) => void) | null = null;
+    const slowUndo = (): Promise<UndoOutcome> =>
+      new Promise<UndoOutcome>((resolve) => {
+        releaseFirst = resolve;
+      });
+
+    render(<Harness undo={slowUndo} />);
+    await click('Удалить');
+    await click('Отменить');
+
+    // Пока откат A висит, показано предложение B.
+    await click('Удалить');
+    expect(screen.getByText('Задача удалена')).toBeInTheDocument();
+
+    await act(async () => {
+      releaseFirst?.('conflict');
+      await Promise.resolve();
+    });
+
+    expect(screen.getByText('Задача удалена')).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
   it('после истечения окна нажимать нечего — инверсия не уходит', async () => {

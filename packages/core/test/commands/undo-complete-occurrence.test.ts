@@ -4,6 +4,7 @@ import {
   completeOccurrenceCommand,
   skipOccurrenceCommand,
 } from '../../src/commands/complete-occurrence.js';
+import { completeTaskCommand } from '../../src/commands/complete-task.js';
 import { undoCompleteOccurrenceCommand } from '../../src/commands/undo-complete-occurrence.js';
 import type { TaskCommandDeps } from '../../src/commands/types.js';
 import { updateTaskCommand } from '../../src/commands/update-task.js';
@@ -165,7 +166,7 @@ describe('undoCompleteOccurrenceCommand — recurring, next occurrence нетр�
 });
 
 describe('undoCompleteOccurrenceCommand — recurring, next occurrence УЖЕ изменён', () => {
-  it('сохраняет изменённый next occurrence — не удаляет его, но текущий всё равно откатывается', async () => {
+  it('изменённый и ВСЁ ЕЩЁ АКТИВНЫЙ next occurrence блокирует откат — двух активных быть не может', async () => {
     const storage = new InMemoryCommandStoragePort();
     const current = currentOccurrence();
     storage.seedTask(current);
@@ -187,6 +188,52 @@ describe('undoCompleteOccurrenceCommand — recurring, next occurrence УЖЕ и
       deps(storage),
     );
 
+    const outboxBefore = storage.outboxEntries().length;
+    const result = await undoCompleteOccurrenceCommand(
+      { occurrenceId: current.id, generatedOccurrenceId: generatedId },
+      deps(storage),
+    );
+
+    // Прежняя версия этой команды откатывала текущий и оставляла next
+    // живым — то есть коммитила ДВА активных occurrence одной серии,
+    // состояние, которое `01§11.10` запрещает, а `restoreTaskCommand`
+    // отказывается создавать. Найдено ревью пакета работ Undo/Restore R1.
+    expect(result.status).toBe('next_occurrence_changed');
+    expect(storage.outboxEntries().length).toBe(outboxBefore);
+
+    const stillCompleted = storage.allTasks().find((task) => task.id === current.id);
+    expect(stillCompleted?.status).toBe('completed');
+    const preserved = storage.allTasks().find((task) => task.id === generatedId);
+    expect(preserved?.deletedAt).toBeNull();
+    expect(preserved?.title).toBe('Уже отредактировано');
+
+    const active = storage
+      .allTasks()
+      .filter(
+        (task) => task.seriesId !== null && task.deletedAt === null && task.status === 'active',
+      );
+    expect(active).toHaveLength(1);
+  });
+
+  it('изменённый, но УЖЕ ЗАВЕРШЁННЫЙ next occurrence не мешает откату — активным остаётся один', async () => {
+    const storage = new InMemoryCommandStoragePort();
+    const current = currentOccurrence();
+    storage.seedTask(current);
+    storage.seedRecurrenceSeries(dailyScheduledSeries());
+
+    const completed = await completeOccurrenceCommand(
+      { id: current.id, occurrenceLocalDate: d('2026-08-31') },
+      deps(storage),
+    );
+    if (completed.status !== 'ok' || completed.generatedTask === null) {
+      throw new Error('ожидался успех');
+    }
+    const generatedId = completed.generatedTask.id;
+
+    // Другое устройство успело завершить сгенерированный occurrence. Чужую
+    // работу не трогаем, но и откат текущему больше ничем не мешает.
+    await completeTaskCommand({ id: generatedId }, deps(storage));
+
     const result = await undoCompleteOccurrenceCommand(
       { occurrenceId: current.id, generatedOccurrenceId: generatedId },
       deps(storage),
@@ -195,11 +242,17 @@ describe('undoCompleteOccurrenceCommand — recurring, next occurrence УЖЕ и
     expect(result.status).toBe('ok');
     if (result.status !== 'ok') return;
     expect(result.task.status).toBe('active');
-    expect(result.removedGeneratedTask).toBe(false);
+    expect(result.generatedOutcome).toBe('preserved_conflict');
 
     const preserved = storage.allTasks().find((task) => task.id === generatedId);
+    expect(preserved?.status).toBe('completed');
     expect(preserved?.deletedAt).toBeNull();
-    expect(preserved?.title).toBe('Уже отредактировано');
+    const active = storage
+      .allTasks()
+      .filter(
+        (task) => task.seriesId !== null && task.deletedAt === null && task.status === 'active',
+      );
+    expect(active).toHaveLength(1);
   });
 });
 

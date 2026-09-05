@@ -984,6 +984,11 @@ export function ProjectDetail(): ReactElement | null {
             { occurrenceId: task.id, generatedOccurrenceId: generatedId },
             commandDeps(),
           );
+          // `01§11.9`: следующий occurrence изменён независимо и всё ещё
+          // активен — откат не выполнен вовсе (иначе получились бы два
+          // активных occurrence одной серии, `01§11.10`). Пользователю
+          // показывается уведомление о конфликте, а не «не удалось».
+          if (undone.status === 'next_occurrence_changed') return 'conflict';
           if (undone.status !== 'ok') return 'failed';
           await loadAll();
           await reconcileTaskReminders(task.id);
