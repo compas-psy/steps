@@ -301,6 +301,102 @@ export class AppController {
   closeQuickAdd = (): void => {
     this.#setState({ quickAdd: null });
   };
+
+  /**
+   * Возврат на один шаг назад — единая точка для аппаратной кнопки «Назад»
+   * Android (`state/back-navigation.ts`) и браузерной «Назад».
+   *
+   * Зачем это понадобилось: навигация приложения — состояние контроллера, а
+   * не история браузера, и до этого метода аппаратная «Назад» на Android
+   * закрывала приложение С ЛЮБОГО экрана. Человек открывал задачу, нажимал
+   * системную кнопку и оказывался не в списке, а на домашнем экране
+   * телефона.
+   *
+   * Возвращает `false`, когда возвращаться уже некуда: это корень, и
+   * системе положено обработать кнопку по-своему (свернуть или закрыть
+   * приложение) — перехватывать её там было бы ловушкой, из которой нельзя
+   * выйти.
+   *
+   * Порядок веток — порядок «наложенности» состояний, а не список экранов:
+   * сначала снимается оверлей поверх экрана, потом сам экран.
+   */
+  goBack = (): boolean => {
+    const state = this.#state;
+
+    // Оверлей поверх любого экрана — снимается первым.
+    if (state.quickAdd !== null) {
+      this.closeQuickAdd();
+      return true;
+    }
+
+    switch (state.screen) {
+      // Экраны со своим запомненным возвратом — идём их же путём, чтобы
+      // «Назад» и экранная кнопка «Готово» вели в одно место.
+      case 'taskDetail':
+        this.closeTask();
+        return true;
+      case 'settings':
+        this.closeSettings();
+        return true;
+
+      case 'projectDetail':
+        this.goTo('projects');
+        return true;
+
+      // Подэкраны настроек возвращаются в настройки, а не на Today: иначе
+      // «Назад» из «Экспорта данных» выбрасывал бы из настроек целиком.
+      case 'appearance':
+      case 'dataPrivacy':
+      case 'importData':
+      case 'exportData':
+        this.goTo('settings');
+        return true;
+      case 'legalPrivacyPolicy':
+      case 'legalUserAgreement':
+        this.goTo('dataPrivacy');
+        return true;
+
+      // Остальные «главные» и карточные экраны — на Today.
+      case 'inbox':
+      case 'projects':
+      case 'search':
+      case 'plan':
+      case 'completed':
+        this.goTo('todayEmpty');
+        return true;
+
+      // Корень приложения и одноразовый поток онбординга: перехватывать
+      // нечего. Онбординг сознательно не отматывается назад — «Назад» на
+      // первой задаче вернуло бы к приветствию уже после того, как человек
+      // выбрал локальный режим.
+      case 'launch':
+      case 'welcome':
+      case 'signIn':
+      case 'firstTask':
+      case 'nlpOnboarding':
+      case 'todayEmpty':
+        return false;
+    }
+  };
+
+  /** Есть ли куда возвращаться из текущего состояния — тот же критерий, что
+   * у `goBack`, но без побочного эффекта. Нужен ловушке истории
+   * (`state/back-navigation.ts`), которая обязана знать это ДО нажатия. */
+  canGoBack = (): boolean => {
+    const state = this.#state;
+    if (state.quickAdd !== null) return true;
+    switch (state.screen) {
+      case 'launch':
+      case 'welcome':
+      case 'signIn':
+      case 'firstTask':
+      case 'nlpOnboarding':
+      case 'todayEmpty':
+        return false;
+      default:
+        return true;
+    }
+  };
 }
 
 export function createAppController(initial?: Partial<AppState>): AppController {

@@ -2847,6 +2847,38 @@ async function main() {
   }
   screenshot('03-today-after-control-phrase');
 
+  console.log('── Аппаратная «Назад»: из карточки задачи, не из приложения ──');
+  // Проверяется на УСТРОЙСТВЕ, а не в юнит-тесте: юнит-тест доказывает
+  // логику возврата и ловушку в истории (`test/state/back-navigation.test.ts`),
+  // но не то, что WebView Tauri вообще отдаёт `popstate` по системной
+  // кнопке. До этой правки «Назад» закрывала приложение с любого экрана.
+  if (!(await clickByTextWhenReady(first, CONTROL_TITLE, { exact: false }))) {
+    fail('карточка контрольной задачи не открылась для проверки «Назад»');
+  }
+  await sleep(1200);
+  screenshot('05-task-detail');
+
+  adb(['shell', 'input', 'keyevent', 'KEYCODE_BACK'], { stdio: 'inherit' });
+  await sleep(1500);
+
+  // Первое и главное: приложение обязано быть ЖИВО.
+  if (adbSoft(['shell', 'pidof', APPLICATION_ID]).trim() === '') {
+    fail(
+      'аппаратная «Назад» из карточки задачи закрыла приложение — ' +
+        'системная кнопка уходит в активность вместо навигации внутри продукта',
+    );
+  }
+  // И вернуться обязано в список, а не остаться в карточке.
+  const afterBack = await waitFor('возврат в список после «Назад»', 15, 500, async () => {
+    const text = await first.cdp.evaluate(READ_APP_TEXT);
+    return typeof text === 'string' && text.includes(CONTROL_TITLE) ? text : null;
+  });
+  if (afterBack === null) {
+    fail('после аппаратной «Назад» список задач не восстановился');
+  }
+  console.log('«Назад» вернула в список, приложение живо.');
+  screenshot('06-after-hardware-back');
+
   // Приложение не должно было умереть по дороге.
   if (adbSoft(['shell', 'pidof', APPLICATION_ID]).trim() === '') {
     fail('приложение упало в процессе сценария');

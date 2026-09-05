@@ -104,6 +104,7 @@ import { SCREENS } from './screens/index.js';
 import { AppShell } from './shell/AppShell.js';
 import { OfflineBanner } from './shell/OfflineBanner.js';
 import { reconcileReminderSchedule } from './state/reminder-reconciliation.js';
+import { installBackNavigation } from './state/back-navigation.js';
 import type { AppController } from './state/store.js';
 import { THEME_PREFERENCE_KEY, applyTheme, isThemePreference } from './theme/preference.js';
 
@@ -204,6 +205,18 @@ function useGlobalQuickAddShortcut(controller: AppController): void {
  * (уведомления — фоновая забота, не то, от чего зависит, что человек видит
  * первым кадром). `Unavailable` — молча пропускается, тот же принцип
  * честности, что `useBootstrapLocalDb`/`useBootstrapTheme` рядом. */
+/**
+ * Аппаратная «Назад» Android и браузерная «Назад» — см.
+ * `state/back-navigation.ts`. Ставится на всё дерево, а не на отдельные
+ * экраны: кнопка одна и обязана работать везде одинаково.
+ */
+function useBackNavigation(controller: AppController): void {
+  useEffect(() => {
+    const handle = installBackNavigation(controller);
+    return () => handle.dispose();
+  }, [controller]);
+}
+
 function useBootstrapReminderReconciliation(
   platform: PlatformCapabilitiesRegistry,
   storage: StoragePort,
@@ -256,6 +269,7 @@ function Bootstrap({ host }: { host: AppHost }): ReactElement {
   useBootstrapReminderReconciliation(host.platform, storage);
   useBootstrapTimezoneWatch(host.platform);
   useGlobalQuickAddShortcut(useAppController());
+  useBackNavigation(useAppController());
   return (
     <>
       {/* M39 (`12_SCREEN_STATE_MATRIX.md`) — на любом экране, не только

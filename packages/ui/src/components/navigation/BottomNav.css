@@ -10,7 +10,16 @@
   align-items: flex-end;
   justify-content: space-around;
   gap: var(--space-1);
-  padding: var(--space-2) var(--space-2) var(--space-3);
+  /* Нижний отступ учитывает системную область (жестовая полоса Android,
+     домашний индикатор iOS). Оболочки объявляют `viewport-fit=cover`
+     (index.html каждой оболочки) — то есть содержимое НАМЕРЕННО уходит под
+     системные панели, и без этой компенсации пункты навигации оказываются
+     под жестовой полосой: попасть пальцем нельзя, свайп системы
+     перехватывает касание. `env()` на устройствах без выреза равен нулю,
+     поэтому запас не появляется там, где он не нужен. */
+  padding: var(--space-2) var(--space-2) calc(var(--space-3) + env(safe-area-inset-bottom, 0px));
+  padding-left: calc(var(--space-2) + env(safe-area-inset-left, 0px));
+  padding-right: calc(var(--space-2) + env(safe-area-inset-right, 0px));
   background: var(--card);
   border-top: 1px solid var(--border);
   box-shadow: var(--shadow-header);
