@@ -570,6 +570,38 @@ jobs:
           echo '── манифест после патча ──'
           cat 'apps/mobile/src-tauri/gen/android/app/src/main/AndroidManifest.xml'
 
+      # ── Системная «Назад»: в страницу, а не в активность ──────────────────
+      #
+      # Прогон `33974178292` уронил ОБА сценария на эмуляторе в одной точке:
+      # «аппаратная „Назад“ из карточки задачи закрыла приложение». Причина —
+      # в исходниках зависимостей, а не в нашем JS: `wry` умеет отдавать
+      # кнопку в WebView (`WryActivity.setWebView`), но Tauri это выключает —
+      # `TauriActivity.kt:35`, `override val handleBackNavigation = false`.
+      # Ловушка истории (`packages/app/src/state/back-navigation.ts`) поэтому
+      # не могла сработать в принципе: `popstate` до страницы не доходил.
+      #
+      # `MainActivity.kt` — файл пользовательский (в отличие от
+      # `TauriActivity.kt` с пометкой «DO NOT MODIFY»), но `gen/` рождается
+      # заново на каждом `tauri android init`, в репозитории его нет. Отсюда
+      # патч после генерации — та же файловая точка и та же причина, что у
+      # правил R8 и разрешений манифеста выше. Логика — чистой функцией в
+      # `android-release-gate.mjs` (покрыта тестами, в том числе на то, что
+      # без опорной строки она БРОСАЕТ, а не тихо ничего не делает).
+      - name: Системная «Назад» приходит в страницу
+        run: |
+          set -euo pipefail
+          root='apps/mobile/src-tauri/gen/android/app/src/main/java'
+          mapfile -t found < <(find "${root}" -name MainActivity.kt)
+          if [ "${#found[@]}" -ne 1 ]; then
+            echo "ожидали ровно один MainActivity.kt под ${root}, нашли ${#found[@]}" >&2
+            printf '%s\n' "${found[@]:-(ни одного)}" >&2
+            exit 1
+          fi
+          node apps/mobile/scripts/android-release-gate.mjs patch-back-navigation \
+            --activity "${found[0]}"
+          echo '── MainActivity.kt после патча ──'
+          cat "${found[0]}"
+
       # ── Сборка ────────────────────────────────────────────────────────────
 
       # Отладочный APK под архитектуру эмулятора. Собирается ПЕРВЫМ, и это не

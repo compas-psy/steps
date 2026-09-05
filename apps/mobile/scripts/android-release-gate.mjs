@@ -434,6 +434,86 @@ export function patchManifestPermissions(manifestText, allowedNames) {
 }
 
 /**
+ * Системная «Назад» Android должна приходить в СТРАНИЦУ, а не в активность.
+ *
+ * Разбор настоящей поломки, а не предположение. Прогон `33974178292` уронил
+ * оба сценария на эмуляторе в одной точке:
+ *
+ *     ── Аппаратная «Назад»: из карточки задачи, не из приложения ──
+ *     ##[error]аппаратная «Назад» из карточки задачи закрыла приложение
+ *
+ * Причина найдена в исходниках зависимостей. `wry` мост между системной
+ * кнопкой и WebView УМЕЕТ (`WryActivity.setWebView`: `canGoBack()` →
+ * `goBack()`), но Tauri его сознательно выключает:
+ *
+ *     tauri-2.11.5/mobile/android-codegen/TauriActivity.kt:35
+ *     override val handleBackNavigation: Boolean = false
+ *
+ * Из-за этого кнопка уходит в активность и закрывает приложение с любого
+ * экрана, а ловушка истории (`packages/app/src/state/back-navigation.ts`)
+ * не может сработать в принципе: `popstate` до страницы не доходит. То есть
+ * дефект был не в нашем JS — его юнит-тест зелёный и всегда был зелёным, —
+ * а в том, что до страницы просто не доносили событие. Ровно поэтому
+ * поведение проверяется на устройстве, а не только тестом.
+ *
+ * `MainActivity.kt` — файл ПОЛЬЗОВАТЕЛЬСКИЙ (в отличие от `TauriActivity.kt`,
+ * помеченного «AUTO-GENERATED. DO NOT MODIFY»), но он рождается заново на
+ * каждом `tauri android init` в CI, каталога `gen/` в репозитории нет.
+ * Поэтому — патч после генерации, той же файловой точкой и по той же
+ * причине, что `patchManifestPermissions` выше.
+ *
+ * Чистая функция: строка на входе, строка на выходе. Патч идемпотентен, а
+ * если опорной строки нет — БРОСАЕТ. Молчаливый no-op здесь уже стоил
+ * семнадцати минут эмулятора (прогон `33963943918`): замена не сработала,
+ * никто об этом не узнал, и сборка поехала дальше как ни в чём не бывало.
+ */
+export const BACK_NAVIGATION_PROPERTY = 'handleBackNavigation';
+
+const BACK_NAVIGATION_OVERRIDE = [
+  '  // Мост «системная кнопка → WebView» включён обратно: `TauriActivity`',
+  '  // ставит `handleBackNavigation = false`, и «Назад» закрывала приложение',
+  '  // с любого экрана. С `true` wry спрашивает `WebView.canGoBack()`, вызывает',
+  '  // `goBack()`, страница получает `popstate` — и ловушка истории',
+  '  // (`packages/app/src/state/back-navigation.ts`) возвращает человека на шаг',
+  '  // назад. На корневом экране ловушки нет намеренно: там кнопка обязана',
+  '  // уйти системе и свернуть приложение.',
+  `  override val ${BACK_NAVIGATION_PROPERTY}: Boolean = true`,
+].join('\n');
+
+const MAIN_ACTIVITY_WITH_BODY = /class\s+MainActivity\s*:\s*TauriActivity\(\)\s*\{/;
+const MAIN_ACTIVITY_WITHOUT_BODY = /class\s+MainActivity\s*:\s*TauriActivity\(\)[ \t]*(?=\r?\n|$)/;
+
+export function patchBackNavigation(activityText) {
+  if (activityText.includes(BACK_NAVIGATION_PROPERTY)) {
+    return { text: activityText, patched: false };
+  }
+  const withBody = activityText.match(MAIN_ACTIVITY_WITH_BODY);
+  if (withBody !== null) {
+    return {
+      text: activityText.replace(
+        MAIN_ACTIVITY_WITH_BODY,
+        `${withBody[0]}\n${BACK_NAVIGATION_OVERRIDE}\n`,
+      ),
+      patched: true,
+    };
+  }
+  const withoutBody = activityText.match(MAIN_ACTIVITY_WITHOUT_BODY);
+  if (withoutBody !== null) {
+    return {
+      text: activityText.replace(
+        MAIN_ACTIVITY_WITHOUT_BODY,
+        `class MainActivity : TauriActivity() {\n${BACK_NAVIGATION_OVERRIDE}\n}`,
+      ),
+      patched: true,
+    };
+  }
+  throw new Error(
+    'MainActivity.kt: не нашли объявления «class MainActivity : TauriActivity()» — ' +
+      'шаблон Tauri изменился, патч системной «Назад» нужно проверить вручную',
+  );
+}
+
+/**
  * Имена разрешений из вывода `aapt dump permissions` / `aapt2 dump permissions`.
  * Обе утилиты печатают строки вида `uses-permission: name='android.permission.X'`.
  */
@@ -734,10 +814,23 @@ if (isMain) {
       writeFileSync(manifestPath, text);
       console.log(`Добавлены в манифест: ${added.join(', ')}`);
     }
+  } else if (command === 'patch-back-navigation') {
+    // Системная «Назад» в СТРАНИЦУ, а не в активность — см. заголовок
+    // `patchBackNavigation` выше. Запускается ПОСЛЕ генерации проекта,
+    // ДО `tauri android build`, как и патч манифеста.
+    const activityPath = flag('activity', '');
+    const { text, patched } = patchBackNavigation(readFileSync(activityPath, 'utf8'));
+    if (!patched) {
+      console.log('Патчить MainActivity.kt не нужно — handleBackNavigation уже объявлен.');
+    } else {
+      writeFileSync(activityPath, text);
+      console.log(`Системная «Назад» переведена в страницу: ${activityPath}`);
+    }
   } else {
     fail(
       `неизвестная команда «${command ?? ''}»: ` +
-        'channel | policy | expected-signer | verify | provenance | names | permissions | patch-manifest',
+        'channel | policy | expected-signer | verify | provenance | names | permissions | ' +
+        'patch-manifest | patch-back-navigation',
     );
   }
 }

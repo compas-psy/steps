@@ -29,6 +29,7 @@ import {
   parseApksignerVerify,
   parseExpectedSigner,
   parsePermissionList,
+  patchBackNavigation,
   patchManifestPermissions,
   permissionsFromAapt,
   permissionsGate,
@@ -483,5 +484,70 @@ describe('имя AAB — по тому же правилу СИМПАС, что 
 
   it('правильное имя принимается', () => {
     expect(checkAabName('simpas-shagi-0.1.0.aab', { version: '0.1.0' }).ok).toBe(true);
+  });
+});
+
+describe('patchBackNavigation — системная «Назад» в страницу, а не в активность', () => {
+  // Шаблон `tauri android init` в чистом виде: класс без тела. Второй
+  // вариант — с телом — берётся с настоящего примера Tauri (`examples/api`),
+  // где в `MainActivity` уже есть `onCreate` с `enableEdgeToEdge()`. Патч
+  // обязан работать на обоих: какой именно шаблон приедет в CI, решает
+  // версия Tauri, а не мы.
+  const WITHOUT_BODY = [
+    'package ru.cmpas.shagi',
+    '',
+    'class MainActivity : TauriActivity()',
+    '',
+  ].join('\n');
+  const WITH_BODY = [
+    'package ru.cmpas.shagi',
+    '',
+    'import android.os.Bundle',
+    'import androidx.activity.enableEdgeToEdge',
+    '',
+    'class MainActivity : TauriActivity() {',
+    '  override fun onCreate(savedInstanceState: Bundle?) {',
+    '    enableEdgeToEdge()',
+    '    super.onCreate(savedInstanceState)',
+    '  }',
+    '}',
+    '',
+  ].join('\n');
+
+  it('объявляет handleBackNavigation = true, когда у класса нет тела', () => {
+    const { text, patched } = patchBackNavigation(WITHOUT_BODY);
+    expect(patched).toBe(true);
+    expect(text).toContain('override val handleBackNavigation: Boolean = true');
+    // Тело создано, а не приписано снаружи класса: без этого Kotlin не
+    // соберётся, а проверка «строка есть в файле» прошла бы и так.
+    expect(text).toContain('class MainActivity : TauriActivity() {');
+    expect(text.trimEnd().endsWith('}')).toBe(true);
+  });
+
+  it('вставляет override в существующее тело, не теряя onCreate', () => {
+    const { text, patched } = patchBackNavigation(WITH_BODY);
+    expect(patched).toBe(true);
+    expect(text).toContain('override val handleBackNavigation: Boolean = true');
+    // Главное в этом случае — что патч НИЧЕГО не выбросил: `enableEdgeToEdge`
+    // отвечает за безопасные зоны, и потерять его значило бы починить «Назад»
+    // ценой раскладки под вырезом.
+    expect(text).toContain('enableEdgeToEdge()');
+    expect(text).toContain('super.onCreate(savedInstanceState)');
+  });
+
+  it('идемпотентен: второй прогон ничего не меняет', () => {
+    const once = patchBackNavigation(WITHOUT_BODY);
+    const twice = patchBackNavigation(once.text);
+    expect(twice.patched).toBe(false);
+    expect(twice.text).toBe(once.text);
+  });
+
+  it('бросает, если опорного объявления нет', () => {
+    // Тихий no-op здесь уже стоил семнадцати минут эмулятора (прогон
+    // 33963943918): замена не сработала, никто не узнал, сборка поехала
+    // дальше. Поэтому — исключение, а не «вернуть как было».
+    expect(() =>
+      patchBackNavigation('package ru.cmpas.shagi\n\nclass Other : Something()\n'),
+    ).toThrow(/class MainActivity : TauriActivity\(\)/);
   });
 });
