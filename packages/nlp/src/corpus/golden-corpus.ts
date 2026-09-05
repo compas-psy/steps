@@ -2051,8 +2051,8 @@ export const GOLDEN_CORPUS: readonly GoldenCase[] = [
     text: 'Позвонить в 9 утра',
     now: MON,
     expectedCategories: ['date', 'time'],
-    expectedTitle: 'Позвонить утра',
-    note: '"в 9" — час без двоеточия, "утра" (родительный) не матчится отдельно и остаётся текстом',
+    expectedTitle: 'Позвонить',
+    note: 'уточнитель части суток входит в чип времени; ожидание "Позвонить утра" здесь стояло раньше и было ошибкой самого корпуса — см. test/daypart-qualifier.test.ts',
   },
   {
     id: 'combined-22',
@@ -6379,12 +6379,12 @@ export const GOLDEN_CORPUS: readonly GoldenCase[] = [
     text: 'Сделать резервную копию каждый день в 3:00 ночи',
     now: { date: '2026-08-31', time: '10:00' },
     expectedCategories: ['date', 'recurrence', 'time'],
-    expectedTitle: 'Сделать резервную копию ночи',
+    expectedTitle: 'Сделать резервную копию',
     expectedValues: [
       { category: 'time', value: '03:00' },
       { category: 'date', value: '2026-09-01' },
     ],
-    note: 'recurrence + time с "ночи" как свободным текстом рядом (не входит в грамматику периодов суток)',
+    note: 'recurrence + time; "ночи" — уточнитель части суток, входит в чип времени и не остаётся в названии',
   },
   {
     id: 'combined-142',
@@ -6516,13 +6516,13 @@ export const GOLDEN_CORPUS: readonly GoldenCase[] = [
     text: 'Сходить в спортзал по будням в 6:30 утра #спорт',
     now: { date: '2026-08-31', time: '10:00' },
     expectedCategories: ['date', 'project', 'recurrence', 'time'],
-    expectedTitle: 'Сходить в спортзал утра',
+    expectedTitle: 'Сходить в спортзал',
     expectedValues: [
       { category: 'time', value: '06:30' },
       { category: 'project', value: 'спорт' },
       { category: 'date', value: '2026-09-01' },
     ],
-    note: 'recurrence + time с "утра" как свободным текстом рядом + project',
+    note: 'recurrence + time + project; "утра" — уточнитель части суток, входит в чип времени',
   },
   {
     id: 'combined-153',
